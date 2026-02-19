@@ -497,15 +497,7 @@ def main() -> None:
                 raise SystemExit(1)
 
     engine = build_engine(cfg)
-
     model_name = _get_model_display_name(engine)
-    print(f"Provider:  {cfg.provider}")
-    print(f"Model:     {model_name}")
-    if cfg.reasoning_effort:
-        print(f"Reasoning: {cfg.reasoning_effort}")
-    mode = "recursive" if cfg.recursive else "flat"
-    print(f"Mode:      {mode}")
-    print(f"Workspace: {cfg.workspace}")
 
     try:
         runtime = SessionRuntime.bootstrap(
@@ -518,12 +510,23 @@ def main() -> None:
         print(f"Session error: {exc}")
         return
 
-    print(f"Session:   {runtime.session_id}")
-    print()
+    startup_info: dict[str, str] = {
+        "Provider": cfg.provider,
+        "Model": model_name,
+    }
+    if cfg.reasoning_effort:
+        startup_info["Reasoning"] = cfg.reasoning_effort
+    startup_info["Mode"] = "recursive" if cfg.recursive else "flat"
+    startup_info["Workspace"] = str(cfg.workspace)
+    startup_info["Session"] = runtime.session_id
 
     ctx = ChatContext(runtime=runtime, cfg=cfg, settings_store=settings_store)
 
     if args.task:
+        # Headless task mode — print config plainly, then run.
+        for key, val in startup_info.items():
+            print(f"{key:>10}  {val}")
+        print()
         result = runtime.solve(args.task, on_event=lambda ev: print(f"trace> {_clip_event(ev)}"))
         print(result)
         return
@@ -532,12 +535,18 @@ def main() -> None:
         if not sys.stdin.isatty():
             print("No interactive stdin available; use --task for headless execution.")
             raise SystemExit(2)
+        for key, val in startup_info.items():
+            print(f"{key:>10}  {val}")
+        print()
         run_plain_repl(ctx)
         return
 
     try:
-        run_rich_repl(ctx)
+        run_rich_repl(ctx, startup_info=startup_info)
     except ImportError:
+        for key, val in startup_info.items():
+            print(f"{key:>10}  {val}")
+        print()
         run_plain_repl(ctx)
 
 

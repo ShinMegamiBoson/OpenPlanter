@@ -4,6 +4,7 @@ import json
 import re
 import time
 import threading
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import dataclass, field
@@ -264,8 +265,10 @@ class RLMEngine:
 
         self._emit(f"[depth {depth}] objective: {objective}", on_event)
 
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         if depth == 0 and not self.config.recursive:
             initial_msg_dict = {
+                "timestamp": now_iso,
                 "objective": objective,
                 "max_steps_per_call": self.config.max_steps_per_call,
                 "workspace": str(self.config.workspace),
@@ -277,6 +280,7 @@ class RLMEngine:
             else:
                 repl_hint = "Begin REPL cycle 1: parent has surveyed — READ only what this objective requires, then act."
             initial_msg_dict = {
+                "timestamp": now_iso,
                 "objective": objective,
                 "depth": depth,
                 "max_depth": self.config.max_depth,
@@ -471,15 +475,16 @@ class RLMEngine:
                 if is_final_entry and final_answer is None:
                     final_answer = r.content
 
-            # Step budget awareness
+            # Timestamp + step budget awareness
             if final_answer is None and results:
                 budget_total = self.config.max_steps_per_call
                 remaining = budget_total - step
+                ts_tag = f"[{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}]"
                 budget_tag = f"[Step {step}/{budget_total}]"
                 r0 = results[0]
                 results[0] = ToolResult(
                     r0.tool_call_id, r0.name,
-                    f"{budget_tag} {r0.content}", r0.is_error,
+                    f"{ts_tag} {budget_tag} {r0.content}", r0.is_error,
                 )
                 if 0 < remaining <= budget_total // 4:
                     warning = (

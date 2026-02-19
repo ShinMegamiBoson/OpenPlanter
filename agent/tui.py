@@ -14,6 +14,15 @@ from .settings import SettingsStore
 
 SLASH_COMMANDS: list[str] = ["/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning"]
 
+SPLASH_ART = r"""
+  ___                   ____  _             _
+ / _ \ _ __   ___ _ __ |  _ \| | __ _ _ __ | |_ ___ _ __
+| | | | '_ \ / _ \ '_ \| |_) | |/ _` | '_ \| __/ _ \ '__|
+| |_| | |_) |  __/ | | |  __/| | (_| | | | | ||  __/ |
+ \___/| .__/ \___|_| |_|_|   |_|\__,_|_| |_|\__\___|_|
+      |_|
+"""
+
 # Short aliases for common models.  Keys are lowered before lookup.
 HELP_LINES: list[str] = [
     "Commands:",
@@ -329,7 +338,7 @@ def _clip_event(text: str) -> str:
 
 
 class RichREPL:
-    def __init__(self, ctx: ChatContext) -> None:
+    def __init__(self, ctx: ChatContext, startup_info: dict[str, str] | None = None) -> None:
         from prompt_toolkit import PromptSession
         from prompt_toolkit.completion import WordCompleter
         from prompt_toolkit.history import FileHistory
@@ -339,6 +348,7 @@ class RichREPL:
         self.ctx = ctx
         self.console = Console()
         self._spinner_active = False
+        self._startup_info = startup_info or {}
 
         history_dir = Path.home() / ".openplanter"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -423,7 +433,11 @@ class RichREPL:
         from rich.markdown import Markdown
         from rich.text import Text
 
-        self.console.print("Ready. Describe a coding objective.", style="bold")
+        self.console.print(Text(SPLASH_ART, style="bold cyan"))
+        if self._startup_info:
+            for key, val in self._startup_info.items():
+                self.console.print(Text(f"  {key:>10}  {val}", style="dim"))
+            self.console.print()
         self.console.print("Type /help for commands, Ctrl+D to exit.", style="dim")
         self.console.print()
 
@@ -466,7 +480,7 @@ class RichREPL:
             self.console.print()
 
 
-def run_rich_repl(ctx: ChatContext) -> None:
+def run_rich_repl(ctx: ChatContext, startup_info: dict[str, str] | None = None) -> None:
     """Entry point for the Rich REPL."""
-    repl = RichREPL(ctx)
+    repl = RichREPL(ctx, startup_info=startup_info)
     repl.run()
