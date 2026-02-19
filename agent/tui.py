@@ -567,13 +567,14 @@ class RichREPL:
         self._startup_info = startup_info or {}
         self._current_step: _StepState | None = None
 
-        # Demo mode: install render hook for censoring console output.
+        # Demo mode: prepare render hook (installed in run() after splash art).
         censor_fn = None
+        self._demo_hook = None
         if ctx.cfg.demo:
             from .demo import DemoCensor, DemoRenderHook
             censor = DemoCensor(ctx.cfg.workspace)
             censor_fn = censor.censor_text
-            self.console.push_render_hook(DemoRenderHook(censor))
+            self._demo_hook = DemoRenderHook(censor)
 
         self._thinking = _ThinkingDisplay(self.console, censor_fn=censor_fn)
 
@@ -755,6 +756,11 @@ class RichREPL:
         from rich.text import Text
 
         self.console.print(Text(SPLASH_ART, style="bold cyan"))
+
+        # Install demo render hook AFTER splash art so the header is uncensored.
+        if self._demo_hook is not None:
+            self.console.push_render_hook(self._demo_hook)
+
         if self._startup_info:
             for key, val in self._startup_info.items():
                 self.console.print(Text(f"  {key:>10}  {val}", style="dim"))

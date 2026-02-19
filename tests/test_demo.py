@@ -78,6 +78,28 @@ class DemoCensorEntityTests(unittest.TestCase):
         self.assertEqual(len(text), len(result))
 
 
+class DemoCensorNewlineTests(unittest.TestCase):
+    """Regex must not match across newlines."""
+
+    def test_capitalized_words_across_newline_not_merged(self) -> None:
+        ws = Path("/tmp/Proj")
+        c = DemoCensor(ws)
+        # "Oo" alone on each line shouldn't form a single cross-line match
+        text = "end Oo\nOo start"
+        result = c.censor_text(text)
+        # The newline must survive — lines must not be merged
+        self.assertIn("\n", result)
+        self.assertEqual(result.count("\n"), text.count("\n"))
+
+    def test_splash_art_preserved(self) -> None:
+        from agent.tui import SPLASH_ART
+        ws = Path("/Users/testuser/Documents/TestProject")
+        c = DemoCensor(ws)
+        result = c.censor_text(SPLASH_ART)
+        # Only "testuser" should be censored; structure (newlines) must be intact
+        self.assertEqual(SPLASH_ART.count("\n"), result.count("\n"))
+
+
 class DemoCensorWhitelistTests(unittest.TestCase):
     """Whitelisted tech terms should NOT be censored."""
 

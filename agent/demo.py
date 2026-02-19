@@ -16,12 +16,13 @@ from typing import Any, Callable, Sequence
 # ---------------------------------------------------------------------------
 
 # 2+ consecutive capitalised words: "John Smith", "Boston Medical Center"
-_RE_MULTI_CAP = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b")
+# Use [ \t]+ (not \s+) to avoid matching across newlines.
+_RE_MULTI_CAP = re.compile(r"\b([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+)+)\b")
 
 # Title + capitalised name: "Dr. Smith", "Mayor Walsh", "Sen. Warren"
 _RE_TITLED = re.compile(
     r"\b((?:Dr|Mr|Mrs|Ms|Prof|Rev|Sen|Rep|Gov|Mayor|Judge|Chief|Officer|Det|Sgt|Lt|Cpt|Cmdr|Supt)"
-    r"\.?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b"
+    r"\.?[ \t]+[A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+)*)\b"
 )
 
 # Terms that look like entities but are actually tech/UI labels.
