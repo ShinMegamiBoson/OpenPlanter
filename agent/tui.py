@@ -364,6 +364,18 @@ _RE_ERROR = re.compile(r"model error:", re.IGNORECASE)
 # Max characters to display per trace event line (first line only for multi-line).
 _EVENT_MAX_CHARS = 300
 
+
+def _clip_event(text: str) -> str:
+    """Clip a trace event body to a reasonable display length."""
+    first_line, _, rest = text.partition("\n")
+    if len(first_line) > _EVENT_MAX_CHARS:
+        return first_line[:_EVENT_MAX_CHARS] + "..."
+    if rest:
+        extra_lines = rest.count("\n") + 1
+        return first_line + f"  (+{extra_lines} lines)"
+    return first_line
+
+
 # Map tool names to their most informative argument for compact display.
 _KEY_ARGS: dict[str, str] = {
     "read_file": "path",
