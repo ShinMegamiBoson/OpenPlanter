@@ -58,6 +58,10 @@ class SessionStore:
     def _artifacts_dir(self, session_id: str) -> Path:
         return self._session_dir(session_id) / "artifacts"
 
+    def _plan_dir(self, session_id: str) -> Path:
+        """Directory where *.plan.md files live (same as session dir)."""
+        return self._session_dir(session_id)
+
     def latest_session_id(self) -> str | None:
         session_dirs = [p for p in self.sessions.iterdir() if p.is_dir()]
         if not session_dirs:
@@ -209,6 +213,9 @@ class SessionRuntime:
         obs = [str(x) for x in persisted] if isinstance(persisted, list) else []
         max_obs = max(1, config.max_persisted_observations)
         context = ExternalContext(observations=obs[-max_obs:])
+
+        engine.session_dir = store._session_dir(sid)
+        engine.session_id = sid
 
         runtime = cls(
             engine=engine,

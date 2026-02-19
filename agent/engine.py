@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 from .config import AgentConfig
@@ -128,6 +129,8 @@ class RLMEngine:
     model_factory: ModelFactory | None = None
     _model_cache: dict[tuple[str, str | None], BaseModel] = field(default_factory=dict)
     _lock: threading.Lock = field(default_factory=threading.Lock)
+    session_dir: Path | None = None
+    session_id: str | None = None
     _shell_command_counts: dict[tuple[int, str], int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -289,6 +292,10 @@ class RLMEngine:
                 "external_context_summary": context.summary(),
                 "repl_hint": repl_hint,
             }
+        if self.session_dir is not None:
+            initial_msg_dict["session_dir"] = str(self.session_dir)
+        if self.session_id is not None:
+            initial_msg_dict["session_id"] = self.session_id
         initial_message = json.dumps(initial_msg_dict, ensure_ascii=True)
 
         conversation = model.create_conversation(self.system_prompt, initial_message)
@@ -507,6 +514,33 @@ class RLMEngine:
                         rl.tool_call_id, rl.name,
                         rl.content + warning, rl.is_error,
                     )
+
+            # Plan injection — find newest *.plan.md in session dir, append to last result
+            if self.session_dir is not None and results and final_answer is None:
+                try:
+                    plan_files = sorted(
+                        self.session_dir.glob("*.plan.md"),
+                        key=lambda p: p.stat().st_mtime,
+                        reverse=True,
+                    )
+                    if plan_files:
+                        plan_path = plan_files[0]
+                        plan_text = plan_path.read_text(encoding="utf-8")
+                        if plan_text.strip():
+                            max_pc = self.config.max_plan_chars
+                            if len(plan_text) > max_pc:
+                                plan_text = plan_text[:max_pc] + "\n...[plan truncated]..."
+                            plan_block = (
+                                f"\n[SESSION PLAN file={plan_path.name}]\n"
+                                f"{plan_text}\n[/SESSION PLAN]\n"
+                            )
+                            rl = results[-1]
+                            results[-1] = ToolResult(
+                                rl.tool_call_id, rl.name,
+                                rl.content + plan_block, rl.is_error,
+                            )
+                except OSError:
+                    pass
 
             model.append_tool_results(conversation, results)
 
