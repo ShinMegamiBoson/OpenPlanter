@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+import threading
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from .config import AgentConfig
 from .engine import RLMEngine
@@ -356,22 +358,156 @@ def dispatch_slash_command(
 _RE_PREFIX = re.compile(r"^\[d(\d+)(?:/s(\d+))?\]\s*")
 _RE_CALLING = re.compile(r"calling model")
 _RE_SUBTASK = re.compile(r">> entering subtask")
-_RE_RESULT = re.compile(r"^\s*->\s*")
+_RE_EXECUTE = re.compile(r">> executing leaf")
 _RE_ERROR = re.compile(r"model error:", re.IGNORECASE)
 
 # Max characters to display per trace event line (first line only for multi-line).
 _EVENT_MAX_CHARS = 300
 
+# Map tool names to their most informative argument for compact display.
+_KEY_ARGS: dict[str, str] = {
+    "read_file": "path",
+    "write_file": "path",
+    "edit_file": "path",
+    "hashline_edit": "path",
+    "apply_patch": "patch",
+    "run_shell": "command",
+    "run_shell_bg": "command",
+    "web_search": "query",
+    "fetch_url": "urls",
+    "search_files": "query",
+    "list_files": "glob",
+    "repo_map": "glob",
+    "subtask": "objective",
+    "execute": "objective",
+    "think": "note",
+    "check_shell_bg": "job_id",
+    "kill_shell_bg": "job_id",
+}
 
-def _clip_event(text: str) -> str:
-    """Clip a trace event body to a reasonable display length."""
-    first_line, _, rest = text.partition("\n")
-    if len(first_line) > _EVENT_MAX_CHARS:
-        return first_line[:_EVENT_MAX_CHARS] + "..."
-    if rest:
-        extra_lines = rest.count("\n") + 1
-        return first_line + f"  (+{extra_lines} lines)"
-    return first_line
+# How many lines of thinking text to show during the spinner.
+_THINKING_TAIL_LINES = 6
+_THINKING_MAX_LINE_WIDTH = 80
+
+
+@dataclass
+class _ToolCallRecord:
+    name: str
+    key_arg: str
+    elapsed_sec: float
+    is_error: bool = False
+
+
+@dataclass
+class _StepState:
+    depth: int = 0
+    step: int = 0
+    max_steps: int = 0
+    model_text: str = ""
+    model_elapsed_sec: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    tool_calls: list[_ToolCallRecord] = field(default_factory=list)
+
+
+def _extract_key_arg(name: str, arguments: dict[str, Any]) -> str:
+    """Extract the most informative argument value for compact display."""
+    key = _KEY_ARGS.get(name)
+    if not key:
+        # Fallback: first string-valued argument
+        for v in arguments.values():
+            if isinstance(v, str) and v.strip():
+                s = v.strip()
+                if len(s) > 60:
+                    s = s[:57] + "..."
+                return s
+        return ""
+    val = arguments.get(key, "")
+    if isinstance(val, list):
+        val = ", ".join(str(x) for x in val[:3])
+    s = str(val).strip()
+    if len(s) > 60:
+        s = s[:57] + "..."
+    return s
+
+
+class _ThinkingDisplay:
+    """Manages a Rich Live display showing a spinner + streaming thinking text."""
+
+    def __init__(self, console: Any) -> None:
+        self._console = console
+        self._lock = threading.Lock()
+        self._thinking_buf: str = ""
+        self._start_time: float = 0.0
+        self._live: Any | None = None
+        self._active = False
+
+    def start(self) -> None:
+        from rich.live import Live
+        if self._active:
+            return
+        with self._lock:
+            self._thinking_buf = ""
+            self._start_time = time.monotonic()
+            self._active = True
+        self._live = Live(
+            self._build_renderable(),
+            console=self._console,
+            transient=True,
+            refresh_per_second=8,
+        )
+        self._live.__enter__()
+
+    def stop(self) -> None:
+        if not self._active:
+            return
+        self._active = False
+        if self._live is not None:
+            try:
+                self._live.__exit__(None, None, None)
+            except Exception:
+                pass
+            self._live = None
+
+    def feed(self, delta_type: str, text: str) -> None:
+        if not self._active:
+            return
+        if delta_type != "thinking":
+            return
+        with self._lock:
+            self._thinking_buf += text
+        if self._live is not None:
+            try:
+                self._live.update(self._build_renderable())
+            except Exception:
+                pass
+
+    def _build_renderable(self) -> Any:
+        from rich.text import Text
+
+        elapsed = time.monotonic() - self._start_time if self._start_time else 0.0
+        header = f"[bold cyan]Thinking...[/bold cyan]  [dim]({elapsed:.1f}s)[/dim]"
+
+        with self._lock:
+            buf = self._thinking_buf
+
+        if not buf:
+            return Text.from_markup(f"\u2800 {header}")
+
+        # Take last N lines, truncate width
+        lines = buf.splitlines()
+        tail = lines[-_THINKING_TAIL_LINES:]
+        clipped = []
+        for ln in tail:
+            if len(ln) > _THINKING_MAX_LINE_WIDTH:
+                ln = ln[:_THINKING_MAX_LINE_WIDTH - 3] + "..."
+            clipped.append(ln)
+        snippet = "\n".join(f"  [dim italic]{ln}[/dim italic]" for ln in clipped)
+        return Text.from_markup(f"\u2800 {header}\n{snippet}")
+
+    @property
+    def active(self) -> bool:
+        return self._active
 
 
 class RichREPL:
@@ -384,8 +520,9 @@ class RichREPL:
 
         self.ctx = ctx
         self.console = Console()
-        self._spinner_active = False
         self._startup_info = startup_info or {}
+        self._thinking = _ThinkingDisplay(self.console)
+        self._current_step: _StepState | None = None
 
         history_dir = Path.home() / ".openplanter"
         history_dir.mkdir(parents=True, exist_ok=True)
@@ -411,60 +548,145 @@ class RichREPL:
             multiline=False,
         )
 
+    # ------------------------------------------------------------------
+    # on_event — simplified, only handles calling model / subtask / error
+    # ------------------------------------------------------------------
+
     def _on_event(self, msg: str) -> None:
         """Callback for runtime.solve() trace events."""
-        from rich.text import Text
-
-        # Strip the [dN/sN] prefix for display, but extract depth/step.
         m = _RE_PREFIX.match(msg)
-        if m:
-            prefix_tag = msg[: m.end()].strip()
-            body = msg[m.end() :]
-        else:
-            prefix_tag = ""
-            body = msg
+        body = msg[m.end():] if m else msg
 
-        # Calling model → start spinner
+        # Calling model → flush previous step, start thinking display
         if _RE_CALLING.search(body):
-            if not self._spinner_active:
-                self._spinner_active = True
-                self._status_ctx = self.console.status("Thinking...", spinner="dots")
-                self._status_ctx.__enter__()
+            self._flush_step()
+            self._thinking.start()
             return
 
-        # Any non-model-call event stops the spinner.
-        self._stop_spinner()
-
-        # Subtask entry → horizontal rule
-        if _RE_SUBTASK.search(body):
-            self.console.rule(body.replace(">> entering subtask:", "").strip(), style="dim")
+        # Subtask/execute entry → flush step, render rule
+        if _RE_SUBTASK.search(body) or _RE_EXECUTE.search(body):
+            self._flush_step()
+            self._thinking.stop()
+            label = re.sub(r">> (entering subtask|executing leaf):\s*", "", body).strip()
+            self.console.rule(f"[dim]{label}[/dim]", style="dim")
             return
 
         # Error
         if _RE_ERROR.search(body):
-            self.console.print(Text(_clip_event(msg), style="bold red"))
+            self._thinking.stop()
+            from rich.text import Text
+            first_line = msg.split("\n", 1)[0]
+            if len(first_line) > _EVENT_MAX_CHARS:
+                first_line = first_line[:_EVENT_MAX_CHARS] + "..."
+            self.console.print(Text(first_line, style="bold red"))
             return
 
-        # Tool result line (-> summary)
-        if _RE_RESULT.match(body):
-            self.console.print(Text(f"         {_clip_event(body.strip())}", style="dim"))
+        # Everything else is handled by on_step — ignore here
+
+    # ------------------------------------------------------------------
+    # on_step — receives structured step events from engine
+    # ------------------------------------------------------------------
+
+    def _on_step(self, step_event: dict[str, Any]) -> None:
+        action = step_event.get("action")
+        if not isinstance(action, dict):
+            return
+        name = action.get("name", "")
+
+        if name == "_model_turn":
+            # Model turn completed → stop thinking, create new step state
+            self._thinking.stop()
+            self._current_step = _StepState(
+                depth=step_event.get("depth", 0),
+                step=step_event.get("step", 0),
+                max_steps=self.ctx.cfg.max_steps_per_call,
+                model_text=step_event.get("model_text", ""),
+                model_elapsed_sec=step_event.get("elapsed_sec", 0.0),
+                input_tokens=step_event.get("input_tokens", 0),
+                output_tokens=step_event.get("output_tokens", 0),
+            )
             return
 
-        # Tool call line
-        if prefix_tag:
-            self.console.print(Text(f"  {prefix_tag}  {_clip_event(body)}", style=""))
+        if name == "final":
+            # Final answer — flush whatever we have
+            self._flush_step()
             return
 
-        # Fallback
-        self.console.print(Text(_clip_event(msg), style="dim"))
+        # Tool call — append to current step
+        if self._current_step is not None:
+            key_arg = _extract_key_arg(name, action.get("arguments", {}))
+            elapsed = step_event.get("elapsed_sec", 0.0)
+            is_error = bool(step_event.get("observation", "").startswith("Tool ") and "crashed" in step_event.get("observation", ""))
+            self._current_step.tool_calls.append(
+                _ToolCallRecord(
+                    name=name,
+                    key_arg=key_arg,
+                    elapsed_sec=elapsed,
+                    is_error=is_error,
+                )
+            )
 
-    def _stop_spinner(self) -> None:
-        if self._spinner_active:
-            self._spinner_active = False
-            try:
-                self._status_ctx.__exit__(None, None, None)
-            except Exception:
-                pass
+    # ------------------------------------------------------------------
+    # on_content_delta — forward to thinking display
+    # ------------------------------------------------------------------
+
+    def _on_content_delta(self, delta_type: str, text: str) -> None:
+        self._thinking.feed(delta_type, text)
+
+    # ------------------------------------------------------------------
+    # _flush_step — render a completed step
+    # ------------------------------------------------------------------
+
+    def _flush_step(self) -> None:
+        step = self._current_step
+        if step is None:
+            return
+        self._current_step = None
+
+        from rich.text import Text
+
+        # Step header rule
+        left = f" Step {step.step} "
+        right_parts = []
+        if step.depth > 0:
+            right_parts.append(f"depth {step.depth}")
+        if step.max_steps:
+            right_parts.append(f"{step.step}/{step.max_steps}")
+        if step.input_tokens or step.output_tokens:
+            right_parts.append(
+                f"{_format_token_count(step.input_tokens)}in/{_format_token_count(step.output_tokens)}out"
+            )
+        right = " | ".join(right_parts) if right_parts else ""
+        self.console.rule(f"[bold]{left}[/bold][dim]{right}[/dim]", style="cyan")
+
+        # Model text (dim, truncated)
+        if step.model_text:
+            preview = step.model_text.strip()
+            if len(preview) > 200:
+                preview = preview[:197] + "..."
+            self.console.print(
+                Text(f"  ({step.model_elapsed_sec:.1f}s) {preview}", style="dim"),
+            )
+
+        # Tool call tree
+        n = len(step.tool_calls)
+        for i, tc in enumerate(step.tool_calls):
+            is_last = i == n - 1
+            connector = "\u2514\u2500" if is_last else "\u251c\u2500"
+            name_style = "bold red" if tc.is_error else ""
+
+            # Build line: connector + name + key_arg + elapsed
+            parts = Text()
+            parts.append(f"  {connector} ", style="dim")
+            parts.append(f"{tc.name}", style=name_style)
+            if tc.key_arg:
+                parts.append(f"  \"{tc.key_arg}\"", style="dim")
+            parts.append(f"  {tc.elapsed_sec:.1f}s", style="dim")
+            self.console.print(parts)
+
+    # ------------------------------------------------------------------
+    # run — main REPL loop
+    # ------------------------------------------------------------------
 
     def run(self) -> None:
         from rich.markdown import Markdown
@@ -504,8 +726,14 @@ class RichREPL:
 
             # Regular objective
             self.console.print()
-            answer = self.ctx.runtime.solve(user_input, on_event=self._on_event)
-            self._stop_spinner()
+            answer = self.ctx.runtime.solve(
+                user_input,
+                on_event=self._on_event,
+                on_step=self._on_step,
+                on_content_delta=self._on_content_delta,
+            )
+            self._thinking.stop()
+            self._flush_step()
 
             self.console.print()
             self.console.print(Markdown(answer))

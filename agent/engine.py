@@ -20,6 +20,7 @@ from .tools import WorkspaceTools
 
 EventCallback = Callable[[str], None]
 StepCallback = Callable[[dict[str, Any]], None]
+ContentDeltaCallback = Callable[[str, str], None]
 
 
 def _summarize_args(args: dict[str, Any], max_len: int = 120) -> str:
@@ -154,6 +155,7 @@ class RLMEngine:
         context: ExternalContext | None = None,
         on_event: EventCallback | None = None,
         on_step: StepCallback | None = None,
+        on_content_delta: ContentDeltaCallback | None = None,
         replay_logger: ReplayLogger | None = None,
     ) -> tuple[str, ExternalContext]:
         if not objective.strip():
@@ -169,6 +171,7 @@ class RLMEngine:
                 context=active_context,
                 on_event=on_event,
                 on_step=on_step,
+                on_content_delta=on_content_delta,
                 deadline=deadline,
                 replay_logger=replay_logger,
             )
@@ -260,6 +263,7 @@ class RLMEngine:
         context: ExternalContext,
         on_event: EventCallback | None = None,
         on_step: StepCallback | None = None,
+        on_content_delta: ContentDeltaCallback | None = None,
         deadline: float = 0,
         model_override: BaseModel | None = None,
         replay_logger: ReplayLogger | None = None,
@@ -317,11 +321,17 @@ class RLMEngine:
                 return "Time limit exceeded. Try a more focused objective."
             self._emit(f"[d{depth}/s{step}] calling model...", on_event)
             t0 = time.monotonic()
+            # Stream thinking/text deltas only for top-level calls
+            if on_content_delta and depth == 0 and hasattr(model, "on_content_delta"):
+                model.on_content_delta = on_content_delta
             try:
                 turn = model.complete(conversation)
             except ModelError as exc:
                 self._emit(f"[d{depth}/s{step}] model error: {exc}", on_event)
                 return f"Model error at depth {depth}, step {step}: {exc}"
+            finally:
+                if hasattr(model, "on_content_delta"):
+                    model.on_content_delta = None
             elapsed = time.monotonic() - t0
 
             if replay_logger:
@@ -613,6 +623,7 @@ class RLMEngine:
                         "objective": objective,
                         "action": {"name": tc.name, "arguments": tc.arguments},
                         "observation": observation,
+                        "elapsed_sec": round(tool_elapsed, 2),
                         "is_final": is_final,
                     }
                 )
@@ -797,6 +808,7 @@ class RLMEngine:
                 context=context,
                 on_event=on_event,
                 on_step=on_step,
+                on_content_delta=None,
                 deadline=deadline,
                 model_override=subtask_model,
                 replay_logger=child_logger,
@@ -852,6 +864,7 @@ class RLMEngine:
                 context=context,
                 on_event=on_event,
                 on_step=on_step,
+                on_content_delta=None,
                 deadline=deadline,
                 model_override=exec_model,
                 replay_logger=child_logger,

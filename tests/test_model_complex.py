@@ -116,7 +116,7 @@ class ModelComplexTests(unittest.TestCase):
     # 17-19. OpenAICompatibleModel error paths
     # ------------------------------------------------------------------ #
     def test_openai_missing_content_raises(self) -> None:
-        def fake_stream_sse(url, method, headers, payload, first_byte_timeout=10, stream_timeout=120, max_retries=3):
+        def fake_stream_sse(url, method, headers, payload, first_byte_timeout=10, stream_timeout=120, max_retries=3, on_sse_event=None):
             # Return events that accumulate to empty choices
             return [("", {"choices": [{"delta": {}, "finish_reason": "stop"}]})]
 
@@ -515,7 +515,7 @@ class OpenAIEdgeCaseTests(unittest.TestCase):
     # 37. OpenAI non-retryable ModelError re-raised
     # ------------------------------------------------------------------ #
     def test_openai_non_retryable_error_raised(self) -> None:
-        def fake_stream_sse(url, method, headers, payload, first_byte_timeout=10, stream_timeout=120, max_retries=3):
+        def fake_stream_sse(url, method, headers, payload, first_byte_timeout=10, stream_timeout=120, max_retries=3, on_sse_event=None):
             raise ModelError("HTTP 500 server error")
 
         with patch("agent.model._http_stream_sse", fake_stream_sse):
@@ -747,7 +747,7 @@ class AnthropicEdgeCaseTests(unittest.TestCase):
     # 49. Anthropic non-retryable ModelError re-raised
     # ------------------------------------------------------------------ #
     def test_anthropic_non_retryable_error_raised(self) -> None:
-        def fake_stream_sse(url, method, headers, payload, first_byte_timeout=10, stream_timeout=120, max_retries=3):
+        def fake_stream_sse(url, method, headers, payload, first_byte_timeout=10, stream_timeout=120, max_retries=3, on_sse_event=None):
             raise ModelError("HTTP 500 server error")
 
         with patch("agent.model._http_stream_sse", fake_stream_sse):

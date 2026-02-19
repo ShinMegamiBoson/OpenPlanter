@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import AgentConfig
-from .engine import ExternalContext, RLMEngine
+from .engine import ContentDeltaCallback, ExternalContext, RLMEngine, StepCallback
 from .replay_log import ReplayLogger
 
 EventCallback = Callable[[str], None]
@@ -238,7 +238,13 @@ class SessionRuntime:
             pass
         return runtime
 
-    def solve(self, objective: str, on_event: EventCallback | None = None) -> str:
+    def solve(
+        self,
+        objective: str,
+        on_event: EventCallback | None = None,
+        on_step: StepCallback | None = None,
+        on_content_delta: ContentDeltaCallback | None = None,
+    ) -> str:
         objective = objective.strip()
         if not objective:
             return "No objective provided."
@@ -265,39 +271,41 @@ class SessionRuntime:
             if on_event:
                 on_event(msg)
 
-        def _on_step(step_event: dict[str, Any]) -> None:
+        def _combined_on_step(step_event: dict[str, Any]) -> None:
             nonlocal patch_counter
             try:
                 self.store.append_event(self.session_id, "step", step_event)
             except OSError:
                 pass
             action = step_event.get("action")
-            if not isinstance(action, dict):
-                return
-            if action.get("name") != "apply_patch":
-                return
-            patch_text = str(action.get("arguments", {}).get("patch", ""))
-            if not patch_text.strip():
-                return
-            patch_counter += 1
-            name = (
-                f"patch-d{step_event.get('depth', 0)}"
-                f"-s{step_event.get('step', 0)}-{patch_counter}.patch"
-            )
-            try:
-                artifact_rel = self.store.write_artifact(
-                    self.session_id,
-                    category="patches",
-                    name=name,
-                    content=patch_text,
-                )
-                self.store.append_event(
-                    self.session_id,
-                    "artifact",
-                    {"kind": "patch", "path": artifact_rel},
-                )
-            except OSError:
-                pass
+            if isinstance(action, dict) and action.get("name") == "apply_patch":
+                patch_text = str(action.get("arguments", {}).get("patch", ""))
+                if patch_text.strip():
+                    patch_counter += 1
+                    name = (
+                        f"patch-d{step_event.get('depth', 0)}"
+                        f"-s{step_event.get('step', 0)}-{patch_counter}.patch"
+                    )
+                    try:
+                        artifact_rel = self.store.write_artifact(
+                            self.session_id,
+                            category="patches",
+                            name=name,
+                            content=patch_text,
+                        )
+                        self.store.append_event(
+                            self.session_id,
+                            "artifact",
+                            {"kind": "patch", "path": artifact_rel},
+                        )
+                    except OSError:
+                        pass
+            # Forward to external on_step callback
+            if on_step:
+                try:
+                    on_step(step_event)
+                except Exception:
+                    pass
 
         replay_path = self.store._session_dir(self.session_id) / "replay.jsonl"
         replay_logger = ReplayLogger(path=replay_path)
@@ -306,7 +314,8 @@ class SessionRuntime:
             objective=objective,
             context=self.context,
             on_event=_on_event,
-            on_step=_on_step,
+            on_step=_combined_on_step,
+            on_content_delta=on_content_delta,
             replay_logger=replay_logger,
         )
         self.context = updated_context
