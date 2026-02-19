@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
     "rich>=13.0",
     "prompt_toolkit>=3.0",
+    "pyfiglet>=1.0",
 ]
 
 [project.scripts]

@@ -14,14 +14,50 @@ from .settings import SettingsStore
 
 SLASH_COMMANDS: list[str] = ["/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning"]
 
-SPLASH_ART = r"""
-  ___                   ____  _             _
- / _ \ _ __   ___ _ __ |  _ \| | __ _ _ __ | |_ ___ _ __
-| | | | '_ \ / _ \ '_ \| |_) | |/ _` | '_ \| __/ _ \ '__|
-| |_| | |_) |  __/ | | |  __/| | (_| | | | | ||  __/ |
- \___/| .__/ \___|_| |_|_|   |_|\__,_|_| |_|\__\___|_|
-      |_|
-"""
+_PLANT_LEFT = [
+    "  ,  ",
+    " /|\\ ",
+    "(_|_)",
+    " \\|/ ",
+    "  |  ",
+    " [_] ",
+]
+
+_PLANT_RIGHT = [
+    "  ,  ",
+    " /|\\ ",
+    "(_|_)",
+    " \\|/ ",
+    "  |  ",
+    " [_] ",
+]
+
+
+def _build_splash() -> str:
+    """Generate the startup ASCII art banner with potted plants."""
+    try:
+        import pyfiglet
+        art = pyfiglet.figlet_format("OpenPlanter", font="slant").rstrip()
+    except Exception:
+        art = "   OpenPlanter"
+    lines = art.splitlines()
+    # Strip common leading whitespace
+    min_indent = min((len(l) - len(l.lstrip()) for l in lines if l.strip()), default=0)
+    stripped = [l[min_indent:] for l in lines]
+    max_w = max(len(l) for l in stripped)
+    padded = [l.ljust(max_w) for l in stripped]
+
+    # Pad plant art to match the number of text lines (top-align text, bottom-align plants)
+    n = len(padded)
+    pw = max(len(l) for l in _PLANT_LEFT)
+    left = [" " * pw] * (n - len(_PLANT_LEFT)) + _PLANT_LEFT if n > len(_PLANT_LEFT) else _PLANT_LEFT[-n:]
+    right = [" " * pw] * (n - len(_PLANT_RIGHT)) + _PLANT_RIGHT if n > len(_PLANT_RIGHT) else _PLANT_RIGHT[-n:]
+
+    framed = "\n".join(f"  {left[i]}  {padded[i]}  {right[i]}" for i in range(n))
+    return framed
+
+
+SPLASH_ART = _build_splash()
 
 # Short aliases for common models.  Keys are lowered before lookup.
 HELP_LINES: list[str] = [
