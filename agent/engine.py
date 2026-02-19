@@ -163,7 +163,7 @@ class RLMEngine:
         with self._lock:
             self._shell_command_counts.clear()
         active_context = context if context is not None else ExternalContext()
-        deadline = time.monotonic() + self.config.max_solve_seconds
+        deadline = (time.monotonic() + self.config.max_solve_seconds) if self.config.max_solve_seconds > 0 else 0
         try:
             result = self._solve_recursive(
                 objective=objective.strip(),

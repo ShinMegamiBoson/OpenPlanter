@@ -41,7 +41,7 @@ class AgentConfig:
     max_shell_output_chars: int = 16000
     session_root_dir: str = ".openplanter"
     max_persisted_observations: int = 400
-    max_solve_seconds: int = 600
+    max_solve_seconds: int = 0
     recursive: bool = True
     min_subtask_depth: int = 0
     acceptance_criteria: bool = True
@@ -90,7 +90,7 @@ class AgentConfig:
             max_shell_output_chars=int(os.getenv("OPENPLANTER_MAX_SHELL_CHARS", "16000")),
             session_root_dir=os.getenv("OPENPLANTER_SESSION_DIR", ".openplanter"),
             max_persisted_observations=int(os.getenv("OPENPLANTER_MAX_PERSISTED_OBS", "400")),
-            max_solve_seconds=int(os.getenv("OPENPLANTER_MAX_SOLVE_SECONDS", "600")),
+            max_solve_seconds=int(os.getenv("OPENPLANTER_MAX_SOLVE_SECONDS", "0")),
             recursive=os.getenv("OPENPLANTER_RECURSIVE", "true").strip().lower() in ("1", "true", "yes"),
             min_subtask_depth=int(os.getenv("OPENPLANTER_MIN_SUBTASK_DEPTH", "0")),
             acceptance_criteria=os.getenv("OPENPLANTER_ACCEPTANCE_CRITERIA", "true").strip().lower() in ("1", "true", "yes"),
