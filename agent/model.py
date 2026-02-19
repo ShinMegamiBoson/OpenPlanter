@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from .tool_defs import TOOL_DEFINITIONS, to_anthropic_tools, to_openai_tools
 
@@ -136,7 +136,10 @@ def _extend_socket_timeout(resp: Any, timeout: float) -> None:
         pass
 
 
-def _read_sse_events(resp: Any) -> list[tuple[str, dict[str, Any]]]:
+def _read_sse_events(
+    resp: Any,
+    on_sse_event: "Callable[[str, dict[str, Any]], None] | None" = None,
+) -> list[tuple[str, dict[str, Any]]]:
     """Read SSE lines from an HTTP response, returning (event_type, data_dict) pairs."""
     events: list[tuple[str, dict[str, Any]]] = []
     current_event = ""
@@ -170,6 +173,11 @@ def _read_sse_events(resp: Any) -> list[tuple[str, dict[str, Any]]]:
                         err_msg = data_dict.get("error", {}).get("message", str(data_dict))
                         raise ModelError(f"Stream error: {err_msg}")
                     events.append((current_event, data_dict))
+                    if on_sse_event:
+                        try:
+                            on_sse_event(current_event, data_dict)
+                        except Exception:
+                            pass
                 current_data_lines = []
                 current_event = ""
             continue
@@ -186,6 +194,11 @@ def _read_sse_events(resp: Any) -> list[tuple[str, dict[str, Any]]]:
                 err_msg = data_dict.get("error", {}).get("message", str(data_dict))
                 raise ModelError(f"Stream error: {err_msg}")
             events.append((current_event, data_dict))
+            if on_sse_event:
+                try:
+                    on_sse_event(current_event, data_dict)
+                except Exception:
+                    pass
 
     return events
 
@@ -198,6 +211,7 @@ def _http_stream_sse(
     first_byte_timeout: float = 10,
     stream_timeout: float = 120,
     max_retries: int = 3,
+    on_sse_event: "Callable[[str, dict[str, Any]], None] | None" = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Stream an SSE endpoint with first-byte timeout and retry logic."""
     data = json.dumps(payload).encode("utf-8")
@@ -218,7 +232,7 @@ def _http_stream_sse(
         # First byte received — extend timeout for the rest of the stream
         _extend_socket_timeout(resp, stream_timeout)
         try:
-            return _read_sse_events(resp)
+            return _read_sse_events(resp, on_sse_event=on_sse_event)
         finally:
             resp.close()
 
@@ -562,6 +576,7 @@ class OpenAICompatibleModel:
     extra_headers: dict[str, str] = field(default_factory=dict)
     strict_tools: bool = True
     tool_defs: list[dict[str, Any]] | None = None
+    on_content_delta: Callable[[str, str], None] | None = None
 
     def _is_reasoning_model(self) -> bool:
         """OpenAI reasoning models (o-series, gpt-5 series) have different API constraints."""
@@ -616,6 +631,23 @@ class OpenAICompatibleModel:
             **self.extra_headers,
         }
 
+        # Build SSE event forwarder for streaming text deltas to TUI
+        def _forward_delta(_event_type: str, data: dict[str, Any]) -> None:
+            cb = self.on_content_delta
+            if cb is None:
+                return
+            choices = data.get("choices")
+            if not choices:
+                return
+            delta = choices[0].get("delta", {})
+            if not delta:
+                return
+            content = delta.get("content")
+            if content:
+                cb("text", content)
+
+        sse_cb = _forward_delta if self.on_content_delta else None
+
         try:
             events = _http_stream_sse(
                 url=url,
@@ -623,6 +655,7 @@ class OpenAICompatibleModel:
                 headers=headers,
                 payload=payload,
                 stream_timeout=self.timeout_sec,
+                on_sse_event=sse_cb,
             )
             parsed = _accumulate_openai_stream(events)
         except ModelError as exc:
@@ -641,6 +674,7 @@ class OpenAICompatibleModel:
                 headers=headers,
                 payload=payload,
                 stream_timeout=self.timeout_sec,
+                on_sse_event=sse_cb,
             )
             parsed = _accumulate_openai_stream(events)
 
@@ -736,6 +770,7 @@ class AnthropicModel:
     max_tokens: int = 16384
     timeout_sec: int = 300
     tool_defs: list[dict[str, Any]] | None = None
+    on_content_delta: Callable[[str, str], None] | None = None
 
     def create_conversation(self, system_prompt: str, initial_user_message: str) -> Conversation:
         messages: list[Any] = [
@@ -784,6 +819,28 @@ class AnthropicModel:
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
+
+        # Build SSE event forwarder for streaming deltas to TUI
+        def _forward_delta(_event_type: str, data: dict[str, Any]) -> None:
+            cb = self.on_content_delta
+            if cb is None:
+                return
+            msg_type = data.get("type", _event_type)
+            if msg_type != "content_block_delta":
+                return
+            delta = data.get("delta", {})
+            delta_type = delta.get("type", "")
+            if delta_type == "thinking_delta":
+                text = delta.get("thinking", "")
+                if text:
+                    cb("thinking", text)
+            elif delta_type == "text_delta":
+                text = delta.get("text", "")
+                if text:
+                    cb("text", text)
+
+        sse_cb = _forward_delta if self.on_content_delta else None
+
         try:
             events = _http_stream_sse(
                 url=url,
@@ -791,6 +848,7 @@ class AnthropicModel:
                 headers=headers,
                 payload=payload,
                 stream_timeout=self.timeout_sec,
+                on_sse_event=sse_cb,
             )
             parsed = _accumulate_anthropic_stream(events)
         except ModelError as exc:
@@ -810,6 +868,7 @@ class AnthropicModel:
                 headers=headers,
                 payload=payload,
                 stream_timeout=self.timeout_sec,
+                on_sse_event=sse_cb,
             )
             parsed = _accumulate_anthropic_stream(events)
 
