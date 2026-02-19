@@ -136,7 +136,7 @@ class ToolTests(unittest.TestCase):
             root = Path(tmpdir)
             tools = WorkspaceTools(root=root)
             tools.write_file("nums.txt", "alpha\nbeta\ngamma\n")
-            result = tools.read_file("nums.txt")
+            result = tools.read_file("nums.txt", hashline=False)
             self.assertIn("1|alpha", result)
             self.assertIn("2|beta", result)
             self.assertIn("3|gamma", result)

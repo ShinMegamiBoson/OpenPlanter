@@ -481,7 +481,7 @@ class WorkspaceTools:
         }
         return self._clip(json.dumps(output, indent=2, ensure_ascii=True), self.max_file_chars)
 
-    def read_file(self, path: str, hashline: bool = False) -> str:
+    def read_file(self, path: str, hashline: bool = True) -> str:
         resolved = self._resolve_path(path)
         if not resolved.exists():
             return f"File not found: {path}"

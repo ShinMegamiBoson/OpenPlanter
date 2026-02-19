@@ -102,7 +102,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "read_file",
-        "description": "Read the contents of a file in the workspace. Lines are numbered N|content. Use hashline=true for LINE:HASH|content format.",
+        "description": "Read the contents of a file in the workspace. Lines are numbered LINE:HASH|content by default for use with hashline_edit. Set hashline=false for plain N|content.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -112,7 +112,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
                 "hashline": {
                     "type": "boolean",
-                    "description": "If true, prefix each line with LINE:HASH| format for content verification.",
+                    "description": "Prefix each line with LINE:HASH| format for content verification. Default true.",
                 },
             },
             "required": ["path"],

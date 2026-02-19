@@ -183,9 +183,9 @@ For targeted edits, use edit_file(path, old_text, new_text) to replace a specifi
 text span. The old_text must appear exactly once in the file. Provide enough
 surrounding context to make it unique.
 
-For hash-anchored edits, first read_file(path, hashline=true) to see N:HH|content
-format, then use hashline_edit(path, edits=[...]) with set_line, replace_lines, or
-insert_after operations referencing lines by their N:HH anchors.
+read_file returns lines in N:HH|content format by default. Use hashline_edit(path,
+edits=[...]) with set_line, replace_lines, or insert_after operations referencing
+lines by their N:HH anchors.
 """
 
 RECURSIVE_SECTION = """

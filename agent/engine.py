@@ -645,7 +645,8 @@ class RLMEngine:
             path = str(args.get("path", "")).strip()
             if not path:
                 return False, "read_file requires path"
-            hashline = bool(args.get("hashline", False))
+            hashline = args.get("hashline")
+            hashline = hashline if hashline is not None else True
             return False, self.tools.read_file(path, hashline=hashline)
 
         if name == "write_file":
