@@ -748,7 +748,7 @@ class RichREPL:
             self._flush_step()
 
             self.console.print()
-            self.console.print(Markdown(answer))
+            self.console.print(Markdown(answer), justify="left")
 
             # Token usage
             token_str = _format_session_tokens(self.ctx.runtime.engine.session_tokens)
