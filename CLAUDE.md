@@ -19,6 +19,7 @@ Python 3.10+, rich, prompt_toolkit, pyfiglet. Skill scripts use stdlib only (zer
 - `agent/` -- core engine, provider abstraction, tools, TUI
 - `tests/` -- unit and integration tests
 - `skills/openplanter/` -- Claude Code skill (stdlib-only scripts)
+- `skills/openplanter/.claude/agents/` -- agent definitions (investigation-agent, verifier-agent)
 
 ## Key Files
 
@@ -45,7 +46,17 @@ Python 3.10+, rich, prompt_toolkit, pyfiglet. Skill scripts use stdlib only (zer
 | OpenRouter | `OPENROUTER_API_KEY` |
 | Cerebras | `CEREBRAS_API_KEY` |
 
-Additional: `EXA_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings). All keys support `OPENPLANTER_` prefix.
+Additional: `EXA_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings), `FEC_API_KEY` (FEC API, optional). All keys support `OPENPLANTER_` prefix.
+
+## On-Demand References
+
+Read these when working on the skill or investigation methodology:
+- `skills/openplanter/SKILL.md` -- full methodology, entity resolution protocol, confidence tiers
+- `skills/openplanter/references/public-records-apis.md` -- API endpoints, auth, rate limits
+- `skills/openplanter/references/entity-resolution-patterns.md` -- normalization tables, suffix maps
+- `skills/openplanter/references/investigation-methodology.md` -- epistemic framework, ACH, swarm roles
+- `skills/openplanter/.claude/agents/investigation-agent.md` -- investigation agent decision tree
+- `skills/openplanter/.claude/agents/verifier-agent.md` -- independent verification protocol
 
 ## Stop Checklist
 

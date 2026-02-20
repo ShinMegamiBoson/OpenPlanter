@@ -50,7 +50,9 @@ python3 ~/.claude/skills/openplanter/scripts/confidence_scorer.py /tmp/investiga
 
 ## Scripts
 
-All scripts use Python stdlib only. Zero external dependencies. Python 3.10+.
+All scripts use Python stdlib only. Zero external dependencies. Python 3.10+. External tools (Exa, Firecrawl, OpenPlanter agent) are invoked as subprocesses when needed.
+
+### Core Analysis
 
 | Script | Purpose |
 |--------|---------|
@@ -59,6 +61,21 @@ All scripts use Python stdlib only. Zero external dependencies. Python 3.10+.
 | `cross_reference.py` | Link records across datasets using the canonical entity map. Produces `findings/cross-references.json` |
 | `evidence_chain.py` | Validate evidence chain structure (hops, corroboration, source records) |
 | `confidence_scorer.py` | Re-score findings by confidence tier. Updates JSON files in-place |
+
+### Data Collection & Enrichment
+
+| Script | Purpose |
+|--------|---------|
+| `dataset_fetcher.py` | Download bulk public datasets (SEC, FEC, OFAC, OpenSanctions, LDA) with provenance metadata |
+| `web_enrich.py` | Enrich resolved entities via Exa neural search (requires `exa-search` skill + `EXA_API_KEY`) |
+| `scrape_records.py` | Fetch entity-specific records from government APIs (SEC EDGAR, FEC, Senate LDA, USAspending) |
+
+### Orchestration & Delegation
+
+| Script | Purpose |
+|--------|---------|
+| `investigate.py` | Run full pipeline end-to-end: collect → resolve → enrich → analyze → report |
+| `delegate_to_rlm.py` | Spawn full OpenPlanter RLM agent for complex investigations (provider-agnostic) |
 
 ### Entity Resolver
 
@@ -121,16 +138,21 @@ Hard signals (EIN, TIN, phone, email) are verified for **agreement**, not just p
 
 ```
 investigation/
-├── datasets/          # Source CSV/JSON files
+├── datasets/
+│   ├── *.csv, *.json        # Source files
+│   ├── bulk/{source}/       # Bulk downloads (dataset_fetcher.py)
+│   └── scraped/{source}/    # API results (scrape_records.py)
 ├── entities/
-│   └── canonical.json # Entity resolution output
+│   ├── canonical.json       # Entity resolution output
+│   └── enriched.json        # Web enrichment (web_enrich.py)
 ├── findings/
-│   └── cross-references.json
+│   ├── cross-references.json
+│   └── summary.md           # Pipeline report (investigate.py)
 ├── evidence/
 │   ├── chains.json
 │   └── scoring-log.json
 └── plans/
-    └── plan.md        # Investigation plan
+    └── plan.md
 ```
 
 ## Methodology
@@ -158,6 +180,27 @@ See `SKILL.md` for the full methodology reference, including:
 | `references/entity-resolution-patterns.md` | Normalization tables, suffix maps, address canonicalization |
 | `references/investigation-methodology.md` | Epistemic framework extracted from OpenPlanter's `prompts.py` |
 | `references/output-templates.md` | JSON/Markdown templates for investigation deliverables |
+| `references/public-records-apis.md` | API endpoints, auth, rate limits for SEC, FEC, LDA, OFAC, USAspending |
+
+## Integration Modes
+
+| Mode | When | How |
+|------|------|-----|
+| **Methodology Only** | 1-2 datasets, local analysis | Core scripts directly |
+| **Web-Enriched** | Need external data, public records | `dataset_fetcher.py` + `web_enrich.py` + `scrape_records.py` |
+| **Full RLM Delegation** | Complex investigations, 3+ datasets, web research | `delegate_to_rlm.py` (provider-agnostic: Anthropic, OpenAI, OpenRouter, Cerebras) |
+| **Full Pipeline** | End-to-end with reporting | `investigate.py /path/to/workspace --phases all` |
+
+### Required API Keys
+
+| Key | Used By | Required |
+|-----|---------|----------|
+| `EXA_API_KEY` | `web_enrich.py` | For web enrichment |
+| `FEC_API_KEY` | `scrape_records.py` | Optional (`DEMO_KEY` fallback) |
+| `ANTHROPIC_API_KEY` | `delegate_to_rlm.py` | If using Anthropic models |
+| `OPENAI_API_KEY` | `delegate_to_rlm.py` | If using OpenAI models |
+| `OPENROUTER_API_KEY` | `delegate_to_rlm.py` | If using OpenRouter models |
+| `CEREBRAS_API_KEY` | `delegate_to_rlm.py` | If using Cerebras models |
 
 ## Relation to the OpenPlanter Agent
 
@@ -166,11 +209,13 @@ See `SKILL.md` for the full methodology reference, including:
 | Runtime | Full TUI + recursive sub-agents | Claude Code terminal |
 | Dependencies | `rich`, `prompt_toolkit`, LLM providers | Python stdlib only |
 | Entity resolution | LLM-assisted (via tool calls) | `difflib.SequenceMatcher` |
-| Web search | Exa API | Bring your own (e.g. `exa-search` skill) |
+| Web search | Exa API (built-in) | `web_enrich.py` (Exa via subprocess) |
+| Public records | Via shell tools | `scrape_records.py` + `dataset_fetcher.py` (urllib) |
 | Session management | Built-in persistence | Claude Code sessions |
 | Confidence scoring | Inline in prompts | Standalone scorer script |
+| Delegation | `subtask`/`execute` tools | `delegate_to_rlm.py` bridge |
 
-The skill complements the agent. Use the agent for full autonomous investigations. Use the skill for targeted analysis within existing Claude Code workflows.
+The skill complements the agent. Use the agent for full autonomous investigations. Use the skill for targeted analysis within existing Claude Code workflows. Use `delegate_to_rlm.py` to bridge both worlds.
 
 ## Multi-Agent Investigation
 

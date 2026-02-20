@@ -162,9 +162,45 @@ Include in all investigation deliverables:
 
 See `references/output-templates.md` for ready-to-use templates (investigation plans, summaries, evidence chains).
 
+## Integration Modes
+
+The skill operates in three modes based on investigation complexity:
+
+| Mode | When | Scripts |
+|------|------|---------|
+| **Methodology Only** | Simple tasks, 1-2 datasets, local analysis | `entity_resolver.py`, `cross_reference.py`, `evidence_chain.py`, `confidence_scorer.py` |
+| **Web-Enriched** | Need external data, public records, entity enrichment | Above + `dataset_fetcher.py`, `web_enrich.py`, `scrape_records.py` |
+| **Full RLM Delegation** | Complex multi-step investigations, 3+ datasets, 20+ reasoning steps | `delegate_to_rlm.py` → full OpenPlanter agent (provider-agnostic) |
+
+**One-command pipeline** for any mode: `investigate.py /path/to/workspace --phases all`
+
+### RLM Delegation — Provider-Agnostic
+
+The RLM agent auto-detects the LLM provider from the model name. Works with any provider the agent supports:
+
+```bash
+# Anthropic (default)
+python3 scripts/delegate_to_rlm.py --objective "..." --workspace DIR --model claude-sonnet-4-5-20250929
+
+# OpenAI
+python3 scripts/delegate_to_rlm.py --objective "..." --workspace DIR --model gpt-4o
+
+# OpenRouter (any model via slash routing)
+python3 scripts/delegate_to_rlm.py --objective "..." --workspace DIR --model anthropic/claude-sonnet-4-5
+
+# Cerebras (model name doesn't contain "cerebras", so specify --provider)
+python3 scripts/delegate_to_rlm.py --objective "..." --workspace DIR --model qwen-3-235b-a22b-instruct-2507 --provider cerebras
+```
+
+Provider auto-detection works for model names containing the provider name (e.g., `claude-*` → anthropic, `gpt-*` → openai, `org/model` → openrouter, `*cerebras*` → cerebras). For models without a recognizable prefix, pass `--provider` explicitly.
+
+API keys pass through environment variables: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `CEREBRAS_API_KEY` (or `OPENPLANTER_`-prefixed variants).
+
 ## Scripts Reference
 
-All scripts use Python stdlib only. Zero external dependencies.
+All scripts use Python stdlib only. Zero external dependencies. External tools (Exa, Firecrawl, OpenPlanter agent) are invoked as subprocesses.
+
+### Core Analysis
 
 | Script | Purpose | Example |
 |--------|---------|---------|
@@ -174,15 +210,31 @@ All scripts use Python stdlib only. Zero external dependencies.
 | `evidence_chain.py` | Validate evidence chain structure | `python3 scripts/evidence_chain.py /tmp/investigation` |
 | `confidence_scorer.py` | Score findings by confidence tier | `python3 scripts/confidence_scorer.py /tmp/investigation` |
 
+### Data Collection & Enrichment
+
+| Script | Purpose | Example |
+|--------|---------|---------|
+| `dataset_fetcher.py` | Download bulk public datasets (SEC, FEC, OFAC, LDA) | `python3 scripts/dataset_fetcher.py /tmp/investigation --sources sec,fec` |
+| `web_enrich.py` | Enrich entities via Exa neural search | `python3 scripts/web_enrich.py /tmp/investigation --categories company,news` |
+| `scrape_records.py` | Fetch entity records from government APIs | `python3 scripts/scrape_records.py /tmp/investigation --entities "Acme Corp" --sources sec,fec` |
+
+### Orchestration & Delegation
+
+| Script | Purpose | Example |
+|--------|---------|---------|
+| `investigate.py` | Run full pipeline end-to-end | `python3 scripts/investigate.py /tmp/investigation --phases all` |
+| `delegate_to_rlm.py` | Spawn full OpenPlanter agent (provider-agnostic) | `python3 scripts/delegate_to_rlm.py --objective "..." --workspace DIR` |
+
 ## Skill Integration
 
 OpenPlanter methodology composes with existing Claude Code skills:
 
 | Investigation Task | Skill | Integration Pattern |
 |---|---|---|
-| Web research for supplementary records | `exa-search` | `exa_search.py "entity name" --category company` |
-| Scrape public records portals | `Firecrawl` | `firecrawl scrape URL --only-main-content` |
-| Scrape government APIs | `Firecrawl` | `firecrawl_scrape.py https://api.open.fec.gov/...` |
+| Web research for entity enrichment | `exa-search` | `web_enrich.py` calls `exa_search.py` as subprocess |
+| Scrape JS-heavy public records portals | `Firecrawl` | `firecrawl scrape URL --only-main-content` |
+| Structured government APIs | Built-in | `scrape_records.py` queries SEC, FEC, LDA, USAspending via `urllib` |
+| Bulk dataset downloads | Built-in | `dataset_fetcher.py` fetches SEC, FEC, OFAC, OpenSanctions, LDA |
 | Local RAG over large document corpora | `rlama` | Create collection from `datasets/`, query semantically |
 | Parallel investigation threads | `minoan-swarm` | Elat Research Swarm with domain-split investigators |
 | Academic/legal research | `academic-research` | Case law, regulatory filings, citations |
@@ -220,6 +272,7 @@ For complex scenarios with multiple possible explanations, apply Analysis of Com
 - `references/investigation-methodology.md` — Full epistemic framework, ACH procedure, Key Assumptions Check, multi-agent swarm template
 - `references/entity-resolution-patterns.md` — Complete normalization tables, suffix maps, address canonicalization
 - `references/output-templates.md` — JSON/Markdown templates for investigation plans, summaries, and evidence chains
+- `references/public-records-apis.md` — API endpoints, auth, rate limits, linking keys for SEC, FEC, LDA, OFAC, USAspending
 
 ## OpenPlanter Tool to Claude Code Mapping
 
