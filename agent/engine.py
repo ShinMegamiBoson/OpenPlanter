@@ -140,9 +140,11 @@ class RLMEngine:
                 self.config.recursive,
                 acceptance_criteria=self.config.acceptance_criteria,
                 demo=self.config.demo,
+                locale=self.config.locale,
             )
         ac = self.config.acceptance_criteria
-        tool_defs = get_tool_definitions(include_subtask=self.config.recursive, include_acceptance_criteria=ac)
+        locale = self.config.locale
+        tool_defs = get_tool_definitions(include_subtask=self.config.recursive, include_acceptance_criteria=ac, locale=locale)
         if hasattr(self.model, "tool_defs"):
             self.model.tool_defs = tool_defs
 
@@ -855,10 +857,10 @@ class RLMEngine:
             # Give executor full tools (no subtask, no execute).
             _saved_defs = None
             if exec_model and hasattr(exec_model, "tool_defs"):
-                exec_model.tool_defs = get_tool_definitions(include_subtask=False, include_acceptance_criteria=self.config.acceptance_criteria)
+                exec_model.tool_defs = get_tool_definitions(include_subtask=False, include_acceptance_criteria=self.config.acceptance_criteria, locale=self.config.locale)
             elif exec_model is None and hasattr(cur, "tool_defs"):
                 _saved_defs = cur.tool_defs
-                cur.tool_defs = get_tool_definitions(include_subtask=False, include_acceptance_criteria=self.config.acceptance_criteria)
+                cur.tool_defs = get_tool_definitions(include_subtask=False, include_acceptance_criteria=self.config.acceptance_criteria, locale=self.config.locale)
 
             self._emit(f"[d{depth}] >> executing leaf: {objective}", on_event)
             child_logger = replay_logger.child(depth, step) if replay_logger else None
@@ -894,6 +896,48 @@ class RLMEngine:
             offset = int(args.get("offset", 0) or 0)
             limit = int(args.get("limit", 100) or 100)
             return False, self._read_artifact(aid, offset, limit)
+
+        # -- DE-locale tools --
+        if name == "search_lobbyregister":
+            query = str(args.get("query", "")).strip()
+            if not query:
+                return False, "search_lobbyregister requires query"
+            sort = str(args.get("sort", "ALPHABETICAL_ASC"))
+            raw_max = args.get("max_results", 20)
+            max_results = raw_max if isinstance(raw_max, int) else 20
+            return False, self.tools.search_lobbyregister(query=query, sort=sort, max_results=max_results)
+
+        if name == "search_abgeordnetenwatch":
+            query = str(args.get("query", "")).strip()
+            endpoint = str(args.get("endpoint", "politicians")).strip()
+            raw_pp = args.get("parliament_period")
+            parliament_period = int(raw_pp) if raw_pp is not None else None
+            raw_party = args.get("party_id")
+            party_id = int(raw_party) if raw_party is not None else None
+            raw_pol = args.get("politician_id")
+            politician_id = int(raw_pol) if raw_pol is not None else None
+            raw_max = args.get("max_results", 20)
+            max_results = raw_max if isinstance(raw_max, int) else 20
+            return False, self.tools.search_abgeordnetenwatch(
+                query=query, endpoint=endpoint, parliament_period=parliament_period,
+                party_id=party_id, politician_id=politician_id, max_results=max_results,
+            )
+
+        if name == "search_offeneregister":
+            query = str(args.get("query", "")).strip()
+            if not query:
+                return False, "search_offeneregister requires query"
+            raw_max = args.get("max_results", 20)
+            max_results = raw_max if isinstance(raw_max, int) else 20
+            return False, self.tools.search_offeneregister(query=query, max_results=max_results)
+
+        if name == "search_eu_transparency":
+            query = str(args.get("query", "")).strip()
+            if not query:
+                return False, "search_eu_transparency requires query"
+            raw_max = args.get("max_results", 20)
+            max_results = raw_max if isinstance(raw_max, int) else 20
+            return False, self.tools.search_eu_transparency(query=query, max_results=max_results)
 
         return False, f"Unknown action type: {name}"
 

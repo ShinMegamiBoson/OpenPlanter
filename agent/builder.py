@@ -146,6 +146,8 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
         max_search_hits=cfg.max_search_hits,
         exa_api_key=cfg.exa_api_key,
         exa_base_url=cfg.exa_base_url,
+        locale=cfg.locale,
+        lobbyregister_api_key=cfg.lobbyregister_api_key,
     )
 
     try:

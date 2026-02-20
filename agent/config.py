@@ -48,6 +48,8 @@ class AgentConfig:
     acceptance_criteria: bool = True
     max_plan_chars: int = 40_000
     demo: bool = False
+    locale: str = "us"
+    lobbyregister_api_key: str = "5bHB2zrUuHR6YdPoZygQhWfg2CBrjUOi"
 
     @classmethod
     def from_env(cls, workspace: str | Path) -> "AgentConfig":
@@ -100,4 +102,6 @@ class AgentConfig:
             acceptance_criteria=os.getenv("OPENPLANTER_ACCEPTANCE_CRITERIA", "true").strip().lower() in ("1", "true", "yes"),
             max_plan_chars=int(os.getenv("OPENPLANTER_MAX_PLAN_CHARS", "40000")),
             demo=os.getenv("OPENPLANTER_DEMO", "").strip().lower() in ("1", "true", "yes"),
+            locale=os.getenv("OPENPLANTER_LOCALE", "us").strip().lower(),
+            lobbyregister_api_key=os.getenv("OPENPLANTER_LOBBYREGISTER_API_KEY", "5bHB2zrUuHR6YdPoZygQhWfg2CBrjUOi"),
         )
