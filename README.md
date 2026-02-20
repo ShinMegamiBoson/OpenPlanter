@@ -167,6 +167,28 @@ python -m pytest tests/ --ignore=tests/test_live_models.py --ignore=tests/test_i
 
 Requires Python 3.10+. Dependencies: `rich`, `prompt_toolkit`, `pyfiglet`.
 
+### Using uv
+
+[uv](https://docs.astral.sh/uv/) can be used instead of pip for faster dependency management.
+
+```bash
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# or: brew install uv
+
+# Create .venv, generate uv.lock, and install everything
+uv sync
+
+# Run the agent (uses .venv automatically)
+uv run openplanter-agent --workspace /path/to/data
+
+# Run tests
+uv run pytest tests/
+
+# Install as a global CLI tool (editable, available from anywhere)
+uv tool install -e .
+```
+
 ## License
 
 See [VISION.md](VISION.md) for the project's design philosophy and roadmap.
