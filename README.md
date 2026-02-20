@@ -155,18 +155,19 @@ tests/           Unit and integration tests
 ## Development
 
 ```bash
-# Install in editable mode
-pip install -e .
+# Install in editable mode with dev dependencies
+pip install -e ".[dev]"
 
-# Run tests
-python -m pytest tests/
+# Run tests (excludes live API tests)
+pytest tests/ --ignore=tests/test_live_models.py --ignore=tests/test_integration_live.py
 
-# Skip live API tests
-python -m pytest tests/ --ignore=tests/test_live_models.py --ignore=tests/test_integration_live.py
+# Lint and type check
+ruff check agent/ tests/
+mypy agent/
 ```
 
-Requires Python 3.10+. Dependencies: `rich`, `prompt_toolkit`, `pyfiglet`.
+Requires Python 3.10+. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 
 ## License
 
-See [VISION.md](VISION.md) for the project's design philosophy and roadmap.
+Licensed under [Apache License 2.0](LICENSE). See [VISION.md](VISION.md) for the project's design philosophy and roadmap.
