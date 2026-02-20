@@ -422,10 +422,11 @@ class EngineOnRetryWiringTests(unittest.TestCase):
                     on_event=lambda msg: events_received.append(msg),
                 )
 
-        # The retry message should appear in the event stream
+        # The retry message should appear in the event stream with depth/step prefix
         retry_events = [e for e in events_received if "Rate limited" in e]
         self.assertTrue(len(retry_events) > 0, f"Expected retry events, got: {events_received}")
         self.assertIn("1s", retry_events[0])
+        self.assertRegex(retry_events[0], r"\[d\d+/s\d+\]")
 
         # on_retry should be cleared after complete() returns
         self.assertIsNone(model.on_retry)

@@ -327,7 +327,9 @@ class RLMEngine:
                 model.on_content_delta = on_content_delta
             # Rate-limit messages fire at all depths
             if on_event and hasattr(model, "on_retry"):
-                model.on_retry = lambda msg: self._emit(msg, on_event)
+                model.on_retry = lambda msg, _d=depth, _s=step: self._emit(
+                    f"[d{_d}/s{_s}] {msg}", on_event
+                )
             try:
                 turn = model.complete(conversation)
             except ModelError as exc:
