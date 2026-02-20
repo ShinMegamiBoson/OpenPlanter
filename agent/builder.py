@@ -14,8 +14,10 @@ from .engine import RLMEngine
 from .model import (
     AnthropicModel,
     EchoFallbackModel,
+    HTTPModelError,
     ModelError,
     OpenAICompatibleModel,
+    alternate_zai_base_url,
     list_anthropic_models,
     list_openai_models,
     list_openrouter_models,
@@ -79,7 +81,17 @@ def _fetch_models_for_provider(cfg: AgentConfig, provider: str) -> list[dict]:
     if provider == "zai":
         if not cfg.zai_api_key:
             raise ModelError("Z.AI key not configured.")
-        return list_openai_models(api_key=cfg.zai_api_key, base_url=cfg.zai_base_url)
+        try:
+            return list_openai_models(api_key=cfg.zai_api_key, base_url=cfg.zai_base_url)
+        except HTTPModelError as exc:
+            if exc.status_code not in {404, 405}:
+                raise
+            alternate = alternate_zai_base_url(cfg.zai_base_url)
+            if not alternate or alternate == cfg.zai_base_url:
+                raise
+            models = list_openai_models(api_key=cfg.zai_api_key, base_url=alternate)
+            cfg.zai_base_url = alternate
+            return models
     raise ModelError(f"Unknown provider: {provider}")
 
 
@@ -144,6 +156,8 @@ def build_model_factory(cfg: AgentConfig) -> ModelFactory | None:
                 reasoning_effort=effort,
                 thinking_type=thinking_type,
                 extra_headers={"Accept-Language": "en-US,en"},
+                provider="zai",
+                on_base_url_persist=lambda base_url: setattr(cfg, "zai_base_url", base_url),
             )
         raise ModelError(f"No API key available for model '{model_name}' (provider={provider})")
 
@@ -207,6 +221,8 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
             reasoning_effort=cfg.reasoning_effort,
             thinking_type=thinking_type,
             extra_headers={"Accept-Language": "en-US,en"},
+            provider="zai",
+            on_base_url_persist=lambda base_url: setattr(cfg, "zai_base_url", base_url),
         )
     elif cfg.provider == "anthropic" and cfg.anthropic_api_key:
         model = AnthropicModel(

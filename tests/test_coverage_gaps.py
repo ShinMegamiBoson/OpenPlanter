@@ -171,6 +171,10 @@ class AgentConfigFromEnvTests(unittest.TestCase):
         self.assertEqual(cfg.max_depth, 4)
         self.assertEqual(cfg.max_steps_per_call, 100)
         self.assertEqual(cfg.shell, "/bin/sh")
+        self.assertEqual(cfg.rate_limit_max_retries, 12)
+        self.assertEqual(cfg.rate_limit_backoff_base_sec, 1.0)
+        self.assertEqual(cfg.rate_limit_backoff_max_sec, 60.0)
+        self.assertEqual(cfg.rate_limit_retry_after_cap_sec, 120.0)
 
     def test_custom_env_overrides(self) -> None:
         env = {
@@ -180,6 +184,10 @@ class AgentConfigFromEnvTests(unittest.TestCase):
             "OPENPLANTER_MAX_DEPTH": "5",
             "OPENPLANTER_MAX_STEPS": "20",
             "OPENPLANTER_SHELL": "/bin/bash",
+            "OPENPLANTER_RATE_LIMIT_MAX_RETRIES": "7",
+            "OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC": "0.5",
+            "OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC": "10.0",
+            "OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC": "30.0",
         }
         with patch.dict(os.environ, env, clear=True):
             cfg = AgentConfig.from_env("/tmp/test-ws")
@@ -189,6 +197,10 @@ class AgentConfigFromEnvTests(unittest.TestCase):
         self.assertEqual(cfg.max_depth, 5)
         self.assertEqual(cfg.max_steps_per_call, 20)
         self.assertEqual(cfg.shell, "/bin/bash")
+        self.assertEqual(cfg.rate_limit_max_retries, 7)
+        self.assertEqual(cfg.rate_limit_backoff_base_sec, 0.5)
+        self.assertEqual(cfg.rate_limit_backoff_max_sec, 10.0)
+        self.assertEqual(cfg.rate_limit_retry_after_cap_sec, 30.0)
 
     def test_api_keys_from_env(self) -> None:
         env = {

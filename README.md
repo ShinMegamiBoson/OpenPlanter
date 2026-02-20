@@ -38,11 +38,35 @@ The container mounts `./workspace` as the agent's working directory.
 | Anthropic | `claude-opus-4-6` | `ANTHROPIC_API_KEY` |
 | OpenRouter | `anthropic/claude-sonnet-4-5` | `OPENROUTER_API_KEY` |
 | Cerebras | `qwen-3-235b-a22b-instruct-2507` | `CEREBRAS_API_KEY` |
+| Z.AI | `glm-5` | `ZAI_API_KEY` |
 
 Additional service keys: `EXA_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings).
 
 All keys can also be set with an `OPENPLANTER_` prefix (e.g. `OPENPLANTER_OPENAI_API_KEY`), via `.env` files in the workspace, or via CLI flags.
 
+For Z.AI, set:
+
+```bash
+export OPENPLANTER_PROVIDER=zai
+export OPENPLANTER_MODEL=glm-5
+export OPENPLANTER_ZAI_BASE_URL=https://api.z.ai/api/paas/v4
+export ZAI_API_KEY=your-api-key
+```
+
+OpenPlanter supports both Z.AI API families (`/api/paas/v4` and `/api/coding/paas/v4`).
+Use either as `OPENPLANTER_ZAI_BASE_URL`; if the configured endpoint returns an endpoint-shape
+error (HTTP 404/405), OpenPlanter automatically retries once with the alternate path and
+reuses the working path for the rest of the run.
+
+Z.AI rate limits (`HTTP 429`, code `1302`) are retried with capped backoff and jitter.
+Tune behavior with:
+
+```bash
+export OPENPLANTER_RATE_LIMIT_MAX_RETRIES=12
+export OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC=1.0
+export OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC=60.0
+export OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC=120.0
+```
 ## Agent Tools
 
 The agent has access to 19 tools, organized around its investigation workflow:

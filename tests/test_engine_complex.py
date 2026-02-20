@@ -8,7 +8,7 @@ from unittest.mock import patch
 from conftest import _tc
 from agent.config import AgentConfig
 from agent.engine import RLMEngine, ExternalContext
-from agent.model import ModelTurn, ScriptedModel
+from agent.model import Conversation, ModelTurn, RateLimitError, ScriptedModel, ToolResult
 from agent.tools import WorkspaceTools
 
 
@@ -639,6 +639,117 @@ class EngineComplexTests(unittest.TestCase):
             result, returned_ctx = engine.solve_with_context("think test", context=ctx)
             self.assertEqual(result, "done")
             self.assertIn("Thought noted: my thought", returned_ctx.observations[0])
+
+    # ------------------------------------------------------------------
+    # 30. Rate-limit retries succeed without consuming extra step budget
+    # ------------------------------------------------------------------
+    def test_rate_limit_retries_then_succeeds(self) -> None:
+        class RetryThenSuccessModel:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def create_conversation(self, system_prompt: str, initial_user_message: str) -> Conversation:
+                return Conversation(_provider_messages=[{"role": "user", "content": initial_user_message}])
+
+            def complete(self, conversation: Conversation) -> ModelTurn:
+                self.calls += 1
+                if self.calls == 1:
+                    raise RateLimitError(
+                        "rate limit",
+                        status_code=429,
+                        provider_code="1302",
+                    )
+                return ModelTurn(text="done", stop_reason="end_turn")
+
+            def append_assistant_turn(self, conversation: Conversation, turn: ModelTurn) -> None:
+                pass
+
+            def append_tool_results(self, conversation: Conversation, results: list[ToolResult]) -> None:
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(
+                workspace=root,
+                max_depth=1,
+                max_steps_per_call=1,
+                rate_limit_max_retries=3,
+                rate_limit_backoff_base_sec=0.0,
+                rate_limit_backoff_max_sec=0.0,
+                rate_limit_retry_after_cap_sec=0.0,
+            )
+            tools = WorkspaceTools(root=root)
+            model = RetryThenSuccessModel()
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            with patch("agent.engine.random.uniform", return_value=0.0):
+                result = engine.solve("retry test")
+            self.assertEqual(result, "done")
+            self.assertEqual(model.calls, 2)
+
+    # ------------------------------------------------------------------
+    # 31. Exhausted rate-limit retries surfaces model error
+    # ------------------------------------------------------------------
+    def test_rate_limit_retries_exhausted_returns_model_error(self) -> None:
+        class AlwaysRateLimitModel:
+            def create_conversation(self, system_prompt: str, initial_user_message: str) -> Conversation:
+                return Conversation(_provider_messages=[{"role": "user", "content": initial_user_message}])
+
+            def complete(self, conversation: Conversation) -> ModelTurn:
+                raise RateLimitError("still rate limited", status_code=429, provider_code="1302")
+
+            def append_assistant_turn(self, conversation: Conversation, turn: ModelTurn) -> None:
+                pass
+
+            def append_tool_results(self, conversation: Conversation, results: list[ToolResult]) -> None:
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(
+                workspace=root,
+                max_depth=1,
+                max_steps_per_call=1,
+                rate_limit_max_retries=2,
+                rate_limit_backoff_base_sec=0.0,
+                rate_limit_backoff_max_sec=0.0,
+                rate_limit_retry_after_cap_sec=0.0,
+            )
+            tools = WorkspaceTools(root=root)
+            engine = RLMEngine(model=AlwaysRateLimitModel(), tools=tools, config=cfg)
+            with patch("agent.engine.random.uniform", return_value=0.0):
+                result = engine.solve("retry test")
+            self.assertIn("Model error at depth 0, step 1", result)
+
+    # ------------------------------------------------------------------
+    # 32. Deadline exits gracefully during rate-limit wait
+    # ------------------------------------------------------------------
+    def test_rate_limit_wait_respects_deadline(self) -> None:
+        class SlowRateLimitModel:
+            def create_conversation(self, system_prompt: str, initial_user_message: str) -> Conversation:
+                return Conversation(_provider_messages=[{"role": "user", "content": initial_user_message}])
+
+            def complete(self, conversation: Conversation) -> ModelTurn:
+                raise RateLimitError("wait", status_code=429, retry_after_sec=10.0)
+
+            def append_assistant_turn(self, conversation: Conversation, turn: ModelTurn) -> None:
+                pass
+
+            def append_tool_results(self, conversation: Conversation, results: list[ToolResult]) -> None:
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(
+                workspace=root,
+                max_depth=1,
+                max_steps_per_call=1,
+                max_solve_seconds=1,
+                rate_limit_max_retries=3,
+            )
+            tools = WorkspaceTools(root=root)
+            engine = RLMEngine(model=SlowRateLimitModel(), tools=tools, config=cfg)
+            result = engine.solve("deadline retry test")
+            self.assertIn("Time limit exceeded", result)
 
 
 if __name__ == "__main__":
