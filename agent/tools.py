@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 _MAX_WALK_ENTRIES = 50_000
+_EXCLUDED_DIRS = {".git", ".openplanter"}
 
 from .patching import (
     AddFileOp,
@@ -263,7 +264,9 @@ class WorkspaceTools:
     def list_files(self, glob: str | None = None) -> str:
         lines: list[str]
         if shutil.which("rg"):
-            cmd = ["rg", "--files", "--hidden", "-g", "!.git"]
+            cmd = ["rg", "--files", "--hidden"]
+            for d in _EXCLUDED_DIRS:
+                cmd.extend(["-g", f"!{d}"])
             if glob:
                 cmd.extend(["-g", glob])
             try:
@@ -282,11 +285,13 @@ class WorkspaceTools:
             all_paths: list[str] = []
             count = 0
             for dirpath, dirnames, filenames in os.walk(self.root):
-                dirnames[:] = [d for d in dirnames if d != ".git"]
+                dirnames[:] = [d for d in dirnames if d not in _EXCLUDED_DIRS]
                 count += len(filenames)
                 if count > _MAX_WALK_ENTRIES:
                     break
                 for fn in filenames:
+                    if glob and not fnmatch.fnmatch(fn, glob):
+                        continue
                     full = Path(dirpath) / fn
                     rel = full.relative_to(self.root).as_posix()
                     all_paths.append(rel)
@@ -305,6 +310,8 @@ class WorkspaceTools:
             return "query cannot be empty"
         if shutil.which("rg"):
             cmd = ["rg", "-n", "--hidden", "-S", query, "."]
+            for d in _EXCLUDED_DIRS:
+                cmd.extend(["-g", f"!{d}"])
             if glob:
                 cmd.extend(["-g", glob])
             try:
@@ -332,11 +339,13 @@ class WorkspaceTools:
         lower_query = query.lower()
         count = 0
         for dirpath, dirnames, filenames in os.walk(self.root):
-            dirnames[:] = [d for d in dirnames if d != ".git"]
+            dirnames[:] = [d for d in dirnames if d not in _EXCLUDED_DIRS]
             count += len(filenames)
             if count > _MAX_WALK_ENTRIES:
                 break
             for fn in filenames:
+                if glob and not fnmatch.fnmatch(fn, glob):
+                    continue
                 full = Path(dirpath) / fn
                 try:
                     text = full.read_text(encoding="utf-8", errors="replace")
@@ -353,7 +362,9 @@ class WorkspaceTools:
     def _repo_files(self, glob: str | None, max_files: int) -> list[str]:
         lines: list[str]
         if shutil.which("rg"):
-            cmd = ["rg", "--files", "--hidden", "-g", "!.git"]
+            cmd = ["rg", "--files", "--hidden"]
+            for d in _EXCLUDED_DIRS:
+                cmd.extend(["-g", f"!{d}"])
             if glob:
                 cmd.extend(["-g", glob])
             try:
@@ -372,7 +383,7 @@ class WorkspaceTools:
             lines = []
             count = 0
             for dirpath, dirnames, filenames in os.walk(self.root):
-                dirnames[:] = [d for d in dirnames if d != ".git"]
+                dirnames[:] = [d for d in dirnames if d not in _EXCLUDED_DIRS]
                 count += len(filenames)
                 if count > _MAX_WALK_ENTRIES:
                     break
