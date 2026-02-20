@@ -17,6 +17,7 @@ class CredentialBundle:
     cerebras_api_key: str | None = None
     exa_api_key: str | None = None
     voyage_api_key: str | None = None
+    gemini_api_key: str | None = None
 
     def has_any(self) -> bool:
         return bool(
@@ -26,6 +27,7 @@ class CredentialBundle:
             or (self.cerebras_api_key and self.cerebras_api_key.strip())
             or (self.exa_api_key and self.exa_api_key.strip())
             or (self.voyage_api_key and self.voyage_api_key.strip())
+            or (self.gemini_api_key and self.gemini_api_key.strip())
         )
 
     def merge_missing(self, other: CredentialBundle) -> None:
@@ -41,6 +43,8 @@ class CredentialBundle:
             self.exa_api_key = other.exa_api_key
         if not self.voyage_api_key and other.voyage_api_key:
             self.voyage_api_key = other.voyage_api_key
+        if not self.gemini_api_key and other.gemini_api_key:
+            self.gemini_api_key = other.gemini_api_key
 
     def to_json(self) -> dict[str, str]:
         out: dict[str, str] = {}
@@ -56,6 +60,8 @@ class CredentialBundle:
             out["exa_api_key"] = self.exa_api_key
         if self.voyage_api_key:
             out["voyage_api_key"] = self.voyage_api_key
+        if self.gemini_api_key:
+            out["gemini_api_key"] = self.gemini_api_key
         return out
 
     @classmethod
@@ -69,6 +75,7 @@ class CredentialBundle:
             cerebras_api_key=(payload.get("cerebras_api_key") or "").strip() or None,
             exa_api_key=(payload.get("exa_api_key") or "").strip() or None,
             voyage_api_key=(payload.get("voyage_api_key") or "").strip() or None,
+            gemini_api_key=(payload.get("gemini_api_key") or "").strip() or None,
         )
 
 
@@ -111,6 +118,7 @@ def parse_env_file(path: Path) -> CredentialBundle:
         or None,
         exa_api_key=(env.get("EXA_API_KEY") or env.get("OPENPLANTER_EXA_API_KEY") or "").strip() or None,
         voyage_api_key=(env.get("VOYAGE_API_KEY") or env.get("OPENPLANTER_VOYAGE_API_KEY") or "").strip() or None,
+        gemini_api_key=(env.get("GEMINI_API_KEY") or env.get("OPENPLANTER_GEMINI_API_KEY") or env.get("GOOGLE_API_KEY") or "").strip() or None,
     )
 
 
@@ -136,6 +144,12 @@ def credentials_from_env() -> CredentialBundle:
         or None,
         exa_api_key=(os.getenv("OPENPLANTER_EXA_API_KEY") or os.getenv("EXA_API_KEY") or "").strip() or None,
         voyage_api_key=(os.getenv("OPENPLANTER_VOYAGE_API_KEY") or os.getenv("VOYAGE_API_KEY") or "").strip() or None,
+        gemini_api_key=(
+            os.getenv("OPENPLANTER_GEMINI_API_KEY")
+            or os.getenv("GEMINI_API_KEY")
+            or os.getenv("GOOGLE_API_KEY")
+            or ""
+        ).strip() or None,
     )
 
 
@@ -231,6 +245,7 @@ def prompt_for_credentials(
         cerebras_api_key=existing.cerebras_api_key,
         exa_api_key=existing.exa_api_key,
         voyage_api_key=existing.voyage_api_key,
+        gemini_api_key=existing.gemini_api_key,
     )
 
     should_prompt = force or not current.has_any()
@@ -264,6 +279,7 @@ def prompt_for_credentials(
     current.cerebras_api_key = _ask("Cerebras", current.cerebras_api_key)
     current.exa_api_key = _ask("Exa", current.exa_api_key)
     current.voyage_api_key = _ask("Voyage", current.voyage_api_key)
+    current.gemini_api_key = _ask("Gemini", current.gemini_api_key)
     if not force and current.has_any() and not existing.has_any():
         changed = True
     return current, changed
