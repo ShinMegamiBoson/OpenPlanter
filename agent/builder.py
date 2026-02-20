@@ -144,8 +144,11 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
         max_file_chars=cfg.max_file_chars,
         max_files_listed=cfg.max_files_listed,
         max_search_hits=cfg.max_search_hits,
+        web_search_provider=cfg.web_search_provider,
         exa_api_key=cfg.exa_api_key,
         exa_base_url=cfg.exa_base_url,
+        firecrawl_api_key=cfg.firecrawl_api_key,
+        firecrawl_base_url=cfg.firecrawl_base_url,
     )
 
     try:
