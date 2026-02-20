@@ -59,7 +59,7 @@ _GEMINI_RE = re.compile(r"^gemini-", re.IGNORECASE)
 
 def infer_provider_for_model(model: str) -> str:
     ...
-    if _GEMINI_RE.match(model):
+    if _GEMINI_RE.search(model):
         return "gemini"
     ...
 ```
@@ -102,7 +102,7 @@ def _model_tier(model: str) -> int:
 ```python
 "gemini-2.5-pro":        1_000_000,
 "gemini-2.5-flash":      1_000_000,
-"gemini-2.0-pro":        1_000_000,
+"gemini-3-flash":        1_000_000,
 "gemini-2.0-flash":      1_000_000,
 "gemini-2.0-flash-lite": 1_000_000,
 ```

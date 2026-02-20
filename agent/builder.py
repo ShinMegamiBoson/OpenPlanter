@@ -27,7 +27,7 @@ from .tools import WorkspaceTools
 _ANTHROPIC_RE = re.compile(r"^claude", re.IGNORECASE)
 _OPENAI_RE = re.compile(r"^(gpt|o[1-4]-|o[1-4]$|chatgpt|dall-e|tts-|whisper)", re.IGNORECASE)
 _CEREBRAS_RE = re.compile(r"^(llama.*cerebras|qwen-3|gpt-oss|zai-glm)", re.IGNORECASE)
-_GEMINI_RE = re.compile(r"^gemini", re.IGNORECASE)
+_GEMINI_RE = re.compile(r"^gemini-", re.IGNORECASE)
 
 
 def infer_provider_for_model(model: str) -> str | None:
