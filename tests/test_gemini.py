@@ -1,18 +1,11 @@
 """Tests for the Gemini provider integration (no live API calls)."""
 from __future__ import annotations
 
-import json
-import tempfile
-from pathlib import Path
-
-import pytest
-
 from agent.builder import build_engine, build_model_factory, infer_provider_for_model
 from agent.config import PROVIDER_DEFAULT_MODELS, AgentConfig
 from agent.credentials import CredentialBundle, credentials_from_env, parse_env_file
 from agent.engine import _lowest_tier_model, _model_tier
 from agent.model import OpenAICompatibleModel
-
 
 # ---------------------------------------------------------------------------
 # Credentials
@@ -153,11 +146,6 @@ class TestGeminiBuilder:
         )
         engine = build_engine(cfg)
         assert "generativelanguage.googleapis.com" in engine.model.base_url
-
-    def test_model_factory_returns_non_none_with_only_gemini_key(self, tmp_path):
-        cfg = AgentConfig(workspace=tmp_path, gemini_api_key="AIzaSy-test")
-        factory = build_model_factory(cfg)
-        assert factory is not None
 
     def test_model_factory_creates_gemini_model(self, tmp_path):
         cfg = AgentConfig(workspace=tmp_path, gemini_api_key="AIzaSy-test")
