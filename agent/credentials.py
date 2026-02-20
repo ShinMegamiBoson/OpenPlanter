@@ -118,7 +118,7 @@ def parse_env_file(path: Path) -> CredentialBundle:
         or None,
         exa_api_key=(env.get("EXA_API_KEY") or env.get("OPENPLANTER_EXA_API_KEY") or "").strip() or None,
         voyage_api_key=(env.get("VOYAGE_API_KEY") or env.get("OPENPLANTER_VOYAGE_API_KEY") or "").strip() or None,
-        gemini_api_key=(env.get("GEMINI_API_KEY") or env.get("OPENPLANTER_GEMINI_API_KEY") or env.get("GOOGLE_API_KEY") or "").strip() or None,
+        gemini_api_key=(env.get("OPENPLANTER_GEMINI_API_KEY") or env.get("GEMINI_API_KEY") or env.get("GOOGLE_API_KEY") or "").strip() or None,
     )
 
 
