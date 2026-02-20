@@ -63,7 +63,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "web_search",
-        "description": "Search the web using the Exa API. Returns URLs, titles, and optional page text.",
+        "description": "Search the web using the configured provider (Exa or Firecrawl). Returns URLs, titles, and optional page text.",
         "parameters": {
             "type": "object",
             "properties": {

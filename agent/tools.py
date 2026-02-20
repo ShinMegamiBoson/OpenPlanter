@@ -53,8 +53,11 @@ class WorkspaceTools:
     max_file_chars: int = 20000
     max_files_listed: int = 400
     max_search_hits: int = 200
+    web_search_provider: str = "exa"
     exa_api_key: str | None = None
     exa_base_url: str = "https://api.exa.ai"
+    firecrawl_api_key: str | None = None
+    firecrawl_base_url: str = "https://api.firecrawl.dev/v1"
 
     def __post_init__(self) -> None:
         self.root = self.root.expanduser().resolve()
@@ -761,6 +764,38 @@ class WorkspaceTools:
             raise ToolError(f"Exa API returned non-object response: {type(parsed)!r}")
         return parsed
 
+    def _firecrawl_request(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if not (self.firecrawl_api_key and self.firecrawl_api_key.strip()):
+            raise ToolError("FIRECRAWL_API_KEY not configured")
+        url = self.firecrawl_base_url.rstrip("/") + endpoint
+        req = urllib.request.Request(
+            url=url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.firecrawl_api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.command_timeout_sec) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise ToolError(f"Firecrawl API HTTP {exc.code}: {body}") from exc
+        except urllib.error.URLError as exc:
+            raise ToolError(f"Firecrawl API connection error: {exc}") from exc
+        except OSError as exc:
+            raise ToolError(f"Firecrawl API network error: {exc}") from exc
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ToolError(f"Firecrawl API returned non-JSON payload: {raw[:500]}") from exc
+        if not isinstance(parsed, dict):
+            raise ToolError(f"Firecrawl API returned non-object response: {type(parsed)!r}")
+        return parsed
+
     def web_search(
         self,
         query: str,
@@ -771,6 +806,59 @@ class WorkspaceTools:
         if not query:
             return "web_search requires non-empty query"
         clamped_results = max(1, min(int(num_results), 20))
+        provider = (self.web_search_provider or "exa").strip().lower()
+        if provider not in {"exa", "firecrawl"}:
+            provider = "exa"
+
+        if provider == "firecrawl":
+            payload: dict[str, Any] = {
+                "query": query,
+                "limit": clamped_results,
+            }
+            if include_text:
+                payload["scrapeOptions"] = {"formats": ["markdown"]}
+
+            try:
+                parsed = self._firecrawl_request("/search", payload)
+            except Exception as exc:
+                return f"Web search failed: {exc}"
+
+            data = parsed.get("data")
+            rows: list[Any] = []
+            if isinstance(data, list):
+                rows = data
+            elif isinstance(data, dict):
+                web_rows = data.get("web")
+                if isinstance(web_rows, list):
+                    rows = web_rows
+
+            out_results: list[dict[str, Any]] = []
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                metadata = row.get("metadata")
+                meta_title = ""
+                if isinstance(metadata, dict):
+                    meta_title = str(metadata.get("title", ""))
+                item: dict[str, Any] = {
+                    "url": str(row.get("url", "")),
+                    "title": str(row.get("title", "") or meta_title),
+                    "snippet": str(row.get("description", "") or row.get("snippet", "")),
+                }
+                if include_text:
+                    text_value = row.get("markdown") or row.get("text") or ""
+                    if isinstance(text_value, str) and text_value:
+                        item["text"] = self._clip(text_value, 4000)
+                out_results.append(item)
+
+            output = {
+                "query": query,
+                "provider": provider,
+                "results": out_results,
+                "total": len(out_results),
+            }
+            return self._clip(json.dumps(output, indent=2, ensure_ascii=True), self.max_file_chars)
+
         payload: dict[str, Any] = {
             "query": query,
             "numResults": clamped_results,
@@ -798,6 +886,7 @@ class WorkspaceTools:
 
         output = {
             "query": query,
+            "provider": provider,
             "results": out_results,
             "total": len(out_results),
         }
@@ -816,6 +905,43 @@ class WorkspaceTools:
         if not normalized:
             return "fetch_url requires at least one valid URL"
         normalized = normalized[:10]
+        provider = (self.web_search_provider or "exa").strip().lower()
+        if provider not in {"exa", "firecrawl"}:
+            provider = "exa"
+
+        if provider == "firecrawl":
+            pages: list[dict[str, Any]] = []
+            for url in normalized:
+                payload: dict[str, Any] = {
+                    "url": url,
+                    "formats": ["markdown"],
+                }
+                try:
+                    parsed = self._firecrawl_request("/scrape", payload)
+                except Exception as exc:
+                    return f"Fetch URL failed: {exc}"
+                data = parsed.get("data")
+                if not isinstance(data, dict):
+                    continue
+                metadata = data.get("metadata")
+                title = ""
+                if isinstance(metadata, dict):
+                    title = str(metadata.get("title", ""))
+                text = data.get("markdown") or data.get("text") or data.get("html") or ""
+                pages.append(
+                    {
+                        "url": str(data.get("url", "") or url),
+                        "title": title,
+                        "text": self._clip(str(text), 8000),
+                    }
+                )
+            output = {
+                "provider": provider,
+                "pages": pages,
+                "total": len(pages),
+            }
+            return self._clip(json.dumps(output, indent=2, ensure_ascii=True), self.max_file_chars)
+
         payload: dict[str, Any] = {
             "ids": normalized,
             "text": {"maxCharacters": 8000},
@@ -838,6 +964,7 @@ class WorkspaceTools:
             )
 
         output = {
+            "provider": provider,
             "pages": pages,
             "total": len(pages),
         }

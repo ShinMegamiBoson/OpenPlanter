@@ -39,7 +39,7 @@ The container mounts `./workspace` as the agent's working directory.
 | OpenRouter | `anthropic/claude-sonnet-4-5` | `OPENROUTER_API_KEY` |
 | Cerebras | `qwen-3-235b-a22b-instruct-2507` | `CEREBRAS_API_KEY` |
 
-Additional service keys: `EXA_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings).
+Additional service keys: `EXA_API_KEY` (web search), `FIRECRAWL_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings).
 
 All keys can also be set with an `OPENPLANTER_` prefix (e.g. `OPENPLANTER_OPENAI_API_KEY`), via `.env` files in the workspace, or via CLI flags.
 
@@ -51,7 +51,7 @@ The agent has access to 19 tools, organized around its investigation workflow:
 
 **Shell execution** — `run_shell`, `run_shell_bg`, `check_shell_bg`, `kill_shell_bg` — run analysis scripts, data pipelines, and validation checks.
 
-**Web** — `web_search` (Exa), `fetch_url` — pull public records, verify entities, and retrieve supplementary data.
+**Web** — `web_search` (Exa or Firecrawl), `fetch_url` — pull public records, verify entities, and retrieve supplementary data.
 
 **Planning & delegation** — `think`, `subtask`, `execute`, `list_artifacts`, `read_artifact` — decompose investigations into focused sub-tasks, each with acceptance criteria and independent verification.
 
@@ -80,6 +80,7 @@ openplanter-agent [options]
 | `--model NAME` | Model name or `newest` to auto-select |
 | `--reasoning-effort LEVEL` | `low`, `medium`, `high`, or `none` |
 | `--list-models` | Fetch available models from the provider API |
+| `--web-search-provider NAME` | `exa` or `firecrawl` |
 
 ### Execution
 
@@ -130,6 +131,15 @@ Keys are resolved in this priority order (highest wins):
 5. User credential store (`~/.openplanter/credentials.json`)
 
 All runtime settings can also be set via `OPENPLANTER_*` environment variables (e.g. `OPENPLANTER_MAX_DEPTH=8`).
+
+Web search backend can be switched with:
+
+```bash
+export OPENPLANTER_WEB_SEARCH_PROVIDER=firecrawl
+export FIRECRAWL_API_KEY=your-firecrawl-key
+# optional override:
+# export OPENPLANTER_FIRECRAWL_BASE_URL=https://api.firecrawl.dev/v1
+```
 
 ## Project Structure
 
