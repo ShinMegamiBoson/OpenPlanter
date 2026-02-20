@@ -334,13 +334,84 @@ programming language names.
 """
 
 
+DE_ENTITY_RESOLUTION_SECTION = """
+
+== GERMAN ENTITY RESOLUTION ==
+When resolving entities across German datasets, apply these rules:
+
+Legal forms to recognize and normalize:
+  GmbH, UG (haftungsbeschränkt), AG, KG, KGaA, OHG, GbR, e.V., eG,
+  GmbH & Co. KG, GmbH & Co. KGaA, SE, SE & Co. KGaA, PartG, PartG mbB,
+  Stiftung, VVaG, EWIV
+
+HRB/HRA numbers: German commercial register numbers are court-specific
+  and NOT globally unique. Always match on (court + register_type + number)
+  together, never on register number alone.
+
+Umlaut handling: Always normalize ä↔ae, ö↔oe, ü↔ue, ß↔ss for matching.
+  "Müller" must match "Mueller". "Straße" must match "Strasse".
+
+Person names: Strip academic/professional titles before matching:
+  Prof., Dr., Dr. h.c., Dipl.-Ing., Dipl.-Kfm.
+  Strip nobility particles: von, zu, Freiherr, Graf, Fürst, Prinz.
+  Normalize "Dr. jur. Hans-Peter von Müller" → "hans-peter mueller" for matching.
+
+Court names: Normalize variants — "AG München" = "Amtsgericht München"
+  = "München" = "Muenchen" all refer to the same register court.
+"""
+
+
+DE_CONTEXT_SECTION = """
+
+== GERMAN POLITICAL/LEGAL CONTEXT ==
+Key structural knowledge for investigating German corporate/political networks:
+
+Government structure:
+  - Bundestag (federal parliament), Bundesrat (state chamber), 16 Landtage
+  - Coalition system with Koalitionsvertrag; Fraktionszwang (party discipline)
+  - 16 Bundesländer each with own transparency and procurement rules
+
+Key terminology:
+  - Interessenvertretung: lobbying / interest representation
+  - Rechenschaftsbericht: party financial accountability report
+  - Nebeneinkünfte: side income of parliamentarians
+  - Karenzzeit: cooling-off period for former officials
+  - Drehtür (revolving door): movement between government and industry
+  - Spende vs Sponsoring: donation vs sponsorship (different disclosure rules)
+  - Vergabeverfahren: public procurement process
+  - Handelsregister: commercial register (HRA/HRB entries at Amtsgerichte)
+  - Transparenzregister: beneficial ownership register (restricted access)
+  - Bundesanzeiger: federal gazette (Jahresabschlüsse / annual reports)
+
+Available data sources (accessible via tools):
+  - Lobbyregister Bundestag: registered lobbying organizations, expenditure, clients
+  - abgeordnetenwatch.de: MP profiles, votes, questions, side income (Nebeneinkünfte)
+  - OffeneRegister: ~5.1M German company registrations (bulk JSONL, CC0)
+  - EU Transparency Register: EU-level lobbying organizations
+
+Restricted sources (NOT directly accessible — use web_search/fetch_url):
+  - Transparenzregister: beneficial ownership (requires registration)
+  - Bundesanzeiger: annual financial reports (paywalled search)
+  - handelsregister.de: official register (per-query fees)
+  - DIP (Dokumentations- und Informationssystem): Bundestag documents
+"""
+
+
 def build_system_prompt(
     recursive: bool,
     acceptance_criteria: bool = False,
     demo: bool = False,
+    locale: str = "us",
 ) -> str:
     """Assemble the system prompt, including recursion sections only when enabled."""
     prompt = SYSTEM_PROMPT_BASE
+    if locale == "de":
+        prompt = prompt.replace(
+            "LLC, Inc, Corp, Ltd",
+            "GmbH, UG, AG, KG, KGaA, e.V., GmbH & Co. KG, SE",
+        )
+        prompt += DE_ENTITY_RESOLUTION_SECTION
+        prompt += DE_CONTEXT_SECTION
     if recursive:
         prompt += RECURSIVE_SECTION
     if acceptance_criteria:

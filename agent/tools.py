@@ -55,6 +55,8 @@ class WorkspaceTools:
     max_search_hits: int = 200
     exa_api_key: str | None = None
     exa_base_url: str = "https://api.exa.ai"
+    locale: str = "us"
+    lobbyregister_api_key: str = ""
 
     def __post_init__(self) -> None:
         self.root = self.root.expanduser().resolve()
@@ -842,3 +844,86 @@ class WorkspaceTools:
             "total": len(pages),
         }
         return self._clip(json.dumps(output, indent=2, ensure_ascii=True), self.max_file_chars)
+
+    # ------------------------------------------------------------------
+    # DE-locale connector wrappers
+    # ------------------------------------------------------------------
+
+    def search_lobbyregister(
+        self,
+        query: str,
+        sort: str = "ALPHABETICAL_ASC",
+        max_results: int = 20,
+    ) -> str:
+        from .connectors.lobbyregister import search_lobbyregister
+        return self._clip(
+            search_lobbyregister(query, api_key=self.lobbyregister_api_key, sort=sort, max_results=max_results),
+            self.max_file_chars,
+        )
+
+    def search_abgeordnetenwatch(
+        self,
+        query: str,
+        endpoint: str = "politicians",
+        parliament_period: int | None = None,
+        party_id: int | None = None,
+        politician_id: int | None = None,
+        max_results: int = 20,
+    ) -> str:
+        from .connectors.abgeordnetenwatch import (
+            get_poll_votes,
+            search_politicians,
+            search_sidejobs,
+        )
+        if endpoint == "politicians":
+            return self._clip(
+                search_politicians(query=query, parliament_period=parliament_period, party_id=party_id, max_results=max_results),
+                self.max_file_chars,
+            )
+        if endpoint == "polls":
+            poll_id = parliament_period or 0
+            return self._clip(get_poll_votes(poll_id=poll_id, max_results=max_results), self.max_file_chars)
+        if endpoint == "sidejobs":
+            return self._clip(
+                search_sidejobs(politician_id=politician_id, max_results=max_results),
+                self.max_file_chars,
+            )
+        return f"Unknown endpoint: {endpoint}. Use: politicians, polls, sidejobs"
+
+    def search_offeneregister(self, query: str, max_results: int = 20) -> str:
+        from .connectors.offeneregister import search_offeneregister
+        data_path = self._find_bulk_data("offeneregister*.jsonl", "offeneregister")
+        if not data_path:
+            return json.dumps({
+                "error": "OffeneRegister bulk JSONL file not found in workspace.",
+                "hint": "Download from https://offeneregister.de/daten/ using run_shell, then retry.",
+            })
+        return self._clip(search_offeneregister(query, str(data_path), max_results), self.max_file_chars)
+
+    def search_eu_transparency(self, query: str, max_results: int = 20) -> str:
+        from .connectors.eu_transparency import search_eu_transparency
+        data_path = self._find_bulk_data("*transparency*", "eu_transparency")
+        if not data_path:
+            return json.dumps({
+                "error": "EU Transparency Register data file not found in workspace.",
+                "hint": "Download from https://data.europa.eu/data/datasets/transparency-register using run_shell, then retry.",
+            })
+        return self._clip(search_eu_transparency(query, str(data_path), max_results), self.max_file_chars)
+
+    def _find_bulk_data(self, glob_pattern: str, subdir: str) -> Path | None:
+        """Locate a bulk data file in workspace or a data subdirectory."""
+        import fnmatch as _fnmatch
+        for p in self.root.iterdir():
+            if p.is_file() and _fnmatch.fnmatch(p.name.lower(), glob_pattern):
+                return p
+        data_dir = self.root / "data"
+        if data_dir.is_dir():
+            for p in data_dir.iterdir():
+                if p.is_file() and _fnmatch.fnmatch(p.name.lower(), glob_pattern):
+                    return p
+        sub = self.root / subdir
+        if sub.is_dir():
+            for p in sub.iterdir():
+                if p.is_file():
+                    return p
+        return None
