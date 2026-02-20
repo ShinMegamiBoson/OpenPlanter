@@ -3,18 +3,25 @@ from __future__ import annotations
 
 import io
 import socket
+import tempfile
 import unittest
 import urllib.error
+from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
+from agent.config import AgentConfig
+from agent.engine import RLMEngine
 from agent.model import (
+    AnthropicModel,
     ModelError,
+    ModelTurn,
     _http_json,
     _http_stream_sse,
     _notify_retry,
     _parse_retry_after,
     _sleep_with_countdown,
 )
+from agent.tools import WorkspaceTools
 
 
 # ---------------------------------------------------------------------------
@@ -363,6 +370,65 @@ class HttpJson429Tests(unittest.TestCase):
             msg = str(ctx.exception)
             self.assertIn("429", msg)
             self.assertIn("3", msg)
+
+
+# ---------------------------------------------------------------------------
+# Engine integration — on_retry wiring
+# ---------------------------------------------------------------------------
+
+
+class EngineOnRetryWiringTests(unittest.TestCase):
+    """Verify the engine sets/clears model.on_retry and messages reach on_event."""
+
+    @patch("agent.model.time.sleep")
+    def test_engine_on_event_receives_retry_messages(self, mock_sleep: MagicMock) -> None:
+        """A 429 during model.complete() should surface retry messages via on_event."""
+        call_count = 0
+
+        def fake_urlopen(req, timeout=None):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise _make_429_error("1")
+            # Second call: return a valid Anthropic SSE response
+            data = (
+                'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":10}}}\n\n'
+                'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n'
+                'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"done"}}\n\n'
+                'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n'
+                'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}\n\n'
+                'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+            )
+            resp = MagicMock()
+            resp.__iter__ = lambda self: iter(data.encode().split(b"\n"))
+            resp.__enter__ = lambda self: self
+            resp.__exit__ = lambda self, *a: None
+            resp.fp = MagicMock()
+            resp.close = MagicMock()
+            return resp
+
+        events_received: list[str] = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(workspace=root, max_depth=0, max_steps_per_call=1)
+            tools = WorkspaceTools(root=root)
+            model = AnthropicModel(model="test-model", api_key="test-key")
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+
+            with patch("agent.model.urllib.request.urlopen", fake_urlopen):
+                engine.solve(
+                    "test objective",
+                    on_event=lambda msg: events_received.append(msg),
+                )
+
+        # The retry message should appear in the event stream
+        retry_events = [e for e in events_received if "Rate limited" in e]
+        self.assertTrue(len(retry_events) > 0, f"Expected retry events, got: {events_received}")
+        self.assertIn("1s", retry_events[0])
+
+        # on_retry should be cleared after complete() returns
+        self.assertIsNone(model.on_retry)
 
 
 if __name__ == "__main__":
