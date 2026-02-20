@@ -1,3 +1,7 @@
+## Commit Rules
+
+- NEVER add `Co-Authored-By` trailers to commits. Do not tag yourself or any AI in commit messages.
+
 ## Stop Checklist
 
 Before completing a task, check each item:
