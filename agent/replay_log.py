@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,7 +25,7 @@ class ReplayLogger:
     _seq: int = field(default=0, init=False)
     _last_msg_count: int = field(default=0, init=False)
 
-    def child(self, depth: int, step: int) -> "ReplayLogger":
+    def child(self, depth: int, step: int) -> ReplayLogger:
         """Create a child logger for a subtask conversation."""
         child_id = f"{self.conversation_id}/d{depth}s{step}"
         return ReplayLogger(path=self.path, conversation_id=child_id)

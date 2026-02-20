@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 from .config import PROVIDER_DEFAULT_MODELS, AgentConfig
-from .engine import RLMEngine
+from .engine import ModelFactory, RLMEngine
 from .model import (
     AnthropicModel,
     EchoFallbackModel,
@@ -20,7 +21,6 @@ from .model import (
     list_openai_models,
     list_openrouter_models,
 )
-from .engine import ModelFactory
 from .tools import WorkspaceTools
 
 # Patterns that unambiguously identify a provider.
@@ -56,7 +56,7 @@ def _validate_model_provider(model_name: str, provider: str) -> None:
     )
 
 
-def _fetch_models_for_provider(cfg: AgentConfig, provider: str) -> list[dict]:
+def _fetch_models_for_provider(cfg: AgentConfig, provider: str) -> list[dict[str, Any]]:
     if provider == "openai":
         if not cfg.openai_api_key:
             raise ModelError("OpenAI key not configured.")
@@ -151,7 +151,7 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
     try:
         model_name = _resolve_model_name(cfg)
     except ModelError as exc:
-        model = EchoFallbackModel(note=str(exc))
+        model: EchoFallbackModel | OpenAICompatibleModel | AnthropicModel = EchoFallbackModel(note=str(exc))
         return RLMEngine(model=model, tools=tools, config=cfg)
 
     _validate_model_provider(model_name, cfg.provider)

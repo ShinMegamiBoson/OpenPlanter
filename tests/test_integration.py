@@ -13,22 +13,23 @@ import unittest
 from pathlib import Path
 
 from conftest import _tc
+
 from agent.config import AgentConfig
-from agent.engine import ExternalContext, RLMEngine
+from agent.engine import RLMEngine
 from agent.model import ModelTurn, ScriptedModel
-from agent.runtime import SessionRuntime, SessionStore
+from agent.runtime import SessionRuntime
 from agent.tools import WorkspaceTools
 
 
 def _make_config(root: Path, **overrides) -> AgentConfig:
-    defaults = dict(
-        workspace=root,
-        max_depth=3,
-        max_steps_per_call=12,
-        session_root_dir=".openplanter",
-        max_persisted_observations=400,
-        acceptance_criteria=False,
-    )
+    defaults = {
+        "workspace": root,
+        "max_depth": 3,
+        "max_steps_per_call": 12,
+        "session_root_dir": ".openplanter",
+        "max_persisted_observations": 400,
+        "acceptance_criteria": False,
+    }
     defaults.update(overrides)
     return AgentConfig(**defaults)
 
@@ -167,7 +168,7 @@ class TestSearchDrivenEdit(unittest.TestCase):
 
 
 class TestListFilesThenRead(unittest.TestCase):
-    """write_file × 3 → list_files(glob) → read_file → final"""
+    """write_file x 3 → list_files(glob) → read_file → final"""
 
     def test_list_files_then_read(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

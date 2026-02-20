@@ -96,7 +96,7 @@ class ComputeSuggestionsTests(unittest.TestCase):
         self.assertEqual(idx, -1)
 
     def test_slash_q_filters(self) -> None:
-        matches, idx = _compute_suggestions("/q")
+        matches, _idx = _compute_suggestions("/q")
         self.assertEqual(matches, ["/quit"])
 
     def test_no_slash_no_suggestions(self) -> None:

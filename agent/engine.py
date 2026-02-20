@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import json
-import re
-import time
 import threading
-from datetime import datetime, timezone
+import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .config import AgentConfig
-from .model import BaseModel, ModelError, ModelTurn, ToolCall, ToolResult
+from .model import BaseModel, ModelError, ToolCall, ToolResult
 from .prompts import build_system_prompt
 from .replay_log import ReplayLogger
 from .tool_defs import get_tool_definitions
@@ -435,10 +435,10 @@ class RLMEngine:
             results: list[ToolResult] = []
             final_answer: str | None = None
 
-            _PARALLEL_TOOLS = {"subtask", "execute"}
+            parallel_tools = {"subtask", "execute"}
 
-            sequential = [(i, tc) for i, tc in enumerate(turn.tool_calls) if tc.name not in _PARALLEL_TOOLS]
-            parallel = [(i, tc) for i, tc in enumerate(turn.tool_calls) if tc.name in _PARALLEL_TOOLS]
+            sequential = [(i, tc) for i, tc in enumerate(turn.tool_calls) if tc.name not in parallel_tools]
+            parallel = [(i, tc) for i, tc in enumerate(turn.tool_calls) if tc.name in parallel_tools]
 
             # If no factory and we have execute calls, fall back to sequential.
             if not self.model_factory and any(tc.name == "execute" for _, tc in parallel):
@@ -874,7 +874,7 @@ class RLMEngine:
                 replay_logger=child_logger,
             )
             if _saved_defs is not None:
-                cur.tool_defs = _saved_defs
+                cur.tool_defs = _saved_defs  # type: ignore[attr-defined]
             observation = f"Execute result for '{objective}':\n{exec_result}"
 
             if criteria and self.config.acceptance_criteria:

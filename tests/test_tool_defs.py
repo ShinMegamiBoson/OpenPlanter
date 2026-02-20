@@ -126,7 +126,7 @@ class MakeStrictParametersTests(unittest.TestCase):
         strict = _make_strict_parameters(params)
         prop = strict["properties"]["urls"]
         self.assertIn("anyOf", prop)
-        array_variant = [a for a in prop["anyOf"] if a.get("type") == "array"][0]
+        array_variant = next(a for a in prop["anyOf"] if a.get("type") == "array")
         self.assertEqual(array_variant["items"], {"type": "string"})
 
     def test_mixed_required_and_optional(self) -> None:

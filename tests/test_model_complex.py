@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from conftest import mock_anthropic_stream, mock_openai_stream
+
 from agent.model import (
     AnthropicModel,
     EchoFallbackModel,

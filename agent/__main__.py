@@ -19,7 +19,13 @@ from .credentials import (
 from .model import ModelError
 from .runtime import SessionError, SessionRuntime, SessionStore
 from .settings import PersistentSettings, SettingsStore, normalize_reasoning_effort
-from .tui import ChatContext, _clip_event, _get_model_display_name, dispatch_slash_command, run_rich_repl
+from .tui import (
+    ChatContext,
+    _clip_event,
+    _get_model_display_name,
+    dispatch_slash_command,
+    run_rich_repl,
+)
 
 VALID_REASONING_FLAGS = ["low", "medium", "high", "none"]
 

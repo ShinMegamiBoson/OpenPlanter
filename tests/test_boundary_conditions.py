@@ -13,12 +13,12 @@ import unittest
 from pathlib import Path
 
 from conftest import _tc
+
 from agent.config import AgentConfig
 from agent.engine import ExternalContext, RLMEngine
 from agent.model import ModelTurn, ScriptedModel
 from agent.runtime import SessionRuntime, SessionStore
 from agent.tools import WorkspaceTools
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -26,14 +26,14 @@ from agent.tools import WorkspaceTools
 
 
 def _make_config(root: Path, **overrides) -> AgentConfig:
-    defaults = dict(
-        workspace=root,
-        max_depth=3,
-        max_steps_per_call=12,
-        session_root_dir=".openplanter",
-        max_persisted_observations=400,
-        acceptance_criteria=False,
-    )
+    defaults = {
+        "workspace": root,
+        "max_depth": 3,
+        "max_steps_per_call": 12,
+        "session_root_dir": ".openplanter",
+        "max_persisted_observations": 400,
+        "acceptance_criteria": False,
+    }
     defaults.update(overrides)
     return AgentConfig(**defaults)
 

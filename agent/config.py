@@ -50,7 +50,7 @@ class AgentConfig:
     demo: bool = False
 
     @classmethod
-    def from_env(cls, workspace: str | Path) -> "AgentConfig":
+    def from_env(cls, workspace: str | Path) -> AgentConfig:
         ws = Path(workspace).expanduser().resolve()
         openai_api_key = (
             os.getenv("OPENPLANTER_OPENAI_API_KEY")
@@ -70,9 +70,9 @@ class AgentConfig:
             provider=os.getenv("OPENPLANTER_PROVIDER", "auto").strip().lower() or "auto",
             model=os.getenv("OPENPLANTER_MODEL", "claude-opus-4-6"),
             reasoning_effort=(os.getenv("OPENPLANTER_REASONING_EFFORT", "high").strip().lower() or None),
-            base_url=openai_base_url,
+            base_url=openai_base_url,  # type: ignore[arg-type]
             api_key=openai_api_key,
-            openai_base_url=openai_base_url,
+            openai_base_url=openai_base_url,  # type: ignore[arg-type]
             anthropic_base_url=os.getenv("OPENPLANTER_ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1"),
             openrouter_base_url=os.getenv("OPENPLANTER_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
             cerebras_base_url=os.getenv("OPENPLANTER_CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1"),

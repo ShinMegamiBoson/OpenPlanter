@@ -4,21 +4,20 @@ import ast
 import fnmatch
 import json
 import os
-import signal
+import re as _re
 import shutil
+import signal
 import subprocess
 import tempfile
 import threading
 import urllib.error
 import urllib.request
-import re as _re
 import zlib
+from collections.abc import Generator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-
-_MAX_WALK_ENTRIES = 50_000
+from typing import Any, TextIO
 
 from .patching import (
     AddFileOp,
@@ -28,6 +27,8 @@ from .patching import (
     apply_agent_patch,
     parse_agent_patch,
 )
+
+_MAX_WALK_ENTRIES = 50_000
 
 _WS_RE = _re.compile(r"\s+")
 _HASHLINE_PREFIX_RE = _re.compile(r"^\d+:[0-9a-f]{2}\|")
@@ -62,7 +63,7 @@ class WorkspaceTools:
             raise ToolError(f"Workspace does not exist: {self.root}")
         if not self.root.is_dir():
             raise ToolError(f"Workspace is not a directory: {self.root}")
-        self._bg_jobs: dict[int, tuple[subprocess.Popen, Any, str]] = {}
+        self._bg_jobs: dict[int, tuple[subprocess.Popen[str], TextIO, str]] = {}
         self._bg_next_id: int = 1
         # Runtime policy state.
         self._files_read: set[Path] = set()
@@ -110,7 +111,7 @@ class WorkspaceTools:
             self._parallel_write_claims.pop(group_id, None)
 
     @contextmanager
-    def execution_scope(self, group_id: str | None, owner_id: str | None):
+    def execution_scope(self, group_id: str | None, owner_id: str | None) -> Generator[None, None, None]:
         prev_group = getattr(self._scope_local, "group_id", None)
         prev_owner = getattr(self._scope_local, "owner_id", None)
         self._scope_local.group_id = group_id
@@ -206,7 +207,7 @@ class WorkspaceTools:
         proc, fh, out_path = entry
         returncode = proc.poll()
         try:
-            with open(out_path, "r") as f:
+            with open(out_path) as f:
                 output = f.read()
         except OSError:
             output = ""
@@ -597,7 +598,7 @@ class WorkspaceTools:
             )
         return lineno, None
 
-    def hashline_edit(self, path: str, edits: list[dict]) -> str:
+    def hashline_edit(self, path: str, edits: list[dict[str, Any]]) -> str:
         """Edit a file using hash-anchored line references."""
         resolved = self._resolve_path(path)
         if not resolved.exists():

@@ -12,29 +12,29 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from conftest import _tc
+
 from agent.config import AgentConfig
-from agent.engine import ExternalContext, RLMEngine
+from agent.engine import RLMEngine
 from agent.model import (
     EchoFallbackModel,
     ModelTurn,
     ScriptedModel,
 )
-from agent.runtime import SessionRuntime, SessionStore
+from agent.runtime import SessionRuntime
 from agent.tools import WorkspaceTools
 
 
 def _make_config(root: Path, **overrides) -> AgentConfig:
-    defaults = dict(
-        workspace=root,
-        max_depth=3,
-        max_steps_per_call=12,
-        session_root_dir=".openplanter",
-        max_persisted_observations=400,
-        acceptance_criteria=False,
-    )
+    defaults = {
+        "workspace": root,
+        "max_depth": 3,
+        "max_steps_per_call": 12,
+        "session_root_dir": ".openplanter",
+        "max_persisted_observations": 400,
+        "acceptance_criteria": False,
+    }
     defaults.update(overrides)
     return AgentConfig(**defaults)
 
@@ -915,7 +915,7 @@ class TestTUIModelAndReasoningSwitching(unittest.TestCase):
             # Engine should have been rebuilt
             self.assertIsNot(ctx.runtime.engine, old_engine)
             self.assertEqual(cfg.model, "gpt-5.2")
-            self.assertTrue(any("gpt-5.2" in l for l in lines))
+            self.assertTrue(any("gpt-5.2" in line for line in lines))
 
     def test_model_alias_resolution(self) -> None:
         """Aliases like 'opus' resolve to full model names."""
@@ -940,7 +940,7 @@ class TestTUIModelAndReasoningSwitching(unittest.TestCase):
 
             lines = handle_model_command("opus", ctx)
             self.assertEqual(cfg.model, "claude-opus-4-6")
-            self.assertTrue(any("alias" in l.lower() for l in lines))
+            self.assertTrue(any("alias" in line.lower() for line in lines))
 
     def test_reasoning_change_rebuilds_engine(self) -> None:
         from agent.builder import build_engine
@@ -968,7 +968,7 @@ class TestTUIModelAndReasoningSwitching(unittest.TestCase):
 
             self.assertIsNot(ctx.runtime.engine, old_engine)
             self.assertEqual(cfg.reasoning_effort, "low")
-            self.assertTrue(any("low" in l for l in lines))
+            self.assertTrue(any("low" in line for line in lines))
 
     def test_reasoning_off_disables(self) -> None:
         from agent.builder import build_engine

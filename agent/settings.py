@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-
+from typing import Any
 
 VALID_REASONING_EFFORTS: set[str] = {"low", "medium", "high"}
 
@@ -43,7 +43,7 @@ class PersistentSettings:
             return specific
         return self.default_model or None
 
-    def normalized(self) -> "PersistentSettings":
+    def normalized(self) -> PersistentSettings:
         model = (self.default_model or "").strip() or None
         effort = normalize_reasoning_effort(self.default_reasoning_effort)
         return PersistentSettings(
@@ -72,7 +72,7 @@ class PersistentSettings:
         return payload
 
     @classmethod
-    def from_json(cls, payload: dict | None) -> "PersistentSettings":
+    def from_json(cls, payload: dict[str, Any] | None) -> PersistentSettings:
         if not isinstance(payload, dict):
             return cls()
         return cls(

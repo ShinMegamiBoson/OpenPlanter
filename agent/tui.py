@@ -3,30 +3,31 @@ from __future__ import annotations
 import re
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, ClassVar
 
 from .config import AgentConfig
-from .engine import RLMEngine, _MODEL_CONTEXT_WINDOWS, _DEFAULT_CONTEXT_WINDOW
+from .engine import _DEFAULT_CONTEXT_WINDOW, _MODEL_CONTEXT_WINDOWS, RLMEngine
 from .model import EchoFallbackModel, ModelError
 from .runtime import SessionRuntime
 from .settings import SettingsStore
 
-
 SLASH_COMMANDS: list[str] = ["/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning"]
 
 
-def _make_left_markdown():
+def _make_left_markdown() -> Any:
     """Create a Markdown subclass that left-aligns headings instead of centering."""
     from rich import box as _box
-    from rich.markdown import Markdown as _RichMarkdown, Heading as _RichHeading
+    from rich.markdown import Heading as _RichHeading
+    from rich.markdown import Markdown as _RichMarkdown
     from rich.panel import Panel as _Panel
     from rich.text import Text as _Text
 
     class _LeftHeading(_RichHeading):
-        def __rich_console__(self, console, options):
+        def __rich_console__(self, console: Any, options: Any) -> Any:
             text = self.text
             text.justify = "left"
             if self.tag == "h1":
@@ -37,7 +38,7 @@ def _make_left_markdown():
                 yield text
 
     class _LeftMarkdown(_RichMarkdown):
-        elements = {**_RichMarkdown.elements, "heading_open": _LeftHeading}
+        elements: ClassVar = {**_RichMarkdown.elements, "heading_open": _LeftHeading}
 
     return _LeftMarkdown
 
@@ -72,15 +73,15 @@ def _build_splash() -> str:
         art = "   OpenPlanter"
     lines = art.splitlines()
     # Strip common leading whitespace so the plants align flush
-    min_indent = min((len(l) - len(l.lstrip()) for l in lines if l.strip()), default=0)
-    stripped = [l[min_indent:] for l in lines]
-    max_w = max(len(l) for l in stripped)
-    padded = [l.ljust(max_w) for l in stripped]
+    min_indent = min((len(line) - len(line.lstrip()) for line in lines if line.strip()), default=0)
+    stripped = [line[min_indent:] for line in lines]
+    max_w = max(len(line) for line in stripped)
+    padded = [line.ljust(max_w) for line in stripped]
 
     # Pad plant art to match the number of text lines (bottom-align plants)
     n = len(padded)
-    pw_l = max(len(l) for l in _PLANT_LEFT)
-    pw_r = max(len(l) for l in _PLANT_RIGHT)
+    pw_l = max(len(line) for line in _PLANT_LEFT)
+    pw_r = max(len(line) for line in _PLANT_RIGHT)
     left = [" " * pw_l] * (n - len(_PLANT_LEFT)) + _PLANT_LEFT if n > len(_PLANT_LEFT) else _PLANT_LEFT[-n:]
     right = [" " * pw_r] * (n - len(_PLANT_RIGHT)) + _PLANT_RIGHT if n > len(_PLANT_RIGHT) else _PLANT_RIGHT[-n:]
 
@@ -593,7 +594,7 @@ class RichREPL:
             if buf is not None and hasattr(buf, "insert_text"):
                 buf.insert_text("\n")
             elif hasattr(event, "current_buffer"):
-                event.current_buffer.insert_text("\n")  # type: ignore[union-attr]
+                event.current_buffer.insert_text("\n")
 
         self.session: PromptSession[str] = PromptSession(
             history=FileHistory(str(history_path)),
@@ -752,7 +753,6 @@ class RichREPL:
     # ------------------------------------------------------------------
 
     def run(self) -> None:
-        from rich.markdown import Markdown
         from rich.text import Text
 
         self.console.clear()
@@ -760,7 +760,7 @@ class RichREPL:
 
         # Install demo render hook AFTER splash art so the header is uncensored.
         if self._demo_hook is not None:
-            self.console.push_render_hook(self._demo_hook)
+            self.console.push_render_hook(self._demo_hook)  # type: ignore[arg-type]
 
         if self._startup_info:
             for key, val in self._startup_info.items():

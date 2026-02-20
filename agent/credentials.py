@@ -28,7 +28,7 @@ class CredentialBundle:
             or (self.voyage_api_key and self.voyage_api_key.strip())
         )
 
-    def merge_missing(self, other: "CredentialBundle") -> None:
+    def merge_missing(self, other: CredentialBundle) -> None:
         if not self.openai_api_key and other.openai_api_key:
             self.openai_api_key = other.openai_api_key
         if not self.anthropic_api_key and other.anthropic_api_key:
@@ -59,7 +59,7 @@ class CredentialBundle:
         return out
 
     @classmethod
-    def from_json(cls, payload: dict[str, str] | None) -> "CredentialBundle":
+    def from_json(cls, payload: dict[str, str] | None) -> CredentialBundle:
         if not isinstance(payload, dict):
             return cls()
         return cls(
