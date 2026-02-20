@@ -403,6 +403,119 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
 ]
 
 
+DE_TOOL_DEFINITIONS: list[dict[str, Any]] = [
+    {
+        "name": "search_lobbyregister",
+        "description": (
+            "Search the German Bundestag Lobbyregister for lobbying organizations. "
+            "Returns registrations with financial expenditure, clients, and fields of interest."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Organization name or search terms.",
+                },
+                "sort": {
+                    "type": "string",
+                    "description": "Sort order: ALPHABETICAL_ASC, FINANCIALEXPENSES_DESC, DONATIONS_DESC, etc.",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum results to return (1-50, default 20).",
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "search_abgeordnetenwatch",
+        "description": (
+            "Search abgeordnetenwatch.de for German MP data, votes, and side income. "
+            "Endpoint selects which resource to query."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search terms (person name, topic, etc.).",
+                },
+                "endpoint": {
+                    "type": "string",
+                    "enum": ["politicians", "polls", "sidejobs"],
+                    "description": "Which resource to search.",
+                },
+                "parliament_period": {
+                    "type": "integer",
+                    "description": "Filter by parliament period ID.",
+                },
+                "party_id": {
+                    "type": "integer",
+                    "description": "Filter by party ID.",
+                },
+                "politician_id": {
+                    "type": "integer",
+                    "description": "Politician ID for sidejobs endpoint.",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum results (1-100, default 20).",
+                },
+            },
+            "required": ["query", "endpoint"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "search_offeneregister",
+        "description": (
+            "Search OffeneRegister bulk data for German company registrations. "
+            "Requires the bulk JSONL file to be downloaded to the workspace first."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Company name or search terms.",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum results (1-100, default 20).",
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "search_eu_transparency",
+        "description": (
+            "Search the EU Transparency Register bulk data for lobbying organizations "
+            "active in EU institutions. Requires the CSV/XML file to be downloaded first."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Organization name or search terms.",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum results (1-100, default 20).",
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+    },
+]
+
+
 _ARTIFACT_TOOLS = {"list_artifacts", "read_artifact"}
 _DELEGATION_TOOLS = {"subtask", "execute", "list_artifacts", "read_artifact"}
 
@@ -426,13 +539,15 @@ def get_tool_definitions(
     include_subtask: bool = True,
     include_artifacts: bool = False,
     include_acceptance_criteria: bool = False,
+    locale: str = "us",
 ) -> list[dict[str, Any]]:
-    """Return tool definitions based on mode.
+    """Return tool definitions based on mode and locale.
 
     - ``include_subtask=True`` (normal recursive) → everything except execute, artifact tools.
     - ``include_subtask=False`` (flat / executor) → no subtask, no execute, no artifact tools.
     - ``include_artifacts=True`` → add list_artifacts + read_artifact.
     - ``include_acceptance_criteria=False`` → strip acceptance_criteria from schemas.
+    - ``locale="de"`` → append German/EU data source tools.
     """
     if include_subtask:
         defs = [d for d in TOOL_DEFINITIONS if d["name"] not in ("execute",) and d["name"] not in _ARTIFACT_TOOLS]
@@ -441,6 +556,9 @@ def get_tool_definitions(
 
     if include_artifacts:
         defs += [d for d in TOOL_DEFINITIONS if d["name"] in _ARTIFACT_TOOLS]
+
+    if locale == "de":
+        defs += DE_TOOL_DEFINITIONS
 
     if not include_acceptance_criteria:
         defs = _strip_acceptance_criteria(defs)

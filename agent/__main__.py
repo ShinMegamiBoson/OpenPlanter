@@ -133,6 +133,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Censor entity names and workspace path segments in output (UI-only).",
     )
+    parser.add_argument(
+        "--locale",
+        choices=["us", "de"],
+        default=None,
+        help="Locale for data sources and entity resolution (default: us).",
+    )
     return parser
 
 
@@ -316,6 +322,8 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
         cfg.acceptance_criteria = True
     if args.demo:
         cfg.demo = True
+    if args.locale:
+        cfg.locale = args.locale
 
 
 def run_plain_repl(ctx: ChatContext) -> None:
