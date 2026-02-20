@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-import socket
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
-from .tool_defs import TOOL_DEFINITIONS, to_anthropic_tools, to_openai_tools
+from .tool_defs import to_anthropic_tools, to_openai_tools
 
 
 class ModelError(RuntimeError):
@@ -138,7 +138,7 @@ def _extend_socket_timeout(resp: Any, timeout: float) -> None:
 
 def _read_sse_events(
     resp: Any,
-    on_sse_event: "Callable[[str, dict[str, Any]], None] | None" = None,
+    on_sse_event: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Read SSE lines from an HTTP response, returning (event_type, data_dict) pairs."""
     events: list[tuple[str, dict[str, Any]]] = []
@@ -211,20 +211,20 @@ def _http_stream_sse(
     first_byte_timeout: float = 10,
     stream_timeout: float = 120,
     max_retries: int = 3,
-    on_sse_event: "Callable[[str, dict[str, Any]], None] | None" = None,
+    on_sse_event: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Stream an SSE endpoint with first-byte timeout and retry logic."""
     data = json.dumps(payload).encode("utf-8")
 
     last_exc: Exception | None = None
-    for attempt in range(max_retries):
+    for _attempt in range(max_retries):
         req = urllib.request.Request(url=url, data=data, headers=headers, method=method)
         try:
             resp = urllib.request.urlopen(req, timeout=first_byte_timeout)
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise ModelError(f"HTTP {exc.code} calling {url}: {body}") from exc
-        except (socket.timeout, urllib.error.URLError, OSError) as exc:
+        except (TimeoutError, urllib.error.URLError, OSError) as exc:
             # Timeout or connection error — retry
             last_exc = exc
             continue
@@ -252,7 +252,7 @@ def _accumulate_openai_stream(
 
     for _event_type, chunk in events:
         # Usage may appear in a dedicated chunk or alongside the last delta
-        if "usage" in chunk and chunk["usage"]:
+        if chunk.get("usage"):
             usage = chunk["usage"]
 
         choices = chunk.get("choices")
@@ -1004,7 +1004,7 @@ class ScriptedModel:
 @dataclass
 class EchoFallbackModel:
     note: str = (
-        "No provider API keys configured. Set OpenAI/Anthropic/OpenRouter keys to use a live LLM."
+        "No provider API keys configured. Set OpenAI/Anthropic/OpenRouter/Gemini keys to use a live LLM."
     )
 
     def create_conversation(self, system_prompt: str, initial_user_message: str) -> Conversation:

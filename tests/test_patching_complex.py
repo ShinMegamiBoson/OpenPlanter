@@ -5,19 +5,12 @@ import unittest
 from pathlib import Path
 
 from agent.patching import (
+    ApplyReport,
     PatchApplyError,
-    parse_agent_patch,
-    apply_agent_patch,
-    _parse_chunks,
-    _chunk_to_old_new,
     _find_subsequence,
     _normalize_ws,
-    _render_lines,
-    AddFileOp,
-    DeleteFileOp,
-    UpdateFileOp,
-    ApplyReport,
-    PatchChunk,
+    apply_agent_patch,
+    parse_agent_patch,
 )
 
 
@@ -29,7 +22,9 @@ class PatchingComplexTests(unittest.TestCase):
         """File with 10+ lines, patch with 2 separate @@ hunks updating
         different sections. Assert both hunks applied correctly."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            resolve_path = lambda p: Path(tmpdir) / p
+            def resolve_path(p: str) -> Path:
+
+                return Path(tmpdir) / p
             file_path = resolve_path("multi.txt")
             original_lines = [f"line{i}" for i in range(1, 13)]
             file_path.write_text("\n".join(original_lines) + "\n", encoding="utf-8")
@@ -64,7 +59,9 @@ class PatchingComplexTests(unittest.TestCase):
         """Arrange chunk old_seq that appears BEFORE the cursor position.
         Verify it still finds it by retrying from 0."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            resolve_path = lambda p: Path(tmpdir) / p
+            def resolve_path(p: str) -> Path:
+
+                return Path(tmpdir) / p
             file_path = resolve_path("retry.txt")
             # Lines: AAA, BBB, CCC, DDD, EEE
             file_path.write_text("AAA\nBBB\nCCC\nDDD\nEEE\n", encoding="utf-8")
@@ -86,7 +83,7 @@ class PatchingComplexTests(unittest.TestCase):
 +BBB_NEW
  CCC
 *** End Patch"""
-            report = apply_agent_patch(patch, resolve_path)
+            apply_agent_patch(patch, resolve_path)
             result = file_path.read_text(encoding="utf-8")
             self.assertIn("DDD_NEW", result)
             self.assertIn("BBB_NEW", result)
@@ -98,7 +95,9 @@ class PatchingComplexTests(unittest.TestCase):
         """Patch with old_seq that doesn't match any lines in file.
         Assert PatchApplyError with 'could not locate'."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            resolve_path = lambda p: Path(tmpdir) / p
+            def resolve_path(p: str) -> Path:
+
+                return Path(tmpdir) / p
             file_path = resolve_path("nomatch.txt")
             file_path.write_text("alpha\nbeta\n", encoding="utf-8")
 
@@ -121,7 +120,9 @@ class PatchingComplexTests(unittest.TestCase):
         """Try to add a file that already exists.
         Assert PatchApplyError with 'cannot add existing file'."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            resolve_path = lambda p: Path(tmpdir) / p
+            def resolve_path(p: str) -> Path:
+
+                return Path(tmpdir) / p
             file_path = resolve_path("exists.txt")
             file_path.write_text("hello\n", encoding="utf-8")
 
@@ -141,7 +142,9 @@ class PatchingComplexTests(unittest.TestCase):
         """Try to delete a file that doesn't exist.
         Assert PatchApplyError with 'cannot delete missing file'."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            resolve_path = lambda p: Path(tmpdir) / p
+            def resolve_path(p: str) -> Path:
+
+                return Path(tmpdir) / p
 
             patch = """\
 *** Begin Patch
@@ -158,7 +161,9 @@ class PatchingComplexTests(unittest.TestCase):
         """Try to delete a path that is a directory.
         Assert PatchApplyError with 'cannot delete directory'."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            resolve_path = lambda p: Path(tmpdir) / p
+            def resolve_path(p: str) -> Path:
+
+                return Path(tmpdir) / p
             dir_path = resolve_path("mydir")
             dir_path.mkdir()
 
@@ -176,7 +181,9 @@ class PatchingComplexTests(unittest.TestCase):
     def test_update_missing_file_raises(self) -> None:
         """Try to update a file that doesn't exist. Assert PatchApplyError."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            resolve_path = lambda p: Path(tmpdir) / p
+            def resolve_path(p: str) -> Path:
+
+                return Path(tmpdir) / p
 
             patch = """\
 *** Begin Patch
@@ -232,7 +239,9 @@ class PatchingComplexTests(unittest.TestCase):
         """File originally has trailing newline. After update, verify
         trailing newline is preserved."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            resolve_path = lambda p: Path(tmpdir) / p
+            def resolve_path(p: str) -> Path:
+
+                return Path(tmpdir) / p
             file_path = resolve_path("trailing.txt")
             file_path.write_text("aaa\nbbb\nccc\n", encoding="utf-8")
 
@@ -257,7 +266,8 @@ class PatchingComplexTests(unittest.TestCase):
         """File originally has NO trailing newline. After update, verify
         no trailing newline added."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            resolve_path = lambda p: Path(tmpdir) / p
+            def resolve_path(p: str) -> Path:
+                return Path(tmpdir) / p
             file_path = resolve_path("notrailing.txt")
             file_path.write_text("aaa\nbbb\nccc", encoding="utf-8")
 
@@ -321,7 +331,8 @@ class PatchingComplexTests(unittest.TestCase):
         """Update file with Move to a path whose parent doesn't exist yet.
         Verify parent dir is created and file is moved."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            resolve_path = lambda p: Path(tmpdir) / p
+            def resolve_path(p: str) -> Path:
+                return Path(tmpdir) / p
             source = resolve_path("original.txt")
             source.write_text("foo\nbar\nbaz\n", encoding="utf-8")
 
@@ -353,7 +364,8 @@ class PatchingComplexTests(unittest.TestCase):
         """File has indented lines, patch context collapses whitespace.
         Patch should still apply via fuzzy fallback."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            resolve_path = lambda p: Path(tmpdir) / p
+            def resolve_path(p: str) -> Path:
+                return Path(tmpdir) / p
             file_path = resolve_path("fuzzy.txt")
             file_path.write_text("    indented  line\nnormal line\n", encoding="utf-8")
 

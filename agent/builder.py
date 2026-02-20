@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 from .config import PROVIDER_DEFAULT_MODELS, AgentConfig
-from .engine import RLMEngine
+from .engine import ModelFactory, RLMEngine
 from .model import (
     AnthropicModel,
     EchoFallbackModel,
@@ -20,13 +21,13 @@ from .model import (
     list_openai_models,
     list_openrouter_models,
 )
-from .engine import ModelFactory
 from .tools import WorkspaceTools
 
 # Patterns that unambiguously identify a provider.
 _ANTHROPIC_RE = re.compile(r"^claude", re.IGNORECASE)
 _OPENAI_RE = re.compile(r"^(gpt|o[1-4]-|o[1-4]$|chatgpt|dall-e|tts-|whisper)", re.IGNORECASE)
 _CEREBRAS_RE = re.compile(r"^(llama.*cerebras|qwen-3|gpt-oss|zai-glm)", re.IGNORECASE)
+_GEMINI_RE = re.compile(r"^gemini-", re.IGNORECASE)
 
 
 def infer_provider_for_model(model: str) -> str | None:
@@ -39,6 +40,8 @@ def infer_provider_for_model(model: str) -> str | None:
         return "cerebras"
     if _OPENAI_RE.search(model):
         return "openai"
+    if _GEMINI_RE.search(model):
+        return "gemini"
     return None
 
 
@@ -56,7 +59,7 @@ def _validate_model_provider(model_name: str, provider: str) -> None:
     )
 
 
-def _fetch_models_for_provider(cfg: AgentConfig, provider: str) -> list[dict]:
+def _fetch_models_for_provider(cfg: AgentConfig, provider: str) -> list[dict[str, Any]]:
     if provider == "openai":
         if not cfg.openai_api_key:
             raise ModelError("OpenAI key not configured.")
@@ -73,6 +76,10 @@ def _fetch_models_for_provider(cfg: AgentConfig, provider: str) -> list[dict]:
         if not cfg.cerebras_api_key:
             raise ModelError("Cerebras key not configured.")
         return list_openai_models(api_key=cfg.cerebras_api_key, base_url=cfg.cerebras_base_url)
+    if provider == "gemini":
+        if not cfg.gemini_api_key:
+            raise ModelError("Gemini key not configured.")
+        return list_openai_models(api_key=cfg.gemini_api_key, base_url=cfg.gemini_base_url)
     raise ModelError(f"Unknown provider: {provider}")
 
 
@@ -128,9 +135,17 @@ def build_model_factory(cfg: AgentConfig) -> ModelFactory | None:
                 base_url=cfg.cerebras_base_url,
                 reasoning_effort=effort,
             )
+        if provider == "gemini" and cfg.gemini_api_key:
+            return OpenAICompatibleModel(
+                model=model_name,
+                api_key=cfg.gemini_api_key,
+                base_url=cfg.gemini_base_url,
+                reasoning_effort=effort,
+                strict_tools=False,
+            )
         raise ModelError(f"No API key available for model '{model_name}' (provider={provider})")
 
-    if cfg.anthropic_api_key or cfg.openai_api_key or cfg.openrouter_api_key or cfg.cerebras_api_key:
+    if cfg.anthropic_api_key or cfg.openai_api_key or cfg.openrouter_api_key or cfg.cerebras_api_key or cfg.gemini_api_key:
         return _factory
     return None
 
@@ -151,7 +166,7 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
     try:
         model_name = _resolve_model_name(cfg)
     except ModelError as exc:
-        model = EchoFallbackModel(note=str(exc))
+        model: EchoFallbackModel | OpenAICompatibleModel | AnthropicModel = EchoFallbackModel(note=str(exc))
         return RLMEngine(model=model, tools=tools, config=cfg)
 
     _validate_model_provider(model_name, cfg.provider)
@@ -180,6 +195,14 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
             api_key=cfg.cerebras_api_key,
             base_url=cfg.cerebras_base_url,
             reasoning_effort=cfg.reasoning_effort,
+        )
+    elif cfg.provider == "gemini" and cfg.gemini_api_key:
+        model = OpenAICompatibleModel(
+            model=model_name,
+            api_key=cfg.gemini_api_key,
+            base_url=cfg.gemini_base_url,
+            reasoning_effort=cfg.reasoning_effort,
+            strict_tools=False,
         )
     elif cfg.provider == "anthropic" and cfg.anthropic_api_key:
         model = AnthropicModel(

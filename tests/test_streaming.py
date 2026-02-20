@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import io
-import json
 import socket
 import unittest
 from unittest.mock import MagicMock, patch
@@ -202,7 +201,7 @@ class HttpStreamSSETests(unittest.TestCase):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise socket.timeout("timed out")
+                raise TimeoutError("timed out")
             # Return a successful response
             data = 'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n'
             resp = MagicMock()
@@ -227,7 +226,7 @@ class HttpStreamSSETests(unittest.TestCase):
 
     def test_gives_up_after_max_retries(self) -> None:
         def fake_urlopen(req, timeout=None):
-            raise socket.timeout("timed out")
+            raise TimeoutError("timed out")
 
         with patch("agent.model.urllib.request.urlopen", fake_urlopen):
             with self.assertRaises(ModelError) as ctx:

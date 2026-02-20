@@ -148,7 +148,6 @@ class ToolTests(unittest.TestCase):
             tools.write_file("hash.txt", "hello\nworld\n")
             result = tools.read_file("hash.txt", hashline=True)
             # Should have LINE:XX| format
-            import re
             lines = result.strip().splitlines()
             # First line is the header
             self.assertTrue(lines[0].startswith("# "))

@@ -19,7 +19,13 @@ from .credentials import (
 from .model import ModelError
 from .runtime import SessionError, SessionRuntime, SessionStore
 from .settings import PersistentSettings, SettingsStore, normalize_reasoning_effort
-from .tui import ChatContext, _clip_event, _get_model_display_name, dispatch_slash_command, run_rich_repl
+from .tui import (
+    ChatContext,
+    _clip_event,
+    _get_model_display_name,
+    dispatch_slash_command,
+    run_rich_repl,
+)
 
 VALID_REASONING_FLAGS = ["low", "medium", "high", "none"]
 
@@ -33,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--provider",
         default=None,
-        choices=["auto", "openai", "anthropic", "openrouter", "cerebras", "all"],
+        choices=["auto", "openai", "anthropic", "openrouter", "cerebras", "gemini", "all"],
         help="Model provider. Use 'all' only with --list-models.",
     )
     parser.add_argument("--model", help="Model name (use 'newest' to auto-select latest from API).")
@@ -80,6 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cerebras-api-key", help="Cerebras API key override.")
     parser.add_argument("--exa-api-key", help="Exa API key override.")
     parser.add_argument("--voyage-api-key", help="Voyage API key override.")
+    parser.add_argument("--gemini-api-key", help="Gemini API key override.")
     parser.add_argument(
         "--configure-keys",
         action="store_true",
@@ -144,7 +151,7 @@ def _format_ts(ts: int) -> str:
 
 def _resolve_provider(requested: str, creds: CredentialBundle) -> str:
     requested = requested.strip().lower()
-    if requested in {"openai", "anthropic", "openrouter", "cerebras"}:
+    if requested in {"openai", "anthropic", "openrouter", "cerebras", "gemini"}:
         return requested
     if requested == "all":
         return "all"
@@ -156,15 +163,17 @@ def _resolve_provider(requested: str, creds: CredentialBundle) -> str:
         return "openrouter"
     if creds.cerebras_api_key:
         return "cerebras"
+    if creds.gemini_api_key:
+        return "gemini"
     return "openai"
 
 
 def _print_models(cfg: AgentConfig, requested_provider: str) -> int:
     providers: list[str]
     if requested_provider == "all":
-        providers = ["openai", "anthropic", "openrouter", "cerebras"]
+        providers = ["openai", "anthropic", "openrouter", "cerebras", "gemini"]
     elif requested_provider == "auto":
-        providers = ["openai", "anthropic", "openrouter", "cerebras"]
+        providers = ["openai", "anthropic", "openrouter", "cerebras", "gemini"]
     else:
         providers = [requested_provider]
 
@@ -202,6 +211,7 @@ def _load_credentials(
         cerebras_api_key=user_creds.cerebras_api_key,
         exa_api_key=user_creds.exa_api_key,
         voyage_api_key=user_creds.voyage_api_key,
+        gemini_api_key=user_creds.gemini_api_key,
     )
 
     store = CredentialStore(workspace=cfg.workspace, session_root_dir=cfg.session_root_dir)
@@ -218,6 +228,8 @@ def _load_credentials(
         creds.exa_api_key = stored.exa_api_key
     if stored.voyage_api_key:
         creds.voyage_api_key = stored.voyage_api_key
+    if stored.gemini_api_key:
+        creds.gemini_api_key = stored.gemini_api_key
 
     env_creds = credentials_from_env()
     if env_creds.openai_api_key:
@@ -232,6 +244,8 @@ def _load_credentials(
         creds.exa_api_key = env_creds.exa_api_key
     if env_creds.voyage_api_key:
         creds.voyage_api_key = env_creds.voyage_api_key
+    if env_creds.gemini_api_key:
+        creds.gemini_api_key = env_creds.gemini_api_key
 
     for env_path in discover_env_candidates(cfg.workspace):
         file_creds = parse_env_file(env_path)
@@ -251,6 +265,8 @@ def _load_credentials(
         creds.exa_api_key = args.exa_api_key.strip() or creds.exa_api_key
     if args.voyage_api_key:
         creds.voyage_api_key = args.voyage_api_key.strip() or creds.voyage_api_key
+    if args.gemini_api_key:
+        creds.gemini_api_key = args.gemini_api_key.strip() or creds.gemini_api_key
 
     changed_by_prompt = False
     if allow_prompt:
@@ -293,6 +309,7 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
     cfg.cerebras_api_key = creds.cerebras_api_key
     cfg.exa_api_key = creds.exa_api_key
     cfg.voyage_api_key = creds.voyage_api_key
+    cfg.gemini_api_key = creds.gemini_api_key
     cfg.api_key = cfg.openai_api_key
 
     if args.base_url:
@@ -509,6 +526,7 @@ def main() -> None:
                 "anthropic": cfg.anthropic_api_key,
                 "openrouter": cfg.openrouter_api_key,
                 "cerebras": cfg.cerebras_api_key,
+                "gemini": cfg.gemini_api_key,
             }.get(inferred)
             if key:
                 cfg.provider = inferred

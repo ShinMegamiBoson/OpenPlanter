@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from conftest import _tc
+
 from agent.config import AgentConfig
 from agent.engine import RLMEngine
 from agent.model import ModelTurn, ScriptedModel
@@ -89,7 +90,8 @@ class ReplayLoggerUnitTests(unittest.TestCase):
                 depth=0, step=1, messages=list(msgs_v1),
                 response={"r": 1},
             )
-            msgs_v2 = msgs_v1 + [
+            msgs_v2 = [
+                *msgs_v1,
                 {"role": "assistant", "content": "hello"},
                 {"role": "user", "content": "thanks"},
             ]

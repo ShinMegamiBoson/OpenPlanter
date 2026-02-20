@@ -227,7 +227,6 @@ def main() -> None:
         current_time += frame_duration * args.speed
 
         # Feed all events up to current_time
-        fed = False
         while event_idx < len(events):
             ts, data = events[event_idx]
 
@@ -247,7 +246,6 @@ def main() -> None:
                 break
             stream.feed(data)
             event_idx += 1
-            fed = True
 
         # Render frame
         frame = render_frame(screen, font, char_w, char_h, img_w, img_h)

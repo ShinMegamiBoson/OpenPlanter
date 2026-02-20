@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import re
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, cast
 
 from .config import AgentConfig
 from .engine import ContentDeltaCallback, ExternalContext, RLMEngine, StepCallback
@@ -141,7 +142,7 @@ class SessionStore:
                 "external_observations": [],
             }
         try:
-            return json.loads(state_path.read_text(encoding="utf-8"))
+            return cast(dict[str, Any], json.loads(state_path.read_text(encoding="utf-8")))
         except json.JSONDecodeError as exc:
             raise SessionError(f"Session state is invalid JSON: {state_path}") from exc
 
@@ -203,7 +204,7 @@ class SessionRuntime:
         config: AgentConfig,
         session_id: str | None = None,
         resume: bool = False,
-    ) -> "SessionRuntime":
+    ) -> SessionRuntime:
         store = SessionStore(
             workspace=config.workspace,
             session_root_dir=config.session_root_dir,

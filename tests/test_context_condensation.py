@@ -133,6 +133,7 @@ class EngineCondensationTriggerTests(unittest.TestCase):
         """When input_tokens exceeds threshold, engine calls condense_conversation."""
         import tempfile
         from pathlib import Path
+
         from agent.config import AgentConfig
         from agent.engine import RLMEngine
 

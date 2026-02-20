@@ -4,7 +4,6 @@ Single source of truth for all prompt text used by the engine.
 """
 from __future__ import annotations
 
-
 SYSTEM_PROMPT_BASE = """\
 You are OpenPlanter, an analysis and investigation agent operating through a terminal session.
 
