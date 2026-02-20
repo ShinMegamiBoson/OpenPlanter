@@ -9,10 +9,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from conftest import _tc
+
 from agent.config import AgentConfig
 from agent.engine import RLMEngine
-from agent.prompts import build_system_prompt as _build_system_prompt
 from agent.model import Conversation, ModelError, ModelTurn, ScriptedModel, ToolResult
+from agent.prompts import build_system_prompt as _build_system_prompt
 from agent.tools import WorkspaceTools
 
 

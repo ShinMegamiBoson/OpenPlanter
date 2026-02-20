@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from conftest import _tc
+
 from agent.config import AgentConfig
 from agent.engine import RLMEngine
 from agent.model import ModelTurn, ScriptedModel

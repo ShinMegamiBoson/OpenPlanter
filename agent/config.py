@@ -9,6 +9,7 @@ PROVIDER_DEFAULT_MODELS: dict[str, str] = {
     "anthropic": "claude-opus-4-6",
     "openrouter": "anthropic/claude-sonnet-4-5",
     "cerebras": "qwen-3-235b-a22b-instruct-2507",
+    "gemini": "gemini-2.5-flash",
 }
 
 
@@ -31,6 +32,8 @@ class AgentConfig:
     cerebras_api_key: str | None = None
     exa_api_key: str | None = None
     voyage_api_key: str | None = None
+    gemini_api_key: str | None = None
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     max_depth: int = 4
     max_steps_per_call: int = 100
     max_observation_chars: int = 6000
@@ -50,7 +53,7 @@ class AgentConfig:
     demo: bool = False
 
     @classmethod
-    def from_env(cls, workspace: str | Path) -> "AgentConfig":
+    def from_env(cls, workspace: str | Path) -> AgentConfig:
         ws = Path(workspace).expanduser().resolve()
         openai_api_key = (
             os.getenv("OPENPLANTER_OPENAI_API_KEY")
@@ -61,6 +64,11 @@ class AgentConfig:
         cerebras_api_key = os.getenv("OPENPLANTER_CEREBRAS_API_KEY") or os.getenv("CEREBRAS_API_KEY")
         exa_api_key = os.getenv("OPENPLANTER_EXA_API_KEY") or os.getenv("EXA_API_KEY")
         voyage_api_key = os.getenv("OPENPLANTER_VOYAGE_API_KEY") or os.getenv("VOYAGE_API_KEY")
+        gemini_api_key = (
+            os.getenv("OPENPLANTER_GEMINI_API_KEY")
+            or os.getenv("GEMINI_API_KEY")
+            or os.getenv("GOOGLE_API_KEY")
+        )
         openai_base_url = os.getenv("OPENPLANTER_OPENAI_BASE_URL") or os.getenv(
             "OPENPLANTER_BASE_URL",
             "https://api.openai.com/v1",
@@ -70,9 +78,9 @@ class AgentConfig:
             provider=os.getenv("OPENPLANTER_PROVIDER", "auto").strip().lower() or "auto",
             model=os.getenv("OPENPLANTER_MODEL", "claude-opus-4-6"),
             reasoning_effort=(os.getenv("OPENPLANTER_REASONING_EFFORT", "high").strip().lower() or None),
-            base_url=openai_base_url,
+            base_url=openai_base_url,  # type: ignore[arg-type]
             api_key=openai_api_key,
-            openai_base_url=openai_base_url,
+            openai_base_url=openai_base_url,  # type: ignore[arg-type]
             anthropic_base_url=os.getenv("OPENPLANTER_ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1"),
             openrouter_base_url=os.getenv("OPENPLANTER_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
             cerebras_base_url=os.getenv("OPENPLANTER_CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1"),
@@ -83,6 +91,8 @@ class AgentConfig:
             cerebras_api_key=cerebras_api_key,
             exa_api_key=exa_api_key,
             voyage_api_key=voyage_api_key,
+            gemini_api_key=gemini_api_key,
+            gemini_base_url=os.getenv("OPENPLANTER_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"),
             max_depth=int(os.getenv("OPENPLANTER_MAX_DEPTH", "4")),
             max_steps_per_call=int(os.getenv("OPENPLANTER_MAX_STEPS", "100")),
             max_observation_chars=int(os.getenv("OPENPLANTER_MAX_OBS_CHARS", "6000")),

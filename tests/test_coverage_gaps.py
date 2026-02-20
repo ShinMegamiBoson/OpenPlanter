@@ -29,7 +29,6 @@ from agent.model import (
 )
 from agent.settings import normalize_reasoning_effort
 
-
 # ---------------------------------------------------------------------------
 # _strip_quotes
 # ---------------------------------------------------------------------------

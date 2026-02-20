@@ -6,8 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from conftest import _tc
+
 from agent.config import AgentConfig
-from agent.engine import RLMEngine, ExternalContext
+from agent.engine import ExternalContext, RLMEngine
 from agent.model import ModelTurn, ScriptedModel
 from agent.tools import WorkspaceTools
 

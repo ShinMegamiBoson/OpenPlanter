@@ -10,8 +10,9 @@ rather than regex post-processing.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 # Generic path components that should NOT be censored.
 _GENERIC_PATH_PARTS: frozenset[str] = frozenset({
@@ -91,9 +92,9 @@ class DemoRenderHook:
 
     def _process_one(self, renderable: Any) -> Any:
         # Lazy imports so the module loads even without Rich installed.
-        from rich.text import Text
         from rich.markdown import Markdown
         from rich.rule import Rule
+        from rich.text import Text
 
         if isinstance(renderable, Text):
             return self._censor.censor_rich_text(renderable)
@@ -104,7 +105,7 @@ class DemoRenderHook:
 
         if isinstance(renderable, Rule):
             if renderable.title:
-                renderable.title = self._censor.censor_text(renderable.title)
+                renderable.title = self._censor.censor_text(str(renderable.title))
             return renderable
 
         return renderable

@@ -19,7 +19,7 @@ from agent.config import AgentConfig
 from agent.credentials import CredentialStore
 from agent.engine import RLMEngine
 from agent.model import AnthropicModel, OpenAICompatibleModel
-from agent.runtime import SessionRuntime, SessionStore
+from agent.runtime import SessionRuntime
 from agent.tools import WorkspaceTools
 
 # ---------------------------------------------------------------------------
@@ -60,13 +60,13 @@ def _make_anthropic_engine(root: Path, cfg: AgentConfig) -> RLMEngine:
 
 
 def _make_config(root: Path, **overrides) -> AgentConfig:
-    defaults = dict(
-        workspace=root,
-        max_depth=1,
-        max_steps_per_call=8,
-        session_root_dir=".openplanter",
-        max_persisted_observations=400,
-    )
+    defaults = {
+        "workspace": root,
+        "max_depth": 1,
+        "max_steps_per_call": 8,
+        "session_root_dir": ".openplanter",
+        "max_persisted_observations": 400,
+    }
     defaults.update(overrides)
     return AgentConfig(**defaults)
 
