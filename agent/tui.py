@@ -120,6 +120,8 @@ MODEL_ALIASES: dict[str, str] = {
     "cerebras": "qwen-3-235b-a22b-instruct-2507",
     "qwen235b": "qwen-3-235b-a22b-instruct-2507",
     "oss120b": "gpt-oss-120b",
+    "glm5": "glm-5",
+    "zai": "glm-5",
 }
 
 
@@ -165,6 +167,7 @@ def _api_key_for_provider(cfg: AgentConfig, provider: str) -> str | None:
         "anthropic": cfg.anthropic_api_key,
         "openrouter": cfg.openrouter_api_key,
         "cerebras": cfg.cerebras_api_key,
+        "zai": cfg.zai_api_key,
     }.get(provider)
 
 
@@ -179,6 +182,8 @@ def _available_providers(cfg: AgentConfig) -> list[str]:
         providers.append("openrouter")
     if cfg.cerebras_api_key:
         providers.append("cerebras")
+    if cfg.zai_api_key:
+        providers.append("zai")
     return providers
 
 
@@ -207,7 +212,7 @@ def handle_model_command(args: str, ctx: ChatContext) -> list[str]:
         list_target = parts[1] if len(parts) > 1 else None
         if list_target == "all":
             providers = _available_providers(ctx.cfg)
-        elif list_target in {"openai", "anthropic", "openrouter", "cerebras"}:
+        elif list_target in {"openai", "anthropic", "openrouter", "cerebras", "zai"}:
             providers = [list_target]
         else:
             providers = [ctx.cfg.provider]
@@ -267,6 +272,8 @@ def handle_model_command(args: str, ctx: ChatContext) -> list[str]:
             settings.default_model_openrouter = new_model
         elif provider == "cerebras":
             settings.default_model_cerebras = new_model
+        elif provider == "zai":
+            settings.default_model_zai = new_model
         else:
             settings.default_model = new_model
         ctx.settings_store.save(settings)

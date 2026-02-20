@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 import re
 import time
 import threading
@@ -12,7 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import AgentConfig
-from .model import BaseModel, ModelError, ModelTurn, ToolCall, ToolResult
+from .model import BaseModel, ModelError, ModelTurn, RateLimitError, ToolCall, ToolResult
 from .prompts import build_system_prompt
 from .replay_log import ReplayLogger
 from .tool_defs import get_tool_definitions
@@ -326,7 +327,37 @@ class RLMEngine:
             if on_content_delta and depth == 0 and hasattr(model, "on_content_delta"):
                 model.on_content_delta = on_content_delta
             try:
-                turn = model.complete(conversation)
+                rate_limit_retries = 0
+                while True:
+                    try:
+                        turn = model.complete(conversation)
+                        break
+                    except RateLimitError as exc:
+                        if rate_limit_retries >= self.config.rate_limit_max_retries:
+                            self._emit(f"[d{depth}/s{step}] model error: {exc}", on_event)
+                            return f"Model error at depth {depth}, step {step}: {exc}"
+                        rate_limit_retries += 1
+                        delay: float | None = None
+                        if exc.retry_after_sec is not None:
+                            delay = min(
+                                max(exc.retry_after_sec, 0.0),
+                                self.config.rate_limit_retry_after_cap_sec,
+                            )
+                        if delay is None:
+                            delay = self.config.rate_limit_backoff_base_sec * (2 ** (rate_limit_retries - 1))
+                        delay += random.uniform(0.0, 0.25)
+                        delay = min(delay, self.config.rate_limit_backoff_max_sec)
+                        if deadline and (time.monotonic() + delay) > deadline:
+                            self._emit(f"[d{depth}] wall-clock limit reached", on_event)
+                            return "Time limit exceeded. Try a more focused objective."
+                        provider_code = f" ({exc.provider_code})" if exc.provider_code is not None else ""
+                        self._emit(
+                            f"[d{depth}/s{step}] rate limited{provider_code}. "
+                            f"Sleeping {delay:.1f}s before retry {rate_limit_retries}/{self.config.rate_limit_max_retries}...",
+                            on_event,
+                        )
+                        if delay > 0:
+                            time.sleep(delay)
             except ModelError as exc:
                 self._emit(f"[d{depth}/s{step}] model error: {exc}", on_event)
                 return f"Model error at depth {depth}, step {step}: {exc}"

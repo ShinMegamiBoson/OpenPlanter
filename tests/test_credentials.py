@@ -22,6 +22,7 @@ class CredentialTests(unittest.TestCase):
                         "OPENAI_API_KEY=oa-key",
                         "ANTHROPIC_API_KEY=an-key",
                         "OPENROUTER_API_KEY=or-key",
+                        "ZAI_API_KEY=zai-key",
                         "EXA_API_KEY=exa-key",
                     ]
                 ),
@@ -31,6 +32,7 @@ class CredentialTests(unittest.TestCase):
             self.assertEqual(creds.openai_api_key, "oa-key")
             self.assertEqual(creds.anthropic_api_key, "an-key")
             self.assertEqual(creds.openrouter_api_key, "or-key")
+            self.assertEqual(creds.zai_api_key, "zai-key")
             self.assertEqual(creds.exa_api_key, "exa-key")
 
     def test_store_roundtrip(self) -> None:
@@ -41,6 +43,7 @@ class CredentialTests(unittest.TestCase):
                 openai_api_key="oa",
                 anthropic_api_key="an",
                 openrouter_api_key="or",
+                zai_api_key="zai",
                 exa_api_key="exa",
             )
             store.save(creds)

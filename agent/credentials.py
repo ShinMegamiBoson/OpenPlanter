@@ -15,6 +15,7 @@ class CredentialBundle:
     anthropic_api_key: str | None = None
     openrouter_api_key: str | None = None
     cerebras_api_key: str | None = None
+    zai_api_key: str | None = None
     exa_api_key: str | None = None
     voyage_api_key: str | None = None
 
@@ -24,6 +25,7 @@ class CredentialBundle:
             or (self.anthropic_api_key and self.anthropic_api_key.strip())
             or (self.openrouter_api_key and self.openrouter_api_key.strip())
             or (self.cerebras_api_key and self.cerebras_api_key.strip())
+            or (self.zai_api_key and self.zai_api_key.strip())
             or (self.exa_api_key and self.exa_api_key.strip())
             or (self.voyage_api_key and self.voyage_api_key.strip())
         )
@@ -37,6 +39,8 @@ class CredentialBundle:
             self.openrouter_api_key = other.openrouter_api_key
         if not self.cerebras_api_key and other.cerebras_api_key:
             self.cerebras_api_key = other.cerebras_api_key
+        if not self.zai_api_key and other.zai_api_key:
+            self.zai_api_key = other.zai_api_key
         if not self.exa_api_key and other.exa_api_key:
             self.exa_api_key = other.exa_api_key
         if not self.voyage_api_key and other.voyage_api_key:
@@ -52,6 +56,8 @@ class CredentialBundle:
             out["openrouter_api_key"] = self.openrouter_api_key
         if self.cerebras_api_key:
             out["cerebras_api_key"] = self.cerebras_api_key
+        if self.zai_api_key:
+            out["zai_api_key"] = self.zai_api_key
         if self.exa_api_key:
             out["exa_api_key"] = self.exa_api_key
         if self.voyage_api_key:
@@ -67,6 +73,7 @@ class CredentialBundle:
             anthropic_api_key=(payload.get("anthropic_api_key") or "").strip() or None,
             openrouter_api_key=(payload.get("openrouter_api_key") or "").strip() or None,
             cerebras_api_key=(payload.get("cerebras_api_key") or "").strip() or None,
+            zai_api_key=(payload.get("zai_api_key") or "").strip() or None,
             exa_api_key=(payload.get("exa_api_key") or "").strip() or None,
             voyage_api_key=(payload.get("voyage_api_key") or "").strip() or None,
         )
@@ -109,6 +116,8 @@ def parse_env_file(path: Path) -> CredentialBundle:
         or None,
         cerebras_api_key=(env.get("CEREBRAS_API_KEY") or env.get("OPENPLANTER_CEREBRAS_API_KEY") or "").strip()
         or None,
+        zai_api_key=(env.get("ZAI_API_KEY") or env.get("OPENPLANTER_ZAI_API_KEY") or "").strip()
+        or None,
         exa_api_key=(env.get("EXA_API_KEY") or env.get("OPENPLANTER_EXA_API_KEY") or "").strip() or None,
         voyage_api_key=(env.get("VOYAGE_API_KEY") or env.get("OPENPLANTER_VOYAGE_API_KEY") or "").strip() or None,
     )
@@ -132,6 +141,10 @@ def credentials_from_env() -> CredentialBundle:
         or None,
         cerebras_api_key=(
             os.getenv("OPENPLANTER_CEREBRAS_API_KEY") or os.getenv("CEREBRAS_API_KEY") or ""
+        ).strip()
+        or None,
+        zai_api_key=(
+            os.getenv("OPENPLANTER_ZAI_API_KEY") or os.getenv("ZAI_API_KEY") or ""
         ).strip()
         or None,
         exa_api_key=(os.getenv("OPENPLANTER_EXA_API_KEY") or os.getenv("EXA_API_KEY") or "").strip() or None,
@@ -229,6 +242,7 @@ def prompt_for_credentials(
         anthropic_api_key=existing.anthropic_api_key,
         openrouter_api_key=existing.openrouter_api_key,
         cerebras_api_key=existing.cerebras_api_key,
+        zai_api_key=existing.zai_api_key,
         exa_api_key=existing.exa_api_key,
         voyage_api_key=existing.voyage_api_key,
     )
@@ -262,6 +276,7 @@ def prompt_for_credentials(
     current.anthropic_api_key = _ask("Anthropic", current.anthropic_api_key)
     current.openrouter_api_key = _ask("OpenRouter", current.openrouter_api_key)
     current.cerebras_api_key = _ask("Cerebras", current.cerebras_api_key)
+    current.zai_api_key = _ask("Z.AI", current.zai_api_key)
     current.exa_api_key = _ask("Exa", current.exa_api_key)
     current.voyage_api_key = _ask("Voyage", current.voyage_api_key)
     if not force and current.has_any() and not existing.has_any():
