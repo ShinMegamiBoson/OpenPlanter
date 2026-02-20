@@ -145,6 +145,7 @@ class RLMEngine:
         tool_defs = get_tool_definitions(include_subtask=self.config.recursive, include_acceptance_criteria=ac)
         if hasattr(self.model, "tool_defs"):
             self.model.tool_defs = tool_defs
+        self._tool_handlers: dict[str, Callable[[dict[str, Any]], tuple[bool, str]]] = self._build_tool_registry()
 
     def solve(self, objective: str, on_event: EventCallback | None = None) -> str:
         result, _ = self.solve_with_context(objective=objective, on_event=on_event)
@@ -636,6 +637,290 @@ class RLMEngine:
 
         return ToolResult(tc.id, tc.name, observation, is_error=False), is_final
 
+    def _build_tool_registry(self) -> dict[str, Callable[[dict[str, Any]], tuple[bool, str]]]:
+        return {
+            "think": self._handle_think,
+            "list_files": self._handle_list_files,
+            "search_files": self._handle_search_files,
+            "repo_map": self._handle_repo_map,
+            "web_search": self._handle_web_search,
+            "fetch_url": self._handle_fetch_url,
+            "read_file": self._handle_read_file,
+            "write_file": self._handle_write_file,
+            "apply_patch": self._handle_apply_patch,
+            "edit_file": self._handle_edit_file,
+            "hashline_edit": self._handle_hashline_edit,
+            "run_shell": self._handle_run_shell,
+            "run_shell_bg": self._handle_run_shell_bg,
+            "check_shell_bg": self._handle_check_shell_bg,
+            "kill_shell_bg": self._handle_kill_shell_bg,
+            "list_artifacts": self._handle_list_artifacts,
+            "read_artifact": self._handle_read_artifact,
+        }
+
+    def _handle_think(self, args: dict[str, Any]) -> tuple[bool, str]:
+        note = str(args.get("note", ""))
+        return False, f"Thought noted: {note}"
+
+    def _handle_list_files(self, args: dict[str, Any]) -> tuple[bool, str]:
+        glob = args.get("glob")
+        return False, self.tools.list_files(glob=str(glob) if glob else None)
+
+    def _handle_search_files(self, args: dict[str, Any]) -> tuple[bool, str]:
+        query = str(args.get("query", "")).strip()
+        glob = args.get("glob")
+        if not query:
+            return False, "search_files requires non-empty query"
+        return False, self.tools.search_files(query=query, glob=str(glob) if glob else None)
+
+    def _handle_repo_map(self, args: dict[str, Any]) -> tuple[bool, str]:
+        glob = args.get("glob")
+        raw_max_files = args.get("max_files", 200)
+        max_files = raw_max_files if isinstance(raw_max_files, int) else 200
+        return False, self.tools.repo_map(glob=str(glob) if glob else None, max_files=max_files)
+
+    def _handle_web_search(self, args: dict[str, Any]) -> tuple[bool, str]:
+        query = str(args.get("query", "")).strip()
+        if not query:
+            return False, "web_search requires non-empty query"
+        raw_num_results = args.get("num_results", 10)
+        num_results = raw_num_results if isinstance(raw_num_results, int) else 10
+        raw_include_text = args.get("include_text", False)
+        include_text = bool(raw_include_text) if isinstance(raw_include_text, bool) else False
+        return False, self.tools.web_search(
+            query=query,
+            num_results=num_results,
+            include_text=include_text,
+        )
+
+    def _handle_fetch_url(self, args: dict[str, Any]) -> tuple[bool, str]:
+        urls = args.get("urls")
+        if not isinstance(urls, list):
+            return False, "fetch_url requires a list of URL strings"
+        return False, self.tools.fetch_url([str(u) for u in urls if isinstance(u, str)])
+
+    def _handle_read_file(self, args: dict[str, Any]) -> tuple[bool, str]:
+        path = str(args.get("path", "")).strip()
+        if not path:
+            return False, "read_file requires path"
+        hashline = args.get("hashline")
+        hashline = hashline if hashline is not None else True
+        return False, self.tools.read_file(path, hashline=hashline)
+
+    def _handle_write_file(self, args: dict[str, Any]) -> tuple[bool, str]:
+        path = str(args.get("path", "")).strip()
+        if not path:
+            return False, "write_file requires path"
+        content = str(args.get("content", ""))
+        return False, self.tools.write_file(path, content)
+
+    def _handle_apply_patch(self, args: dict[str, Any]) -> tuple[bool, str]:
+        patch = str(args.get("patch", ""))
+        if not patch.strip():
+            return False, "apply_patch requires non-empty patch"
+        return False, self.tools.apply_patch(patch)
+
+    def _handle_edit_file(self, args: dict[str, Any]) -> tuple[bool, str]:
+        path = str(args.get("path", "")).strip()
+        if not path:
+            return False, "edit_file requires path"
+        old_text = str(args.get("old_text", ""))
+        new_text = str(args.get("new_text", ""))
+        if not old_text:
+            return False, "edit_file requires old_text"
+        return False, self.tools.edit_file(path, old_text, new_text)
+
+    def _handle_hashline_edit(self, args: dict[str, Any]) -> tuple[bool, str]:
+        path = str(args.get("path", "")).strip()
+        if not path:
+            return False, "hashline_edit requires path"
+        edits = args.get("edits")
+        if not isinstance(edits, list):
+            return False, "hashline_edit requires edits array"
+        return False, self.tools.hashline_edit(path, edits)
+
+    def _handle_run_shell(self, args: dict[str, Any]) -> tuple[bool, str]:
+        command = str(args.get("command", "")).strip()
+        if not command:
+            return False, "run_shell requires command"
+        raw_timeout = args.get("timeout")
+        timeout = int(raw_timeout) if raw_timeout is not None else None
+        return False, self.tools.run_shell(command, timeout=timeout)
+
+    def _handle_run_shell_bg(self, args: dict[str, Any]) -> tuple[bool, str]:
+        command = str(args.get("command", "")).strip()
+        if not command:
+            return False, "run_shell_bg requires command"
+        return False, self.tools.run_shell_bg(command)
+
+    def _handle_check_shell_bg(self, args: dict[str, Any]) -> tuple[bool, str]:
+        raw_id = args.get("job_id")
+        if raw_id is None:
+            return False, "check_shell_bg requires job_id"
+        return False, self.tools.check_shell_bg(int(raw_id))
+
+    def _handle_kill_shell_bg(self, args: dict[str, Any]) -> tuple[bool, str]:
+        raw_id = args.get("job_id")
+        if raw_id is None:
+            return False, "kill_shell_bg requires job_id"
+        return False, self.tools.kill_shell_bg(int(raw_id))
+
+    def _handle_list_artifacts(self, args: dict[str, Any]) -> tuple[bool, str]:
+        return False, self._list_artifacts()
+
+    def _handle_read_artifact(self, args: dict[str, Any]) -> tuple[bool, str]:
+        aid = str(args.get("artifact_id", "")).strip()
+        if not aid:
+            return False, "read_artifact requires artifact_id"
+        offset = int(args.get("offset", 0) or 0)
+        limit = int(args.get("limit", 100) or 100)
+        return False, self._read_artifact(aid, offset, limit)
+
+    def _apply_subtask(
+        self,
+        args: dict[str, Any],
+        depth: int,
+        context: ExternalContext,
+        on_event: EventCallback | None,
+        on_step: StepCallback | None,
+        deadline: float,
+        current_model: BaseModel | None,
+        replay_logger: ReplayLogger | None,
+        step: int,
+    ) -> tuple[bool, str]:
+        if not self.config.recursive:
+            return False, "Subtask tool not available in flat mode."
+        if depth >= self.config.max_depth:
+            return False, "Max recursion depth reached; cannot run subtask."
+        objective = str(args.get("objective", "")).strip()
+        if not objective:
+            return False, "subtask requires objective"
+        criteria = str(args.get("acceptance_criteria", "") or "").strip()
+        if self.config.acceptance_criteria and not criteria:
+            return False, (
+                "subtask requires acceptance_criteria when acceptance criteria mode is enabled. "
+                "Provide specific, verifiable criteria for judging the result."
+            )
+
+        # Sub-model routing
+        requested_model_name = args.get("model")
+        requested_effort = args.get("reasoning_effort")
+        subtask_model: BaseModel | None = None
+
+        if (requested_model_name or requested_effort) and self.model_factory:
+            cur = current_model or self.model
+            cur_name = getattr(cur, "model", "")
+            cur_effort = getattr(cur, "reasoning_effort", None)
+            cur_tier = _model_tier(cur_name, cur_effort)
+
+            req_name = requested_model_name or cur_name
+            req_effort = requested_effort
+            req_tier = _model_tier(req_name, req_effort or cur_effort)
+
+            if req_tier < cur_tier:
+                return False, (
+                    f"Cannot delegate to higher-tier model "
+                    f"(current tier {cur_tier}, requested tier {req_tier}). "
+                    f"Use an equal or lower-tier model."
+                )
+
+            cache_key = (req_name, requested_effort)
+            with self._lock:
+                if cache_key not in self._model_cache:
+                    self._model_cache[cache_key] = self.model_factory(req_name, requested_effort)
+                subtask_model = self._model_cache[cache_key]
+
+        self._emit(f"[d{depth}] >> entering subtask: {objective}", on_event)
+        child_logger = replay_logger.child(depth, step) if replay_logger else None
+        subtask_result = self._solve_recursive(
+            objective=objective,
+            depth=depth + 1,
+            context=context,
+            on_event=on_event,
+            on_step=on_step,
+            on_content_delta=None,
+            deadline=deadline,
+            model_override=subtask_model,
+            replay_logger=child_logger,
+        )
+        observation = f"Subtask result for '{objective}':\n{subtask_result}"
+
+        if criteria and self.config.acceptance_criteria:
+            verdict = self._judge_result(objective, criteria, subtask_result, current_model)
+            tag = "PASS" if verdict.startswith("PASS") else "FAIL"
+            observation += f"\n\n[ACCEPTANCE CRITERIA: {tag}]\n{verdict}"
+
+        return False, observation
+
+    def _apply_execute(
+        self,
+        args: dict[str, Any],
+        depth: int,
+        context: ExternalContext,
+        on_event: EventCallback | None,
+        on_step: StepCallback | None,
+        deadline: float,
+        current_model: BaseModel | None,
+        replay_logger: ReplayLogger | None,
+        step: int,
+    ) -> tuple[bool, str]:
+        objective = str(args.get("objective", "")).strip()
+        if not objective:
+            return False, "execute requires objective"
+        criteria = str(args.get("acceptance_criteria", "") or "").strip()
+        if self.config.acceptance_criteria and not criteria:
+            return False, (
+                "execute requires acceptance_criteria when acceptance criteria mode is enabled. "
+                "Provide specific, verifiable criteria for judging the result."
+            )
+        if depth >= self.config.max_depth:
+            return False, "Max recursion depth reached; cannot run execute."
+
+        # Resolve lowest-tier model for the executor.
+        cur = current_model or self.model
+        cur_name = getattr(cur, "model", "")
+        exec_name, exec_effort = _lowest_tier_model(cur_name)
+
+        exec_model: BaseModel | None = None
+        if self.model_factory:
+            cache_key = (exec_name, exec_effort)
+            with self._lock:
+                if cache_key not in self._model_cache:
+                    self._model_cache[cache_key] = self.model_factory(exec_name, exec_effort)
+                exec_model = self._model_cache[cache_key]
+
+        # Give executor full tools (no subtask, no execute).
+        _saved_defs = None
+        if exec_model and hasattr(exec_model, "tool_defs"):
+            exec_model.tool_defs = get_tool_definitions(include_subtask=False, include_acceptance_criteria=self.config.acceptance_criteria)
+        elif exec_model is None and hasattr(cur, "tool_defs"):
+            _saved_defs = cur.tool_defs
+            cur.tool_defs = get_tool_definitions(include_subtask=False, include_acceptance_criteria=self.config.acceptance_criteria)
+
+        self._emit(f"[d{depth}] >> executing leaf: {objective}", on_event)
+        child_logger = replay_logger.child(depth, step) if replay_logger else None
+        exec_result = self._solve_recursive(
+            objective=objective,
+            depth=depth + 1,
+            context=context,
+            on_event=on_event,
+            on_step=on_step,
+            on_content_delta=None,
+            deadline=deadline,
+            model_override=exec_model,
+            replay_logger=child_logger,
+        )
+        if _saved_defs is not None:
+            cur.tool_defs = _saved_defs  # type: ignore[attr-defined]
+        observation = f"Execute result for '{objective}':\n{exec_result}"
+
+        if criteria and self.config.acceptance_criteria:
+            verdict = self._judge_result(objective, criteria, exec_result, current_model)
+            tag = "PASS" if verdict.startswith("PASS") else "FAIL"
+            observation += f"\n\n[ACCEPTANCE CRITERIA: {tag}]\n{verdict}"
+
+        return False, observation
+
     def _apply_tool_call(
         self,
         tool_call: ToolCall,
@@ -654,246 +939,14 @@ class RLMEngine:
         if policy_error:
             return False, policy_error
 
-        if name == "think":
-            note = str(args.get("note", ""))
-            return False, f"Thought noted: {note}"
-
-        if name == "list_files":
-            glob = args.get("glob")
-            return False, self.tools.list_files(glob=str(glob) if glob else None)
-
-        if name == "search_files":
-            query = str(args.get("query", "")).strip()
-            glob = args.get("glob")
-            if not query:
-                return False, "search_files requires non-empty query"
-            return False, self.tools.search_files(query=query, glob=str(glob) if glob else None)
-
-        if name == "repo_map":
-            glob = args.get("glob")
-            raw_max_files = args.get("max_files", 200)
-            max_files = raw_max_files if isinstance(raw_max_files, int) else 200
-            return False, self.tools.repo_map(glob=str(glob) if glob else None, max_files=max_files)
-
-        if name == "web_search":
-            query = str(args.get("query", "")).strip()
-            if not query:
-                return False, "web_search requires non-empty query"
-            raw_num_results = args.get("num_results", 10)
-            num_results = raw_num_results if isinstance(raw_num_results, int) else 10
-            raw_include_text = args.get("include_text", False)
-            include_text = bool(raw_include_text) if isinstance(raw_include_text, bool) else False
-            return False, self.tools.web_search(
-                query=query,
-                num_results=num_results,
-                include_text=include_text,
-            )
-
-        if name == "fetch_url":
-            urls = args.get("urls")
-            if not isinstance(urls, list):
-                return False, "fetch_url requires a list of URL strings"
-            return False, self.tools.fetch_url([str(u) for u in urls if isinstance(u, str)])
-
-        if name == "read_file":
-            path = str(args.get("path", "")).strip()
-            if not path:
-                return False, "read_file requires path"
-            hashline = args.get("hashline")
-            hashline = hashline if hashline is not None else True
-            return False, self.tools.read_file(path, hashline=hashline)
-
-        if name == "write_file":
-            path = str(args.get("path", "")).strip()
-            if not path:
-                return False, "write_file requires path"
-            content = str(args.get("content", ""))
-            return False, self.tools.write_file(path, content)
-
-        if name == "apply_patch":
-            patch = str(args.get("patch", ""))
-            if not patch.strip():
-                return False, "apply_patch requires non-empty patch"
-            return False, self.tools.apply_patch(patch)
-
-        if name == "edit_file":
-            path = str(args.get("path", "")).strip()
-            if not path:
-                return False, "edit_file requires path"
-            old_text = str(args.get("old_text", ""))
-            new_text = str(args.get("new_text", ""))
-            if not old_text:
-                return False, "edit_file requires old_text"
-            return False, self.tools.edit_file(path, old_text, new_text)
-
-        if name == "hashline_edit":
-            path = str(args.get("path", "")).strip()
-            if not path:
-                return False, "hashline_edit requires path"
-            edits = args.get("edits")
-            if not isinstance(edits, list):
-                return False, "hashline_edit requires edits array"
-            return False, self.tools.hashline_edit(path, edits)
-
-        if name == "run_shell":
-            command = str(args.get("command", "")).strip()
-            if not command:
-                return False, "run_shell requires command"
-            raw_timeout = args.get("timeout")
-            timeout = int(raw_timeout) if raw_timeout is not None else None
-            return False, self.tools.run_shell(command, timeout=timeout)
-
-        if name == "run_shell_bg":
-            command = str(args.get("command", "")).strip()
-            if not command:
-                return False, "run_shell_bg requires command"
-            return False, self.tools.run_shell_bg(command)
-
-        if name == "check_shell_bg":
-            raw_id = args.get("job_id")
-            if raw_id is None:
-                return False, "check_shell_bg requires job_id"
-            return False, self.tools.check_shell_bg(int(raw_id))
-
-        if name == "kill_shell_bg":
-            raw_id = args.get("job_id")
-            if raw_id is None:
-                return False, "kill_shell_bg requires job_id"
-            return False, self.tools.kill_shell_bg(int(raw_id))
+        handler = self._tool_handlers.get(name)
+        if handler is not None:
+            return handler(args)
 
         if name == "subtask":
-            if not self.config.recursive:
-                return False, "Subtask tool not available in flat mode."
-            if depth >= self.config.max_depth:
-                return False, "Max recursion depth reached; cannot run subtask."
-            objective = str(args.get("objective", "")).strip()
-            if not objective:
-                return False, "subtask requires objective"
-            criteria = str(args.get("acceptance_criteria", "") or "").strip()
-            if self.config.acceptance_criteria and not criteria:
-                return False, (
-                    "subtask requires acceptance_criteria when acceptance criteria mode is enabled. "
-                    "Provide specific, verifiable criteria for judging the result."
-                )
-
-            # Sub-model routing
-            requested_model_name = args.get("model")
-            requested_effort = args.get("reasoning_effort")
-            subtask_model: BaseModel | None = None
-
-            if (requested_model_name or requested_effort) and self.model_factory:
-                cur = current_model or self.model
-                cur_name = getattr(cur, "model", "")
-                cur_effort = getattr(cur, "reasoning_effort", None)
-                cur_tier = _model_tier(cur_name, cur_effort)
-
-                req_name = requested_model_name or cur_name
-                req_effort = requested_effort
-                req_tier = _model_tier(req_name, req_effort or cur_effort)
-
-                if req_tier < cur_tier:
-                    return False, (
-                        f"Cannot delegate to higher-tier model "
-                        f"(current tier {cur_tier}, requested tier {req_tier}). "
-                        f"Use an equal or lower-tier model."
-                    )
-
-                cache_key = (req_name, requested_effort)
-                with self._lock:
-                    if cache_key not in self._model_cache:
-                        self._model_cache[cache_key] = self.model_factory(req_name, requested_effort)
-                    subtask_model = self._model_cache[cache_key]
-
-            self._emit(f"[d{depth}] >> entering subtask: {objective}", on_event)
-            child_logger = replay_logger.child(depth, step) if replay_logger else None
-            subtask_result = self._solve_recursive(
-                objective=objective,
-                depth=depth + 1,
-                context=context,
-                on_event=on_event,
-                on_step=on_step,
-                on_content_delta=None,
-                deadline=deadline,
-                model_override=subtask_model,
-                replay_logger=child_logger,
-            )
-            observation = f"Subtask result for '{objective}':\n{subtask_result}"
-
-            if criteria and self.config.acceptance_criteria:
-                verdict = self._judge_result(objective, criteria, subtask_result, current_model)
-                tag = "PASS" if verdict.startswith("PASS") else "FAIL"
-                observation += f"\n\n[ACCEPTANCE CRITERIA: {tag}]\n{verdict}"
-
-            return False, observation
-
+            return self._apply_subtask(args, depth, context, on_event, on_step, deadline, current_model, replay_logger, step)
         if name == "execute":
-            objective = str(args.get("objective", "")).strip()
-            if not objective:
-                return False, "execute requires objective"
-            criteria = str(args.get("acceptance_criteria", "") or "").strip()
-            if self.config.acceptance_criteria and not criteria:
-                return False, (
-                    "execute requires acceptance_criteria when acceptance criteria mode is enabled. "
-                    "Provide specific, verifiable criteria for judging the result."
-                )
-            if depth >= self.config.max_depth:
-                return False, "Max recursion depth reached; cannot run execute."
-
-            # Resolve lowest-tier model for the executor.
-            cur = current_model or self.model
-            cur_name = getattr(cur, "model", "")
-            exec_name, exec_effort = _lowest_tier_model(cur_name)
-
-            exec_model: BaseModel | None = None
-            if self.model_factory:
-                cache_key = (exec_name, exec_effort)
-                with self._lock:
-                    if cache_key not in self._model_cache:
-                        self._model_cache[cache_key] = self.model_factory(exec_name, exec_effort)
-                    exec_model = self._model_cache[cache_key]
-
-            # Give executor full tools (no subtask, no execute).
-            _saved_defs = None
-            if exec_model and hasattr(exec_model, "tool_defs"):
-                exec_model.tool_defs = get_tool_definitions(include_subtask=False, include_acceptance_criteria=self.config.acceptance_criteria)
-            elif exec_model is None and hasattr(cur, "tool_defs"):
-                _saved_defs = cur.tool_defs
-                cur.tool_defs = get_tool_definitions(include_subtask=False, include_acceptance_criteria=self.config.acceptance_criteria)
-
-            self._emit(f"[d{depth}] >> executing leaf: {objective}", on_event)
-            child_logger = replay_logger.child(depth, step) if replay_logger else None
-            exec_result = self._solve_recursive(
-                objective=objective,
-                depth=depth + 1,
-                context=context,
-                on_event=on_event,
-                on_step=on_step,
-                on_content_delta=None,
-                deadline=deadline,
-                model_override=exec_model,
-                replay_logger=child_logger,
-            )
-            if _saved_defs is not None:
-                cur.tool_defs = _saved_defs  # type: ignore[attr-defined]
-            observation = f"Execute result for '{objective}':\n{exec_result}"
-
-            if criteria and self.config.acceptance_criteria:
-                verdict = self._judge_result(objective, criteria, exec_result, current_model)
-                tag = "PASS" if verdict.startswith("PASS") else "FAIL"
-                observation += f"\n\n[ACCEPTANCE CRITERIA: {tag}]\n{verdict}"
-
-            return False, observation
-
-        if name == "list_artifacts":
-            return False, self._list_artifacts()
-
-        if name == "read_artifact":
-            aid = str(args.get("artifact_id", "")).strip()
-            if not aid:
-                return False, "read_artifact requires artifact_id"
-            offset = int(args.get("offset", 0) or 0)
-            limit = int(args.get("limit", 100) or 100)
-            return False, self._read_artifact(aid, offset, limit)
+            return self._apply_execute(args, depth, context, on_event, on_step, deadline, current_model, replay_logger, step)
 
         return False, f"Unknown action type: {name}"
 
