@@ -78,15 +78,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Record an OpenPlanter demo.")
     parser.add_argument("-o", "--output", default="demo.cast", help="Output .cast file path.")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="Prompt to type into the TUI.")
+    parser.add_argument("--cols", type=int, default=120, help="Terminal width.")
+    parser.add_argument("--rows", type=int, default=32, help="Terminal height.")
     parser.add_argument("--max-steps", type=int, default=8, help="Max agent steps (keeps the recording short).")
     parser.add_argument("--timeout", type=int, default=600, help="Max seconds to wait for the agent to finish.")
     args = parser.parse_args()
 
     agent_cmd = f"python -m agent --demo --max-steps {args.max_steps}"
     cmd = f"asciinema rec --overwrite -c '{agent_cmd}' {args.output}"
-    print(f"Starting recording -> {args.output}")
+    print(f"Starting recording -> {args.output} ({args.cols}x{args.rows})")
 
-    child = pexpect.spawn("bash", ["-c", cmd], encoding="utf-8", timeout=args.timeout)
+    child = pexpect.spawn(
+        "bash", ["-c", cmd],
+        encoding="utf-8",
+        timeout=args.timeout,
+        dimensions=(args.rows, args.cols),
+    )
     child.logfile_read = sys.stdout
 
     # Wait for the TUI to boot (look for the "you>" prompt).
