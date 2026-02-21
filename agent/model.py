@@ -561,6 +561,41 @@ def list_openrouter_models(
     return _sorted_models(rows)
 
 
+def list_ollama_models(
+    base_url: str = "http://localhost:11434/v1",
+    timeout_sec: int = 10,
+) -> list[dict[str, Any]]:
+    # Ollama's native API endpoint is /api/tags; strip /v1 suffix to reach it.
+    native_url = base_url.rstrip("/")
+    if native_url.endswith("/v1"):
+        native_url = native_url[:-3]
+    parsed = _http_json(
+        url=native_url.rstrip("/") + "/api/tags",
+        method="GET",
+        headers={"Content-Type": "application/json"},
+        timeout_sec=timeout_sec,
+    )
+    rows: list[dict[str, Any]] = []
+    models = parsed.get("models")
+    if isinstance(models, list):
+        for row in models:
+            if not isinstance(row, dict):
+                continue
+            model_id = str(row.get("name", "")).strip()
+            if not model_id:
+                continue
+            created = _parse_timestamp(row.get("modified_at") or row.get("created_at"))
+            rows.append(
+                {
+                    "provider": "ollama",
+                    "id": model_id,
+                    "created_ts": created,
+                    "raw": row,
+                }
+            )
+    return _sorted_models(rows)
+
+
 # ---------------------------------------------------------------------------
 # OpenAI-compatible model (native tool calling)
 # ---------------------------------------------------------------------------
@@ -1004,7 +1039,8 @@ class ScriptedModel:
 @dataclass
 class EchoFallbackModel:
     note: str = (
-        "No provider API keys configured. Set OpenAI/Anthropic/OpenRouter keys to use a live LLM."
+        "No provider API keys configured. Set OpenAI/Anthropic/OpenRouter keys "
+        "or use --provider ollama for a local model."
     )
 
     def create_conversation(self, system_prompt: str, initial_user_message: str) -> Conversation:

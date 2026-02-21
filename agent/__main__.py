@@ -33,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--provider",
         default=None,
-        choices=["auto", "openai", "anthropic", "openrouter", "cerebras", "all"],
+        choices=["auto", "openai", "anthropic", "openrouter", "cerebras", "ollama", "all"],
         help="Model provider. Use 'all' only with --list-models.",
     )
     parser.add_argument("--model", help="Model name (use 'newest' to auto-select latest from API).")
@@ -66,6 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--default-model-cerebras",
         help="Persist workspace default model for Cerebras provider.",
+    )
+    parser.add_argument(
+        "--default-model-ollama",
+        help="Persist workspace default model for Ollama provider.",
     )
     parser.add_argument(
         "--show-settings",
@@ -144,7 +148,7 @@ def _format_ts(ts: int) -> str:
 
 def _resolve_provider(requested: str, creds: CredentialBundle) -> str:
     requested = requested.strip().lower()
-    if requested in {"openai", "anthropic", "openrouter", "cerebras"}:
+    if requested in {"openai", "anthropic", "openrouter", "cerebras", "ollama"}:
         return requested
     if requested == "all":
         return "all"
@@ -162,9 +166,9 @@ def _resolve_provider(requested: str, creds: CredentialBundle) -> str:
 def _print_models(cfg: AgentConfig, requested_provider: str) -> int:
     providers: list[str]
     if requested_provider == "all":
-        providers = ["openai", "anthropic", "openrouter", "cerebras"]
+        providers = ["openai", "anthropic", "openrouter", "cerebras", "ollama"]
     elif requested_provider == "auto":
-        providers = ["openai", "anthropic", "openrouter", "cerebras"]
+        providers = ["openai", "anthropic", "openrouter", "cerebras", "ollama"]
     else:
         providers = [requested_provider]
 
@@ -304,6 +308,8 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
             cfg.openrouter_base_url = args.base_url
         elif cfg.provider == "cerebras":
             cfg.cerebras_base_url = args.base_url
+        elif cfg.provider == "ollama":
+            cfg.ollama_base_url = args.base_url
         cfg.base_url = args.base_url
 
     if args.model:
@@ -379,6 +385,9 @@ def _apply_persistent_settings(
     if args.default_model_cerebras is not None:
         settings.default_model_cerebras = args.default_model_cerebras.strip() or None
         changed = True
+    if args.default_model_ollama is not None:
+        settings.default_model_ollama = args.default_model_ollama.strip() or None
+        changed = True
 
     if changed:
         store.save(settings)
@@ -409,6 +418,7 @@ def _print_settings(settings: PersistentSettings) -> None:
     print(f"  default_model_anthropic: {settings.default_model_anthropic or '(unset)'}")
     print(f"  default_model_openrouter: {settings.default_model_openrouter or '(unset)'}")
     print(f"  default_model_cerebras: {settings.default_model_cerebras or '(unset)'}")
+    print(f"  default_model_ollama: {settings.default_model_ollama or '(unset)'}")
 
 
 def _has_non_interactive_command(args: argparse.Namespace) -> bool:
@@ -433,6 +443,8 @@ def _has_non_interactive_command(args: argparse.Namespace) -> bool:
     if args.default_model_openrouter is not None:
         return True
     if args.default_model_cerebras is not None:
+        return True
+    if args.default_model_ollama is not None:
         return True
     return False
 
@@ -509,6 +521,7 @@ def main() -> None:
                 "anthropic": cfg.anthropic_api_key,
                 "openrouter": cfg.openrouter_api_key,
                 "cerebras": cfg.cerebras_api_key,
+                "ollama": "ollama",
             }.get(inferred)
             if key:
                 cfg.provider = inferred

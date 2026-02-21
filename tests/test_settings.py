@@ -160,7 +160,7 @@ class InferProviderTests(unittest.TestCase):
 
     def test_unknown_returns_none(self) -> None:
         self.assertIsNone(infer_provider_for_model("my-custom-model"))
-        self.assertIsNone(infer_provider_for_model("llama-3.1"))
+        self.assertIsNone(infer_provider_for_model("some-random-model"))
 
 
 class ValidateModelProviderTests(unittest.TestCase):
@@ -181,7 +181,7 @@ class ValidateModelProviderTests(unittest.TestCase):
 
     def test_unknown_model_passes(self) -> None:
         _validate_model_provider("my-custom-model", "openai")
-        _validate_model_provider("llama-3.1", "anthropic")
+        _validate_model_provider("some-random-model", "anthropic")
 
 
 if __name__ == "__main__":

@@ -17,6 +17,7 @@ from .model import (
     ModelError,
     OpenAICompatibleModel,
     list_anthropic_models,
+    list_ollama_models,
     list_openai_models,
     list_openrouter_models,
 )
@@ -27,6 +28,11 @@ from .tools import WorkspaceTools
 _ANTHROPIC_RE = re.compile(r"^claude", re.IGNORECASE)
 _OPENAI_RE = re.compile(r"^(gpt|o[1-4]-|o[1-4]$|chatgpt|dall-e|tts-|whisper)", re.IGNORECASE)
 _CEREBRAS_RE = re.compile(r"^(llama.*cerebras|qwen-3|gpt-oss|zai-glm)", re.IGNORECASE)
+_OLLAMA_RE = re.compile(
+    r"^(llama|mistral|gemma|phi|codellama|deepseek|vicuna|tinyllama|"
+    r"neural-chat|dolphin|wizardlm|orca|nous-hermes|command-r|qwen(?!-3))",
+    re.IGNORECASE,
+)
 
 
 def infer_provider_for_model(model: str) -> str | None:
@@ -39,6 +45,8 @@ def infer_provider_for_model(model: str) -> str | None:
         return "cerebras"
     if _OPENAI_RE.search(model):
         return "openai"
+    if _OLLAMA_RE.search(model):
+        return "ollama"
     return None
 
 
@@ -73,6 +81,8 @@ def _fetch_models_for_provider(cfg: AgentConfig, provider: str) -> list[dict]:
         if not cfg.cerebras_api_key:
             raise ModelError("Cerebras key not configured.")
         return list_openai_models(api_key=cfg.cerebras_api_key, base_url=cfg.cerebras_base_url)
+    if provider == "ollama":
+        return list_ollama_models(base_url=cfg.ollama_base_url)
     raise ModelError(f"Unknown provider: {provider}")
 
 
@@ -128,9 +138,17 @@ def build_model_factory(cfg: AgentConfig) -> ModelFactory | None:
                 base_url=cfg.cerebras_base_url,
                 reasoning_effort=effort,
             )
+        if provider == "ollama":
+            return OpenAICompatibleModel(
+                model=model_name,
+                api_key="ollama",
+                base_url=cfg.ollama_base_url,
+                reasoning_effort=effort,
+                strict_tools=False,
+            )
         raise ModelError(f"No API key available for model '{model_name}' (provider={provider})")
 
-    if cfg.anthropic_api_key or cfg.openai_api_key or cfg.openrouter_api_key or cfg.cerebras_api_key:
+    if cfg.anthropic_api_key or cfg.openai_api_key or cfg.openrouter_api_key or cfg.cerebras_api_key or cfg.ollama_base_url:
         return _factory
     return None
 
@@ -180,6 +198,14 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
             api_key=cfg.cerebras_api_key,
             base_url=cfg.cerebras_base_url,
             reasoning_effort=cfg.reasoning_effort,
+        )
+    elif cfg.provider == "ollama":
+        model = OpenAICompatibleModel(
+            model=model_name,
+            api_key="ollama",
+            base_url=cfg.ollama_base_url,
+            reasoning_effort=cfg.reasoning_effort,
+            strict_tools=False,
         )
     elif cfg.provider == "anthropic" and cfg.anthropic_api_key:
         model = AnthropicModel(

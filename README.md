@@ -38,6 +38,19 @@ The container mounts `./workspace` as the agent's working directory.
 | Anthropic | `claude-opus-4-6` | `ANTHROPIC_API_KEY` |
 | OpenRouter | `anthropic/claude-sonnet-4-5` | `OPENROUTER_API_KEY` |
 | Cerebras | `qwen-3-235b-a22b-instruct-2507` | `CEREBRAS_API_KEY` |
+| Ollama | `llama3.2` | (none — local) |
+
+### Local Models (Ollama)
+
+[Ollama](https://ollama.com) runs models locally with no API key. Install Ollama, pull a model (`ollama pull llama3.2`), then:
+
+```bash
+openplanter-agent --provider ollama
+openplanter-agent --provider ollama --model mistral
+openplanter-agent --provider ollama --list-models
+```
+
+The base URL defaults to `http://localhost:11434/v1` and can be overridden with `OPENPLANTER_OLLAMA_BASE_URL` or `--base-url`.
 
 Additional service keys: `EXA_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings).
 
@@ -76,7 +89,7 @@ openplanter-agent [options]
 
 | Flag | Description |
 |------|-------------|
-| `--provider NAME` | `auto`, `openai`, `anthropic`, `openrouter`, `cerebras` |
+| `--provider NAME` | `auto`, `openai`, `anthropic`, `openrouter`, `cerebras`, `ollama` |
 | `--model NAME` | Model name or `newest` to auto-select |
 | `--reasoning-effort LEVEL` | `low`, `medium`, `high`, or `none` |
 | `--list-models` | Fetch available models from the provider API |
