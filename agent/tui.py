@@ -508,6 +508,12 @@ class _ActivityDisplay:
         self._live: Any | None = None
         self._active = False
 
+    # -- Rich renderable protocol --------------------------------------------
+
+    def __rich__(self) -> "Any":
+        """Let Rich's Live auto-refresh poll current state instead of pushing updates."""
+        return self._build_renderable()
+
     # -- lifecycle -----------------------------------------------------------
 
     def start(self, mode: str = "thinking", step_label: str = "") -> None:
@@ -522,16 +528,12 @@ class _ActivityDisplay:
             self._start_time = time.monotonic()
 
         if self._active and self._live is not None:
-            # Reuse existing Live — just update mode
-            try:
-                self._live.update(self._build_renderable())
-            except Exception:
-                pass
+            # Reuse existing Live — state updated above, auto-refresh picks it up.
             return
 
         self._active = True
         self._live = Live(
-            self._build_renderable(),
+            self,
             console=self._console,
             transient=True,
             refresh_per_second=8,
@@ -556,7 +558,10 @@ class _ActivityDisplay:
     # -- data feeds ----------------------------------------------------------
 
     def feed(self, delta_type: str, text: str) -> None:
-        """Handle thinking or text content deltas."""
+        """Handle thinking or text content deltas.
+
+        Only updates internal state — the Live auto-refresh renders at 8fps.
+        """
         if not self._active:
             return
         with self._lock:
@@ -566,14 +571,12 @@ class _ActivityDisplay:
                 self._text_buf = ""
             if delta_type in ("thinking", "text"):
                 self._text_buf += text
-        if self._live is not None:
-            try:
-                self._live.update(self._build_renderable())
-            except Exception:
-                pass
 
     def set_tool(self, tool_name: str, key_arg: str = "", step_label: str = "") -> None:
-        """Switch to tool mode."""
+        """Switch to tool mode.
+
+        Only updates internal state — the Live auto-refresh renders at 8fps.
+        """
         with self._lock:
             self._mode = "tool"
             self._tool_name = tool_name
@@ -585,11 +588,6 @@ class _ActivityDisplay:
         if not self._active:
             self.start(mode="tool", step_label=step_label)
             return
-        if self._live is not None:
-            try:
-                self._live.update(self._build_renderable())
-            except Exception:
-                pass
 
     def set_step_label(self, label: str) -> None:
         with self._lock:
