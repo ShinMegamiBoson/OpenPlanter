@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import base64
 import fnmatch
 import json
 import os
@@ -504,6 +505,48 @@ class WorkspaceTools:
                 f"{i}|{line}" for i, line in enumerate(clipped.splitlines(), 1)
             )
         return f"# {rel}\n{numbered}"
+
+    _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+    _MAX_IMAGE_BYTES = 20 * 1024 * 1024  # 20 MB
+    _MEDIA_TYPES = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }
+
+    def read_image(self, path: str) -> tuple[str, str | None, str | None]:
+        """Read an image file. Returns (text_description, base64_data, media_type)."""
+        resolved = self._resolve_path(path)
+        if not resolved.exists():
+            return f"File not found: {path}", None, None
+        if resolved.is_dir():
+            return f"Path is a directory, not a file: {path}", None, None
+        ext = resolved.suffix.lower()
+        if ext not in self._IMAGE_EXTENSIONS:
+            return (
+                f"Unsupported image format: {ext}. "
+                f"Supported: {', '.join(sorted(self._IMAGE_EXTENSIONS))}"
+            ), None, None
+        try:
+            size = resolved.stat().st_size
+        except OSError as exc:
+            return f"Failed to read image {path}: {exc}", None, None
+        if size > self._MAX_IMAGE_BYTES:
+            return (
+                f"Image too large: {size:,} bytes "
+                f"(max {self._MAX_IMAGE_BYTES:,} bytes)"
+            ), None, None
+        try:
+            raw = resolved.read_bytes()
+        except OSError as exc:
+            return f"Failed to read image {path}: {exc}", None, None
+        b64 = base64.b64encode(raw).decode("ascii")
+        media_type = self._MEDIA_TYPES[ext]
+        rel = resolved.relative_to(self.root).as_posix()
+        text = f"Image {rel} ({len(raw):,} bytes, {media_type})"
+        return text, b64, media_type
 
     def write_file(self, path: str, content: str) -> str:
         resolved = self._resolve_path(path)

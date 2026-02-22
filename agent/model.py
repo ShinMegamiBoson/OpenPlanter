@@ -28,12 +28,20 @@ class ToolCall:
 
 
 @dataclass
+class ImageData:
+    """Base64-encoded image payload for vision-capable models."""
+    base64_data: str
+    media_type: str  # e.g. "image/png"
+
+
+@dataclass
 class ToolResult:
     """Result of executing a tool call."""
     tool_call_id: str
     name: str
     content: str
     is_error: bool = False
+    image: ImageData | None = None
 
 
 @dataclass
@@ -785,6 +793,23 @@ class OpenAICompatibleModel:
                 "name": r.name,
                 "content": r.content,
             })
+            # OpenAI tool results are text-only; inject a user message with the image.
+            if r.image is not None:
+                conversation._provider_messages.append({
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{r.image.media_type};base64,{r.image.base64_data}",
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": f"[Image from {r.name}: {r.content}]",
+                        },
+                    ],
+                })
 
     def condense_conversation(self, conversation: Conversation, keep_recent_turns: int = 4) -> int:
         """Replace old tool result contents with a short placeholder.
@@ -973,10 +998,24 @@ class AnthropicModel:
     def append_tool_results(self, conversation: Conversation, results: list[ToolResult]) -> None:
         tool_result_blocks = []
         for r in results:
+            if r.image is not None:
+                content: Any = [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": r.image.media_type,
+                            "data": r.image.base64_data,
+                        },
+                    },
+                    {"type": "text", "text": r.content},
+                ]
+            else:
+                content = r.content
             block: dict[str, Any] = {
                 "type": "tool_result",
                 "tool_use_id": r.tool_call_id,
-                "content": r.content,
+                "content": content,
             }
             if r.is_error:
                 block["is_error"] = True

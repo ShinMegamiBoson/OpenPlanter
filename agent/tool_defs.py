@@ -120,6 +120,21 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "read_image",
+        "description": "Read an image file and return it for visual analysis. Supports PNG, JPEG, GIF, WebP.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Relative or absolute path to the image file within the workspace.",
+                },
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "write_file",
         "description": "Create or overwrite a file in the workspace with the given content.",
         "parameters": {

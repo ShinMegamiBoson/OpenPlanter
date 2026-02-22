@@ -421,6 +421,7 @@ def _clip_event(text: str) -> str:
 # Map tool names to their most informative argument for compact display.
 _KEY_ARGS: dict[str, str] = {
     "read_file": "path",
+    "read_image": "path",
     "write_file": "path",
     "edit_file": "path",
     "hashline_edit": "path",

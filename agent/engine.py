@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import AgentConfig
-from .model import BaseModel, ModelError, ModelTurn, ToolCall, ToolResult
+from .model import BaseModel, ImageData, ModelError, ModelTurn, ToolCall, ToolResult
 from .prompts import build_system_prompt
 from .replay_log import ReplayLogger
 from .tool_defs import get_tool_definitions
@@ -134,6 +134,7 @@ class RLMEngine:
     session_id: str | None = None
     _shell_command_counts: dict[tuple[int, str], int] = field(default_factory=dict)
     _cancel: threading.Event = field(default_factory=threading.Event)
+    _pending_image: threading.local = field(default_factory=threading.local)
 
     def __post_init__(self) -> None:
         if not self.system_prompt:
@@ -515,6 +516,7 @@ class RLMEngine:
                 results[0] = ToolResult(
                     r0.tool_call_id, r0.name,
                     f"{ts_tag} {budget_tag} {ctx_tag} {r0.content}", r0.is_error,
+                    image=r0.image,
                 )
                 if 0 < remaining <= budget_total // 4:
                     warning = (
@@ -526,6 +528,7 @@ class RLMEngine:
                     results[-1] = ToolResult(
                         rl.tool_call_id, rl.name,
                         rl.content + warning, rl.is_error,
+                        image=rl.image,
                     )
                 elif remaining <= budget_total // 2:
                     warning = (
@@ -536,6 +539,7 @@ class RLMEngine:
                     results[-1] = ToolResult(
                         rl.tool_call_id, rl.name,
                         rl.content + warning, rl.is_error,
+                        image=rl.image,
                     )
 
             # Plan injection — find newest *.plan.md in session dir, append to last result
@@ -561,6 +565,7 @@ class RLMEngine:
                             results[-1] = ToolResult(
                                 rl.tool_call_id, rl.name,
                                 rl.content + plan_block, rl.is_error,
+                                image=rl.image,
                             )
                 except OSError:
                     pass
@@ -608,6 +613,8 @@ class RLMEngine:
             else nullcontext()
         )
         with scope_cm:
+            # Clear any pending image data from a previous call.
+            self._pending_image.data = None
             try:
                 is_final, observation = self._apply_tool_call(
                     tool_call=tc,
@@ -625,6 +632,14 @@ class RLMEngine:
                 is_final = False
         observation = self._clip_observation(observation)
         tool_elapsed = time.monotonic() - t1
+
+        # Check for pending image data from read_image.
+        image: ImageData | None = None
+        pending = getattr(self._pending_image, "data", None)
+        if pending is not None:
+            b64, media_type = pending
+            image = ImageData(base64_data=b64, media_type=media_type)
+            self._pending_image.data = None
 
         obs_summary = _summarize_observation(observation)
         self._emit(f"[d{depth}/s{step}]   -> {obs_summary} ({tool_elapsed:.1f}s)", on_event)
@@ -645,7 +660,7 @@ class RLMEngine:
             except Exception:
                 pass
 
-        return ToolResult(tc.id, tc.name, observation, is_error=False), is_final
+        return ToolResult(tc.id, tc.name, observation, is_error=False, image=image), is_final
 
     def _apply_tool_call(
         self,
@@ -713,6 +728,15 @@ class RLMEngine:
             hashline = args.get("hashline")
             hashline = hashline if hashline is not None else True
             return False, self.tools.read_file(path, hashline=hashline)
+
+        if name == "read_image":
+            path = str(args.get("path", "")).strip()
+            if not path:
+                return False, "read_image requires path"
+            text, b64, media_type = self.tools.read_image(path)
+            if b64 is not None and media_type is not None:
+                self._pending_image.data = (b64, media_type)
+            return False, text
 
         if name == "write_file":
             path = str(args.get("path", "")).strip()

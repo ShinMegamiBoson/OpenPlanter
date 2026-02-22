@@ -30,7 +30,7 @@ class ToolDefinitionsTests(unittest.TestCase):
         self.assertEqual(len(names), len(TOOL_DEFINITIONS))
         expected = {
             "list_files", "search_files", "repo_map", "web_search", "fetch_url",
-            "read_file", "write_file", "apply_patch", "edit_file",
+            "read_file", "read_image", "write_file", "apply_patch", "edit_file",
             "hashline_edit",
             "run_shell", "run_shell_bg", "check_shell_bg", "kill_shell_bg",
             "think", "subtask", "execute",
