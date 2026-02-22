@@ -18,11 +18,6 @@ from .settings import SettingsStore
 SLASH_COMMANDS: list[str] = ["/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning"]
 
 
-def _queue_prompt_style():
-    """Prompt style for the secondary (queued input) prompt."""
-    from prompt_toolkit.styles import Style
-    return Style.from_dict({"dim": "ansibrightblack italic"})
-
 
 def _make_left_markdown():
     """Create a Markdown subclass that left-aligns headings instead of centering."""
@@ -667,7 +662,6 @@ class RichREPL:
         # Background agent thread state
         self._agent_thread: threading.Thread | None = None
         self._agent_result: str | None = None
-        self._queued_input: list[str] = []
 
         # Demo mode: prepare render hook (installed in run() after splash art).
         censor_fn = None
@@ -915,74 +909,62 @@ class RichREPL:
                 self.console.print(Text(f"  {key:>10}  {val}", style="dim"))
             self.console.print()
         self.console.print(
-            "Type /help for commands, Ctrl+D to exit.  ESC to cancel a running task.",
+            "Type /help for commands, Ctrl+D to exit.  Ctrl+C to cancel a running task.",
             style="dim",
         )
         self.console.print()
 
-        with patch_stdout():
-            while True:
-                # Check if there's queued input from a previous agent run
-                if self._queued_input:
-                    user_input = self._queued_input.pop(0)
-                    self.console.print(Text(f"you> {user_input}", style="bold"))
-                else:
-                    try:
-                        user_input = self.session.prompt("you> ").strip()
-                    except KeyboardInterrupt:
-                        continue
-                    except EOFError:
-                        break
-
-                if not user_input:
+        while True:
+            # patch_stdout wraps ONLY the prompt so it doesn't corrupt
+            # Rich's ANSI escape sequences during agent execution.
+            with patch_stdout():
+                try:
+                    user_input = self.session.prompt("you> ").strip()
+                except KeyboardInterrupt:
                     continue
-
-                result = dispatch_slash_command(
-                    user_input,
-                    self.ctx,
-                    emit=lambda line: self.console.print(Text(line, style="cyan")),
-                )
-                if result == "quit":
+                except EOFError:
                     break
-                if result == "clear":
-                    self.console.clear()
-                    continue
-                if result == "handled":
-                    continue
 
-                # Regular objective — run in background thread
-                self.console.print()
-                self._agent_result = None
-                self._agent_thread = threading.Thread(
-                    target=self._run_agent,
-                    args=(user_input,),
-                    daemon=True,
-                )
-                self._agent_thread.start()
+            if not user_input:
+                continue
 
-                # Secondary input loop: accept input while agent works
+            result = dispatch_slash_command(
+                user_input,
+                self.ctx,
+                emit=lambda line: self.console.print(Text(line, style="cyan")),
+            )
+            if result == "quit":
+                break
+            if result == "clear":
+                self.console.clear()
+                continue
+            if result == "handled":
+                continue
+
+            # Regular objective — run in background thread
+            self.console.print()
+            self._agent_result = None
+            self._agent_thread = threading.Thread(
+                target=self._run_agent,
+                args=(user_input,),
+                daemon=True,
+            )
+            self._agent_thread.start()
+
+            # Wait for agent to complete; Ctrl+C cancels
+            try:
                 while self._agent_thread.is_alive():
-                    try:
-                        queued = self.session.prompt(
-                            [("class:dim", "... ")],
-                            style=_queue_prompt_style(),
-                        ).strip()
-                        if queued:
-                            self._queued_input.append(queued)
-                            self.console.print(
-                                Text(f"  (queued: {queued[:60]}{'...' if len(queued) > 60 else ''})", style="dim"),
-                            )
-                    except KeyboardInterrupt:
-                        continue
-                    except EOFError:
-                        # Ctrl+D during agent run — just wait for agent to finish
-                        break
-
+                    self._agent_thread.join(timeout=0.2)
+            except KeyboardInterrupt:
+                self.ctx.runtime.engine.cancel()
+                self.console.print("[dim]Cancelling...[/dim]")
                 self._agent_thread.join()
-                self._agent_thread = None
 
-                if self._agent_result is not None:
-                    self._present_result(self._agent_result)
+            self._agent_thread.join()
+            self._agent_thread = None
+
+            if self._agent_result is not None:
+                self._present_result(self._agent_result)
 
 
 def run_rich_repl(ctx: ChatContext, startup_info: dict[str, str] | None = None) -> None:
