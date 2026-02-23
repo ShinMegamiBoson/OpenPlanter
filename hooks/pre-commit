@@ -1,0 +1,105 @@
+#!/bin/bash
+# Pre-commit hook (portable meta-process template)
+# Each check only runs if its script is installed.
+# Install via: meta-process/install.sh
+
+set -e
+
+echo "Running pre-commit checks..."
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT"
+
+STAGED_PY=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
+
+# Helper: find a script at either scripts/meta/ or scripts/
+find_script() {
+    local name="$1"
+    if [[ -f "$REPO_ROOT/scripts/meta/$name" ]]; then
+        echo "$REPO_ROOT/scripts/meta/$name"
+    elif [[ -f "$REPO_ROOT/scripts/$name" ]]; then
+        echo "$REPO_ROOT/scripts/$name"
+    fi
+}
+
+# 1. Plan index regeneration (if generator exists)
+GENERATOR=$(find_script "generate_plan_index.py")
+if [[ -n "$GENERATOR" ]]; then
+    STAGED_PLANS=$(git diff --cached --name-only --diff-filter=ACM | grep '^docs/plans/' || true)
+    if [[ -n "$STAGED_PLANS" ]]; then
+        echo "Regenerating plan index..."
+        python "$GENERATOR" 2>/dev/null || true
+        git add docs/plans/CLAUDE.md 2>/dev/null || true
+    fi
+fi
+
+# 2. Doc-coupling check (if script exists)
+DOC_COUPLING=$(find_script "check_doc_coupling.py")
+if [[ -n "$DOC_COUPLING" ]]; then
+    echo "Checking doc-code coupling..."
+    if ! python "$DOC_COUPLING" --strict 2>/dev/null; then
+        echo ""
+        echo "ERROR: Doc-coupling violation detected!"
+        echo "Run 'python $DOC_COUPLING --suggest' to see which docs to update."
+        echo ""
+        exit 1
+    fi
+fi
+
+# 3. Mypy on changed src/ files (if mypy is installed)
+STAGED_SRC=$(echo "$STAGED_PY" | grep '^src/' || true)
+if [[ -n "$STAGED_SRC" ]] && command -v mypy >/dev/null 2>&1; then
+    echo "Running mypy on changed files..."
+    if ! python -m mypy --strict --ignore-missing-imports --follow-imports=silent $STAGED_SRC 2>/dev/null; then
+        echo ""
+        echo "ERROR: mypy type check failed!"
+        echo ""
+        exit 1
+    fi
+fi
+
+# 4. Plan status consistency (if script exists and plan files staged)
+SYNC_STATUS=$(find_script "sync_plan_status.py")
+if [[ -n "$SYNC_STATUS" ]]; then
+    STAGED_PLANS=$(git diff --cached --name-only --diff-filter=ACM | grep '^docs/plans/' || true)
+    if [[ -n "$STAGED_PLANS" ]]; then
+        echo "Checking plan status consistency..."
+        if ! python "$SYNC_STATUS" --check 2>/dev/null; then
+            echo ""
+            echo "ERROR: Plan status inconsistency detected!"
+            echo "Run 'python $SYNC_STATUS --check' to see details"
+            echo ""
+            exit 1
+        fi
+    fi
+fi
+
+# 5. Branch divergence check
+echo "Checking branch freshness..."
+git fetch origin 2>/dev/null || true
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || true
+REMOTE="origin/$BRANCH"
+
+if git rev-parse --verify "$REMOTE" >/dev/null 2>&1; then
+    LOCAL_ONLY=$(git rev-list "$REMOTE..HEAD" --count 2>/dev/null || echo "0")
+    REMOTE_ONLY=$(git rev-list "HEAD..$REMOTE" --count 2>/dev/null || echo "0")
+
+    if [ "$REMOTE_ONLY" -gt 0 ] && [ "$LOCAL_ONLY" -gt 0 ]; then
+        echo ""
+        echo "ERROR: Branch has diverged from remote!"
+        echo "  Local commits not on remote: $LOCAL_ONLY"
+        echo "  Remote commits not local: $REMOTE_ONLY"
+        echo ""
+        echo "Resolution: git pull --rebase origin $BRANCH"
+        echo "Bypass with: git commit --no-verify (not recommended)"
+        exit 1
+    fi
+
+    if [ "$REMOTE_ONLY" -gt 5 ]; then
+        echo "WARNING: Branch is $REMOTE_ONLY commits behind remote"
+        echo "Consider: git pull --rebase origin $BRANCH"
+    fi
+fi
+
+echo "Pre-commit checks passed!"

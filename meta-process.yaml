@@ -1,0 +1,153 @@
+# Meta-Process Configuration
+# Copy this to your project root as meta-process.yaml
+
+meta_process:
+  version: "1.0"
+
+  # =============================================================================
+  # CORE PATTERNS (Usually always enabled)
+  # =============================================================================
+
+  plans:
+    enabled: true
+    # Require tests defined in plan's "Required Tests" section
+    require_tests: true
+    # Require "References Reviewed" section before implementation
+    require_references_reviewed: true
+    # Max lines for [Trivial] commits (no plan required)
+    trivial_threshold_lines: 20
+    # Block trivial commits that touch src/
+    trivial_block_src: true
+    # Plan file location
+    plans_dir: "docs/plans"
+
+  claims:
+    enabled: true
+    # Block claiming already-claimed scopes
+    enforce_exclusivity: true
+    # Require claim before creating worktree
+    require_for_worktree: true
+    # CI verifies PR branches have claims
+    enforce_in_ci: false  # Start permissive, make strict later
+    # Claims file location (local, not git-tracked)
+    claims_file: ".claude/active-work.yaml"
+
+  worktrees:
+    enabled: true
+    # Block edits in main directory (force worktree usage)
+    protect_main: true
+    # Worktree location relative to project root
+    worktree_dir: "../worktrees"
+    # Use make worktree-remove instead of git worktree remove
+    safe_remove_only: true
+
+  commits:
+    # Require [Plan #N] or [Trivial] prefix
+    require_prefix: true
+    # Valid prefixes (regex patterns)
+    valid_prefixes:
+      - "\\[Plan #\\d+\\]"
+      - "\\[Trivial\\]"
+      - "\\[Unplanned\\]"  # Emergency escape hatch
+
+  # =============================================================================
+  # QUALITY GATES (Configurable strictness)
+  # =============================================================================
+
+  quality:
+    doc_coupling:
+      enabled: true
+      # Fail CI (true) or just warn (false)
+      strict: true
+      # Mapping file location
+      config_file: "scripts/doc_coupling.yaml"
+
+    mock_policy:
+      enabled: true
+      # Require `# mock-ok: reason` comment for mocks
+      require_mock_ok_comment: true
+      # Fail CI on unexplained mocks
+      strict: true
+
+    adr_governance:
+      enabled: true
+      # Mapping file location
+      config_file: "scripts/governance.yaml"
+      # Sync governance headers in source files
+      sync_headers: true
+
+    type_checking:
+      enabled: true
+      # mypy strictness level
+      strict: true
+
+  # =============================================================================
+  # ACCEPTANCE GATES (Opt-in, more heavyweight)
+  # =============================================================================
+
+  acceptance_gates:
+    enabled: false  # Start with plans only, enable when ready
+    # Gate definition location
+    gates_dir: "acceptance_gates"
+    # Require locked: true before implementation
+    require_locked_specs: false
+    # Minimum acceptance criteria per gate
+    min_criteria: 3
+    # Required criteria categories
+    required_categories:
+      - happy_path
+      - error_case
+      - edge_case
+    # Planning modes available
+    planning_modes:
+      - autonomous   # AI works independently
+      - guided       # Human reviews specs
+      - detailed     # Human reviews each step
+      - iterative    # Multiple cycles with learning
+
+  # =============================================================================
+  # INTER-CC MESSAGING (Opt-in, for multiple AI instances)
+  # =============================================================================
+
+  messaging:
+    enabled: false
+    # Block edits until inbox is acknowledged
+    require_ack: true
+    # Message storage location
+    inbox_dir: ".claude/messages"
+
+  # =============================================================================
+  # CI CONFIGURATION
+  # =============================================================================
+
+  ci:
+    # Skip CI with .github/ci-disabled file
+    allow_disable_file: true
+    # Jobs to include
+    jobs:
+      test: true
+      mypy: true
+      fast_checks: true
+      plan_checks: true
+      post_merge_sync: true
+    # Change detection (skip jobs for docs-only changes)
+    change_detection: true
+
+# =============================================================================
+# PROJECT-SPECIFIC SETTINGS (Examples - customize for your project)
+# =============================================================================
+
+# These are typically in separate files, not in meta-process.yaml:
+#
+# scripts/doc_coupling.yaml:
+#   - sources: ["src/core/*.py"]
+#     docs: ["docs/architecture/core.md"]
+#
+# scripts/governance.yaml:
+#   - adr: "ADR-0001"
+#     applies_to: ["src/models/*.py"]
+#
+# acceptance_gates/example.yaml:
+#   feature: example
+#   code: ["src/example.py"]
+#   tests: ["tests/test_example.py"]
