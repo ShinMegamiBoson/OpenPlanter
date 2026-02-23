@@ -23,6 +23,7 @@ dependencies = [
     "openpyxl>=3.1.0",
     "aiofiles>=23.2.0",
     "chardet>=5.2.0",
+    "networkx>=3.2",
 ]
 
 [project.optional-dependencies]
