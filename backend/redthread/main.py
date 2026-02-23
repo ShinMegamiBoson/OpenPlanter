@@ -87,7 +87,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     yield
 
-    # Shutdown: close connections
+    # Shutdown: close connections and persist graph
+    graph_db.close()
     db.close()
 
 

@@ -97,7 +97,7 @@ async def record_timeline_event(
         entity_id=entity_id if entity_id else None,
         entity_name=entity_name if entity_name else None,
         event_date=event_date,
-        amount=amount if amount else None,
+        amount=amount if amount is not None else None,
         description=description if description else None,
         source_record_id=source_record_id if source_record_id else None,
         source_dataset_id=source_dataset_id if source_dataset_id else None,

@@ -82,6 +82,7 @@ class RedthreadAgent:
             timeline_repo=repos.timeline_repo,
             message_repo=repos.message_repo,
             exa_client=exa_client,
+            upload_dir=settings.UPLOAD_DIR,
         )
 
         # Create the Anthropic client (fallback mode)
@@ -145,11 +146,11 @@ class RedthreadAgent:
             )
             return
 
-        # Save user message
-        self._repos.message_repo.append(investigation_id, "user", user_message)
-
-        # Build conversation messages
+        # Build conversation messages BEFORE saving (to avoid duplicate in history)
         messages = self._build_messages(investigation_id, user_message)
+
+        # Save user message after building messages list
+        self._repos.message_repo.append(investigation_id, "user", user_message)
 
         # Stream the response
         full_response = ""
