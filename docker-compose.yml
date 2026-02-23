@@ -1,8 +1,33 @@
 services:
-  agent:
-    build: .
+  backend:
+    build: ./backend
+    ports:
+      - "127.0.0.1:8000:8000"
     env_file: .env
     volumes:
-      - ./workspace:/workspace
-    stdin_open: true
-    tty: true
+      # Mount source for hot-reload during development
+      - ./backend/redthread:/app/redthread
+      # Persistent data directories
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+    command: >
+      uvicorn redthread.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/redthread
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    volumes:
+      # Mount source for hot-reload during development
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/next.config.js:/app/next.config.js
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+    depends_on:
+      - backend
