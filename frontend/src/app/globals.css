@@ -1,0 +1,277 @@
+/* -------------------------------------------------------
+   Redthread - Global Styles
+   Dark theme for financial crime investigation workspace.
+   ------------------------------------------------------- */
+
+:root {
+  /* Base palette */
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #111118;
+  --bg-tertiary: #1a1a24;
+  --bg-elevated: #22222e;
+
+  /* Borders */
+  --border-subtle: #2a2a3a;
+  --border-active: #3a3a50;
+
+  /* Text */
+  --text-primary: #e4e4eb;
+  --text-secondary: #9494a8;
+  --text-muted: #5e5e72;
+
+  /* Accent */
+  --accent-blue: #4a7cff;
+  --accent-green: #3ac47d;
+  --accent-orange: #e6883a;
+  --accent-red: #e64a4a;
+  --accent-purple: #8a6aff;
+
+  /* Confidence badges */
+  --confidence-confirmed: #3ac47d;
+  --confidence-probable: #4a7cff;
+  --confidence-possible: #e6883a;
+  --confidence-unresolved: #5e5e72;
+
+  /* Spacing */
+  --panel-gap: 1px;
+  --panel-padding: 16px;
+
+  /* Typography */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace;
+
+  /* Sizing */
+  --header-height: 48px;
+}
+
+/* -------------------------------------------------------
+   Reset & Base
+   ------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* -------------------------------------------------------
+   Workspace Layout: Three-panel CSS Grid
+   Left: Chat panel
+   Center: Entity graph (top) + Timeline (bottom)
+   Right: Evidence panel
+   ------------------------------------------------------- */
+
+.workspace {
+  display: grid;
+  grid-template-columns: 360px 1fr 340px;
+  grid-template-rows: var(--header-height) 1fr;
+  grid-template-areas:
+    "header header header"
+    "chat   viz    evidence";
+  height: 100vh;
+  width: 100vw;
+  background: var(--border-subtle);
+  gap: var(--panel-gap);
+}
+
+/* -------------------------------------------------------
+   Header
+   ------------------------------------------------------- */
+
+.workspace-header {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--panel-padding);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.workspace-header__title {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+}
+
+.workspace-header__subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* -------------------------------------------------------
+   Panel Foundations
+   ------------------------------------------------------- */
+
+.panel {
+  background: var(--bg-secondary);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px var(--panel-padding);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.panel__title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}
+
+.panel__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--panel-padding);
+}
+
+/* -------------------------------------------------------
+   Chat Panel (Left)
+   ------------------------------------------------------- */
+
+.panel--chat {
+  grid-area: chat;
+}
+
+/* -------------------------------------------------------
+   Visualization Panel (Center)
+   Splits vertically: entity graph on top, timeline below.
+   ------------------------------------------------------- */
+
+.panel--viz {
+  grid-area: viz;
+  display: grid;
+  grid-template-rows: 1fr 280px;
+  gap: var(--panel-gap);
+  background: var(--border-subtle);
+}
+
+.panel--graph {
+  background: var(--bg-secondary);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel--timeline {
+  background: var(--bg-secondary);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* -------------------------------------------------------
+   Evidence Panel (Right)
+   ------------------------------------------------------- */
+
+.panel--evidence {
+  grid-area: evidence;
+}
+
+/* -------------------------------------------------------
+   Empty State Placeholder
+   ------------------------------------------------------- */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  text-align: center;
+  padding: var(--panel-padding);
+}
+
+.empty-state__icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+  opacity: 0.4;
+}
+
+.empty-state__message {
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 240px;
+}
+
+.empty-state__hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  font-family: var(--font-mono);
+}
+
+/* -------------------------------------------------------
+   Scrollbar Styling
+   ------------------------------------------------------- */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-active);
+}
+
+/* -------------------------------------------------------
+   Monospace Accents
+   ------------------------------------------------------- */
+
+code,
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* -------------------------------------------------------
+   Utility
+   ------------------------------------------------------- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
