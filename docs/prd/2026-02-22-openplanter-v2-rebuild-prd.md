@@ -39,7 +39,7 @@ Deliberate limits on what this work will NOT do. These aren't oversights — the
 
 | ID | Priority | Requirement |
 |----|----------|-------------|
-| R1 | Core | Agent can ingest local data files (CSV, JSON, XLSX), resolve entities across them, and build structured evidence chains linking findings to specific source records |
+| R1 | Core | Agent can ingest local data files (CSV, JSON, XLSX), resolve entities across them, and build structured evidence chains linking findings to specific source records (target: files up to 50 MB / 500K rows; best-effort parsing with validation warnings for malformed data) |
 | R2 | Core | Analyst can interact with the agent conversationally via web UI, directing the investigation and launching autonomous sub-investigations |
 | R3 | Must | Web UI displays an entity relationship graph that updates as the investigation progresses |
 | R4 | Must | Web UI displays a transaction timeline for entities under investigation |
@@ -56,6 +56,13 @@ Deliberate limits on what this work will NOT do. These aren't oversights — the
 | R15 | Out | Regulatory audit trail — no tamper-proof logging or compliance certification (future scope) |
 | R16 | Out | Integration with external case management or SAR filing systems (future scope) |
 
+## Acceptance Criteria
+
+- **R1 (File ingestion + evidence chains):** Agent successfully ingests a CSV, JSON, or XLSX file up to 50 MB / 500K rows, parses its contents, and produces at least one evidence chain linking a finding to a specific source record and row. Malformed or partially readable files produce validation warnings rather than silent failures.
+- **R5 (OFAC screening):** Agent screens a given entity name against the locally downloaded SDN list and returns match results with confidence levels. Screening correctly identifies known exact matches and flags plausible fuzzy matches. Results are suitable for analyst review, not automated decisioning — consistent with OFAC compliance expectations.
+- **R7 (SAR narrative):** On analyst request, the agent generates a draft SAR narrative from accumulated evidence. The narrative is clearly labeled as a draft requiring analyst review and editing before any regulatory submission. Narrative references specific evidence chain entries.
+- **R8 (Evidence chain model):** Each evidence chain entry contains: claim, supporting evidence, source record identifier, source dataset, and confidence level (confirmed/probable/possible/unresolved). Evidence chains are queryable by entity and by confidence level.
+
 ## Chosen Direction
 
 **Agent-first with structured tools.** Build directly on the Anthropic Agent SDK. Investigation capabilities (entity resolution, sanctions screening, evidence tracking) are implemented as Agent SDK tools with structured inputs/outputs. Evidence accumulates in a session-scoped data structure that the web UI renders. The agent IS the investigation engine — no separate investigation kernel or MCP server ecosystem.
@@ -69,7 +76,7 @@ This was chosen over two alternatives because it ships fastest and lets us disco
 
 ## Key Decisions
 
-- **Anthropic Agent SDK + Claude Max**: Single provider, proper SDK, no hand-rolled HTTP. Claude Max subscription provides the API access.
+- **Anthropic Agent SDK + Claude Max**: Single provider, proper SDK, no hand-rolled HTTP. Claude Max subscription provides the API access. **Assumption to validate:** Claude Max subscription grants programmatic access to the Agent SDK (API key or OAuth). If not, fallback is a standard Anthropic API account with usage-based billing.
 - **Salvage the system prompt**: The investigation methodology, epistemic discipline, and evidence chain standards from the current `prompts.py` are the most valuable part of the existing codebase. Port these to the new agent's system prompt. Rewrite everything else.
 - **Web UI over TUI**: BSA analysts are accustomed to browser-based compliance tools. Entity graphs and timelines need visual rendering that a terminal cannot provide.
 - **FastAPI + Next.js/React**: FastAPI for the Python backend (Agent SDK integration, WebSocket streaming), Next.js/React for the frontend (visualization libraries for graphs and timelines, streaming chat UI).
@@ -83,6 +90,12 @@ This was chosen over two alternatives because it ships fastest and lets us disco
 - **Visualization libraries (R3, R4)** — **Cytoscape.js** (direct integration, no React wrapper) for entity graphs: 1.5M downloads/week, compound nodes for grouping entities, built-in graph algorithms (shortest path, centrality), 10+ layout plugins, incremental updates via `cy.add()`/`cy.remove()`. **Recharts** for transaction timelines: 7-13M downloads/week, composable React components (ComposedChart with scatter + reference areas + custom tooltips), `syncId` for coordinated multi-entity views. react-force-graph, React Flow, vis-network, and vis-timeline were evaluated and rejected.
 - **OFAC/SDN access method** — Download the full SDN list and screen locally. No external API dependency. The agent will need a tool to fetch/update the list and perform fuzzy matching against it.
 - **Project name** — Renamed to **Redthread**. "Follow the red thread" is a classic investigation metaphor for tracing evidence chains across sources.
+
+## Risks
+
+- **Data sensitivity:** BSA/AML investigation data contains PII and potentially SAR-related information subject to federal confidentiality requirements (31 USC 5318(g)(2)). v1 runs locally (embedded databases, no cloud sync), which mitigates but does not eliminate this risk. Data handling constraints should be defined during technical planning.
+- **LLM hallucination:** Agent-generated SAR narratives must be clearly marked as drafts requiring analyst verification. The evidence chain model (R8) provides traceability but does not prevent fabrication. Analysts remain responsible for validating all agent-produced content before regulatory use.
+- **Kuzu maturity:** Kuzu is an embedded graph database with a smaller ecosystem than established alternatives. The PRD already identifies a NetworkX fallback (see Resolved Questions). This should be evaluated early in technical planning to avoid a mid-build migration.
 
 ## Next Steps
 
