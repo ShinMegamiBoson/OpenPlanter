@@ -9,3 +9,14 @@ build/
 *.cast
 *.mp4
 .openplanter/
+
+# Redthread data directories
+data/
+uploads/
+
+# Next.js
+.next/
+
+# Python virtual environments
+.venv/
+backend/.venv/
