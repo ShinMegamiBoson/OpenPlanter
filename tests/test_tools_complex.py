@@ -126,6 +126,20 @@ class ToolsComplexTests(unittest.TestCase):
                 payload = mock_exa.call_args[0][1]
                 self.assertEqual(payload["numResults"], 20)
 
+    def test_web_search_clamps_num_results_firecrawl(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tools = WorkspaceTools(
+                root=Path(tmpdir), web_search_provider="firecrawl", firecrawl_api_key="test-key"
+            )
+            mock_response = {"data": []}
+            with patch.object(
+                WorkspaceTools, "_firecrawl_request", return_value=mock_response
+            ) as mock_fc:
+                tools.web_search("test query", num_results=50)
+                mock_fc.assert_called_once()
+                payload = mock_fc.call_args[0][1]
+                self.assertEqual(payload["limit"], 20)
+
     # 12
     def test_fetch_url_non_list_returns_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -163,6 +177,13 @@ class ToolsComplexTests(unittest.TestCase):
             with self.assertRaises(ToolError) as ctx:
                 tools._exa_request("/search", {"query": "test"})
             self.assertIn("EXA_API_KEY not configured", str(ctx.exception))
+
+    def test_firecrawl_request_no_key_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tools = WorkspaceTools(root=Path(tmpdir), firecrawl_api_key=None)
+            with self.assertRaises(ToolError) as ctx:
+                tools._firecrawl_request("/search", {"query": "test"})
+            self.assertIn("FIRECRAWL_API_KEY not configured", str(ctx.exception))
 
     # 16
     def test_write_file_creates_nested_dirs(self) -> None:

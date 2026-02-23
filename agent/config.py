@@ -27,11 +27,14 @@ class AgentConfig:
     cerebras_base_url: str = "https://api.cerebras.ai/v1"
     ollama_base_url: str = "http://localhost:11434/v1"
     exa_base_url: str = "https://api.exa.ai"
+    firecrawl_base_url: str = "https://api.firecrawl.dev/v1"
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     openrouter_api_key: str | None = None
     cerebras_api_key: str | None = None
     exa_api_key: str | None = None
+    firecrawl_api_key: str | None = None
+    web_search_provider: str = "exa"
     voyage_api_key: str | None = None
     max_depth: int = 4
     max_steps_per_call: int = 100
@@ -63,6 +66,7 @@ class AgentConfig:
         openrouter_api_key = os.getenv("OPENPLANTER_OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
         cerebras_api_key = os.getenv("OPENPLANTER_CEREBRAS_API_KEY") or os.getenv("CEREBRAS_API_KEY")
         exa_api_key = os.getenv("OPENPLANTER_EXA_API_KEY") or os.getenv("EXA_API_KEY")
+        firecrawl_api_key = os.getenv("OPENPLANTER_FIRECRAWL_API_KEY") or os.getenv("FIRECRAWL_API_KEY")
         voyage_api_key = os.getenv("OPENPLANTER_VOYAGE_API_KEY") or os.getenv("VOYAGE_API_KEY")
         openai_base_url = os.getenv("OPENPLANTER_OPENAI_BASE_URL") or os.getenv(
             "OPENPLANTER_BASE_URL",
@@ -81,11 +85,14 @@ class AgentConfig:
             cerebras_base_url=os.getenv("OPENPLANTER_CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1"),
             ollama_base_url=os.getenv("OPENPLANTER_OLLAMA_BASE_URL", "http://localhost:11434/v1"),
             exa_base_url=os.getenv("OPENPLANTER_EXA_BASE_URL", "https://api.exa.ai"),
+            firecrawl_base_url=os.getenv("OPENPLANTER_FIRECRAWL_BASE_URL", "https://api.firecrawl.dev/v1"),
             openai_api_key=openai_api_key,
             anthropic_api_key=anthropic_api_key,
             openrouter_api_key=openrouter_api_key,
             cerebras_api_key=cerebras_api_key,
             exa_api_key=exa_api_key,
+            firecrawl_api_key=firecrawl_api_key,
+            web_search_provider=(os.getenv("OPENPLANTER_WEB_SEARCH_PROVIDER", "exa").strip().lower() or "exa"),
             voyage_api_key=voyage_api_key,
             max_depth=int(os.getenv("OPENPLANTER_MAX_DEPTH", "4")),
             max_steps_per_call=int(os.getenv("OPENPLANTER_MAX_STEPS", "100")),
