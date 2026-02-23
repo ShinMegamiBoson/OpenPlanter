@@ -702,6 +702,17 @@ class OpenAICompatibleModel:
             content = delta.get("content")
             if content:
                 cb("text", content)
+            # Forward tool call argument deltas for live preview
+            tc_deltas = delta.get("tool_calls")
+            if tc_deltas:
+                for tc_d in tc_deltas:
+                    func = tc_d.get("function", {})
+                    name = func.get("name")
+                    if name:
+                        cb("tool_call_start", name)
+                    args_chunk = func.get("arguments", "")
+                    if args_chunk:
+                        cb("tool_call_args", args_chunk)
 
         sse_cb = _forward_delta if self.on_content_delta else None
 
@@ -902,6 +913,13 @@ class AnthropicModel:
             if cb is None:
                 return
             msg_type = data.get("type", _event_type)
+            if msg_type == "content_block_start":
+                block = data.get("content_block", {})
+                if block.get("type") == "tool_use":
+                    name = block.get("name", "")
+                    if name:
+                        cb("tool_call_start", name)
+                return
             if msg_type != "content_block_delta":
                 return
             delta = data.get("delta", {})
@@ -914,6 +932,10 @@ class AnthropicModel:
                 text = delta.get("text", "")
                 if text:
                     cb("text", text)
+            elif delta_type == "input_json_delta":
+                chunk = delta.get("partial_json", "")
+                if chunk:
+                    cb("tool_call_args", chunk)
 
         sse_cb = _forward_delta if self.on_content_delta else None
 

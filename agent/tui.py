@@ -486,9 +486,10 @@ class _ActivityDisplay:
     """Unified live display for thinking, streaming response, and tool execution.
 
     Modes:
-      - ``thinking``  — cyan header with streaming thinking text
-      - ``streaming`` — green header with streaming response text
-      - ``tool``      — yellow header with tool name and key argument
+      - ``thinking``   — cyan header with streaming thinking text
+      - ``streaming``  — green header with streaming response text
+      - ``tool``       — yellow header with tool name and key argument
+      - ``tool_args``  — yellow header with live preview of tool call arguments
     """
 
     def __init__(self, console: Any, censor_fn: Callable[[str], str] | None = None) -> None:
@@ -496,10 +497,12 @@ class _ActivityDisplay:
         self._censor_fn = censor_fn
         self._lock = threading.Lock()
         self._text_buf: str = ""
-        self._mode: str = "thinking"  # thinking | streaming | tool
+        self._mode: str = "thinking"  # thinking | streaming | tool | tool_args
         self._step_label: str = ""
         self._tool_name: str = ""
         self._tool_key_arg: str = ""
+        self._tool_arg_buf: str = ""
+        self._tool_arg_name: str = ""
         self._start_time: float = 0.0
         self._live: Any | None = None
         self._active = False
@@ -521,6 +524,8 @@ class _ActivityDisplay:
             self._text_buf = ""
             self._tool_name = ""
             self._tool_key_arg = ""
+            self._tool_arg_buf = ""
+            self._tool_arg_name = ""
             self._start_time = time.monotonic()
 
         if self._active and self._live is not None:
@@ -550,19 +555,29 @@ class _ActivityDisplay:
             self._text_buf = ""
             self._tool_name = ""
             self._tool_key_arg = ""
+            self._tool_arg_buf = ""
+            self._tool_arg_name = ""
 
     # -- data feeds ----------------------------------------------------------
 
     def feed(self, delta_type: str, text: str) -> None:
-        """Handle thinking or text content deltas.
+        """Handle thinking, text, or tool argument content deltas.
 
         Only updates internal state — the Live auto-refresh renders at 8fps.
         """
         if not self._active:
             return
         with self._lock:
-            if delta_type == "text" and self._mode == "thinking":
-                # Auto-transition from thinking to streaming on first text delta
+            if delta_type == "tool_call_start":
+                self._mode = "tool_args"
+                self._tool_arg_name = text
+                self._tool_arg_buf = ""
+                return
+            if delta_type == "tool_call_args":
+                self._tool_arg_buf += text
+                return
+            if delta_type == "text" and self._mode in ("thinking", "tool_args"):
+                # Auto-transition to streaming on first text delta
                 self._mode = "streaming"
                 self._text_buf = ""
             if delta_type in ("thinking", "text"):
@@ -578,6 +593,8 @@ class _ActivityDisplay:
             self._tool_name = tool_name
             self._tool_key_arg = key_arg
             self._text_buf = ""
+            self._tool_arg_buf = ""
+            self._tool_arg_name = ""
             if step_label:
                 self._step_label = step_label
             self._start_time = time.monotonic()
@@ -591,6 +608,36 @@ class _ActivityDisplay:
 
     # -- rendering -----------------------------------------------------------
 
+    @staticmethod
+    def _extract_preview(buf: str) -> str:
+        """Extract a human-readable preview from accumulated partial JSON.
+
+        Looks for ``"content": "`` or ``"patch": "`` keys and extracts the
+        string value.  Falls back to the raw buffer tail.
+        """
+        for key in ('"content": "', '"content":"', '"patch": "', '"patch":"'):
+            idx = buf.find(key)
+            if idx < 0:
+                continue
+            value_start = idx + len(key)
+            raw_value = buf[value_start:]
+            # Unescape common JSON escapes for display
+            raw_value = (
+                raw_value
+                .replace("\\n", "\n")
+                .replace("\\t", "\t")
+                .replace('\\"', '"')
+                .replace("\\\\", "\\")
+            )
+            # Strip trailing incomplete escape or quote
+            if raw_value.endswith("\\"):
+                raw_value = raw_value[:-1]
+            return raw_value
+
+        # Fallback: show last 3 lines of raw buffer
+        lines = buf.splitlines()
+        return "\n".join(lines[-3:]) if lines else buf
+
     def _build_renderable(self) -> Any:
         from rich.text import Text
 
@@ -602,6 +649,8 @@ class _ActivityDisplay:
             step_label = self._step_label
             tool_name = self._tool_name
             tool_key_arg = self._tool_key_arg
+            tool_arg_buf = self._tool_arg_buf
+            tool_arg_name = self._tool_arg_name
 
         if self._censor_fn:
             buf = self._censor_fn(buf)
@@ -612,6 +661,8 @@ class _ActivityDisplay:
             header = f"[bold cyan]Thinking...[/bold cyan]  [dim]({elapsed:.1f}s)[/dim]{step_part}"
         elif mode == "streaming":
             header = f"[bold green]Responding...[/bold green]  [dim]({elapsed:.1f}s)[/dim]{step_part}"
+        elif mode == "tool_args":
+            header = f"[bold yellow]Generating {tool_arg_name}...[/bold yellow]  [dim]({elapsed:.1f}s)[/dim]{step_part}"
         else:  # tool
             header = f"[bold yellow]Running {tool_name}...[/bold yellow]  [dim]({elapsed:.1f}s)[/dim]{step_part}"
 
@@ -622,6 +673,20 @@ class _ActivityDisplay:
                     arg_display = arg_display[:_THINKING_MAX_LINE_WIDTH - 3] + "..."
                 return Text.from_markup(f"\u2800 {header}\n  [dim italic]{arg_display}[/dim italic]")
             return Text.from_markup(f"\u2800 {header}")
+
+        if mode == "tool_args":
+            if not tool_arg_buf:
+                return Text.from_markup(f"\u2800 {header}")
+            preview = self._extract_preview(tool_arg_buf)
+            lines = preview.splitlines()
+            tail = lines[-_THINKING_TAIL_LINES:]
+            clipped = []
+            for ln in tail:
+                if len(ln) > _THINKING_MAX_LINE_WIDTH:
+                    ln = ln[:_THINKING_MAX_LINE_WIDTH - 3] + "..."
+                clipped.append(ln)
+            snippet = "\n".join(f"  [dim italic]{ln}[/dim italic]" for ln in clipped)
+            return Text.from_markup(f"\u2800 {header}\n{snippet}")
 
         if not buf:
             return Text.from_markup(f"\u2800 {header}")
