@@ -1,8 +1,14 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { ChatPanel } from "@/components/ChatPanel";
 import { FileUpload } from "@/components/FileUpload";
+import { EntityGraph } from "@/components/EntityGraph";
+import { Timeline } from "@/components/Timeline";
+import { EvidencePanel } from "@/components/EvidencePanel";
+import { getTimeline } from "@/lib/api";
+import type { TimelineEvent } from "@/lib/types";
 
 /**
  * Temporary hardcoded investigation ID for development.
@@ -19,7 +25,70 @@ export default function Home() {
     isStreaming,
     toolCalls,
     lastError,
+    graphData,
+    evidenceData,
   } = useWebSocket(DEV_INVESTIGATION_ID);
+
+  // -----------------------------------------------------------------
+  // Timeline data from REST API
+  // -----------------------------------------------------------------
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchTimeline() {
+      try {
+        const data = await getTimeline(DEV_INVESTIGATION_ID);
+        if (!cancelled) {
+          setTimelineEvents(data.events);
+        }
+      } catch {
+        // Silently ignore — backend may not be running during dev
+      }
+    }
+
+    fetchTimeline();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Refresh timeline when evidence data changes (new evidence often
+  // means new timeline events were also recorded by the agent).
+  useEffect(() => {
+    if (evidenceData.length === 0) return;
+    let cancelled = false;
+
+    async function refreshTimeline() {
+      try {
+        const data = await getTimeline(DEV_INVESTIGATION_ID);
+        if (!cancelled) {
+          setTimelineEvents(data.events);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    refreshTimeline();
+    return () => {
+      cancelled = true;
+    };
+  }, [evidenceData.length]);
+
+  // -----------------------------------------------------------------
+  // Shared state: selected entity (graph <-> evidence panel)
+  // -----------------------------------------------------------------
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+
+  const handleNodeSelect = useCallback((entityId: string | null) => {
+    setSelectedEntityId(entityId);
+  }, []);
+
+  const handleEntityClick = useCallback((entityId: string) => {
+    setSelectedEntityId(entityId);
+  }, []);
 
   return (
     <div className="workspace">
@@ -55,50 +124,25 @@ export default function Home() {
       <section className="panel--viz">
         {/* Entity Graph */}
         <div className="panel--graph">
-          <div className="panel__header">
-            <span className="panel__title">Entity Graph</span>
-          </div>
-          <div className="panel__content">
-            <div className="empty-state">
-              <div className="empty-state__message">
-                Entity relationships will appear here as the investigation
-                progresses.
-              </div>
-            </div>
-          </div>
+          <EntityGraph
+            graphData={graphData}
+            onNodeSelect={handleNodeSelect}
+          />
         </div>
 
         {/* Timeline */}
         <div className="panel--timeline">
-          <div className="panel__header">
-            <span className="panel__title">Transaction Timeline</span>
-          </div>
-          <div className="panel__content">
-            <div className="empty-state">
-              <div className="empty-state__message">
-                Transaction events will populate this timeline during analysis.
-              </div>
-            </div>
-          </div>
+          <Timeline events={timelineEvents} />
         </div>
       </section>
 
       {/* Right Panel: Evidence */}
       <section className="panel panel--evidence">
-        <div className="panel__header">
-          <span className="panel__title">Evidence Chain</span>
-        </div>
-        <div className="panel__content">
-          <div className="empty-state">
-            <div className="empty-state__message">
-              Evidence entries with confidence levels and source citations will
-              be listed here.
-            </div>
-            <div className="empty-state__hint">
-              Filterable by entity and confidence
-            </div>
-          </div>
-        </div>
+        <EvidencePanel
+          evidence={evidenceData}
+          selectedEntityId={selectedEntityId}
+          onEntityClick={handleEntityClick}
+        />
       </section>
     </div>
   );
