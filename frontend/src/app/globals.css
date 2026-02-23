@@ -275,3 +275,59 @@ code,
   white-space: nowrap;
   border-width: 0;
 }
+
+/* -------------------------------------------------------
+   Animations
+   ------------------------------------------------------- */
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* -------------------------------------------------------
+   File Upload Drop Zone
+   ------------------------------------------------------- */
+
+.drop-zone {
+  border: 2px dashed var(--border-subtle);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.drop-zone:hover,
+.drop-zone--active {
+  border-color: var(--accent-blue);
+  background: rgba(74, 124, 255, 0.05);
+}
+
+.drop-zone--error {
+  border-color: var(--accent-red);
+}
+
+/* -------------------------------------------------------
+   Upload Progress
+   ------------------------------------------------------- */
+
+.upload-progress {
+  height: 3px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.upload-progress__bar {
+  height: 100%;
+  background: var(--accent-blue);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
