@@ -45,7 +45,7 @@ This plan covers the full v1 scope from the PRD. Subtasks are ordered so each bu
 
 **Key architectural decisions:**
 
-- **Agent SDK tools as in-process MCP servers.** Each investigation capability is a Python function decorated with `@tool`, assembled into an MCP server via `create_sdk_mcp_server()`. The agent accesses them as `mcp__redthread__<tool_name>`. This keeps all tools in one process with shared access to the persistence layer.
+- **Agent SDK tools as in-process MCP servers.** Each investigation capability is a Python function decorated with `@tool`, assembled into a Model Context Protocol (MCP) server — the standard interface through which the Claude agent discovers and calls tools — via `create_sdk_mcp_server()`. The agent accesses them as `mcp__redthread__<tool_name>`. This keeps all tools in one process with shared access to the persistence layer.
 - **Dual persistence.** SQLite for structured relational data (evidence chains, sessions, ingested records, metadata). LadybugDB for entity graph (nodes, relationships, traversal). Both embedded, zero-config. Graph layer abstracted behind a Python protocol for swappability to NetworkX fallback.
 - **WebSocket streaming.** Backend streams agent responses token-by-token to the frontend over WebSocket. Agent SDK's `include_partial_messages=True` yields `StreamEvent` objects that the backend forwards as JSON frames.
 - **Sub-agents for autonomous deep-dives.** Analyst-initiated sub-investigations use `AgentDefinition` + `Task` tool in the Agent SDK. Sub-agents inherit the same MCP tool server but get a narrower system prompt focused on their specific question.
@@ -62,7 +62,7 @@ This plan covers the full v1 scope from the PRD. Subtasks are ordered so each bu
 Create the top-level monorepo layout under the existing repo root. The `backend/` directory is a Python package managed by pyproject.toml. The `frontend/` directory is a Next.js 14 app with TypeScript.
 
 Backend dependencies (pyproject.toml):
-- Runtime: `fastapi`, `uvicorn[standard]`, `websockets`, `claude-agent-sdk`, `lbug` (LadybugDB), `rapidfuzz`, `jellyfish`, `cleanco`, `nameparser`, `splink`, `duckdb`, `openpyxl`, `aiofiles`, `pydantic`, `pydantic-settings`, `httpx`
+- Runtime: `fastapi`, `uvicorn[standard]`, `websockets`, `claude-agent-sdk`, `lbug` (LadybugDB), `rapidfuzz`, `jellyfish`, `cleanco`, `nameparser`, `splink`, `duckdb`, `openpyxl`, `aiofiles`, `pydantic`, `pydantic-settings`, `httpx`, `chardet`
 - Dev: `pytest`, `pytest-asyncio`, `ruff`, `mypy`
 
 Frontend dependencies (package.json):
@@ -200,6 +200,20 @@ evidence_chains (
   metadata TEXT  -- JSON blob
 );
 
+-- Timeline events (transactions, transfers, significant dated events)
+timeline_events (
+  id TEXT PRIMARY KEY,
+  investigation_id TEXT NOT NULL REFERENCES investigations(id),
+  entity_id TEXT,
+  entity_name TEXT,
+  event_date TEXT NOT NULL,  -- ISO 8601
+  amount REAL,
+  description TEXT,
+  source_record_id TEXT REFERENCES records(id),
+  source_dataset_id TEXT REFERENCES datasets(id),
+  created_at TEXT NOT NULL
+);
+
 -- Chat messages
 messages (
   id TEXT PRIMARY KEY,
@@ -212,7 +226,7 @@ messages (
 
 Connection manager: a class `SQLiteDB` with `__init__(db_path)`, context manager support, `execute()`, `executemany()`, `fetchone()`, `fetchall()`. Enables WAL mode and foreign keys on connect.
 
-Pydantic models in `models.py`: `Investigation`, `Dataset`, `Record`, `EvidenceChain`, `Message` — matching the table schemas. These are shared between DB layer and API responses.
+Pydantic models in `models.py`: `Investigation`, `Dataset`, `Record`, `EvidenceChain`, `TimelineEvent`, `Message` — matching the table schemas. These are shared between DB layer and API responses.
 
 **Test scenarios:** (`backend/tests/test_sqlite.py`)
 - Schema creates all tables on fresh database
@@ -277,6 +291,7 @@ Repository classes that combine SQLite and graph operations:
 - `InvestigationRepo`: create, get, list, update status. On create, initializes a fresh LadybugDB database file scoped to the investigation.
 - `DatasetRepo`: create, get by investigation, store records in batch.
 - `EvidenceRepo`: create chain entry, query by investigation, query by entity_id, query by confidence. Satisfies R8 acceptance criteria.
+- `TimelineEventRepo`: create event, query by investigation (sorted by event_date), query by entity_id.
 - `MessageRepo`: append message, get conversation history for investigation.
 
 Each repo takes `SQLiteDB` and `GraphDB` instances (dependency injection). Repositories are the single entry point for all persistence — no direct DB access from tools or API routes.
@@ -287,6 +302,8 @@ Each repo takes `SQLiteDB` and `GraphDB` instances (dependency injection). Repos
 - Create evidence chain and query by entity returns it
 - Create evidence chain and query by confidence='confirmed' returns only confirmed entries
 - Message repo appends and retrieves in chronological order
+- Timeline event repo creates event and queries by investigation sorted by event_date
+- Timeline event repo queries by entity_id returns correct subset
 - Investigation listing returns all investigations sorted by updated_at desc
 
 **Verify:** `cd backend && pytest tests/test_repositories.py -v`
@@ -750,9 +767,72 @@ Each section references specific evidence chain entry IDs so the analyst can tra
 
 **Verify:** `cd backend && pytest tests/test_tool_sar.py -v`
 
+#### 7.3 Implement timeline event recording tool
+
+**Depends on:** 2.3
+**Files:** `backend/redthread/agent/tools/timeline.py`, `backend/tests/test_tool_timeline.py`
+
+Agent SDK tool for the agent to record dated events for the timeline visualization:
+
+```python
+@tool
+def record_timeline_event(
+    investigation_id: str,
+    entity_id: str,
+    entity_name: str,
+    event_date: str,
+    amount: float = 0.0,
+    description: str = "",
+    source_record_id: str = "",
+    source_dataset_id: str = "",
+) -> str:
+    """Record a transaction or event for the timeline visualization.
+    Call this when you identify dated transactions, transfers, or significant
+    events during investigation."""
+```
+
+The tool:
+1. Validates `event_date` is a valid ISO 8601 date string
+2. Creates a `TimelineEvent` record via `TimelineEventRepo`
+3. Returns confirmation with the event ID and summary
+
+This is the data producer for the `/investigations/{id}/timeline` endpoint (9.1). The agent calls this tool whenever it encounters dated financial activity during ingestion analysis, entity resolution, or evidence recording.
+
+**Test scenarios:** (`backend/tests/test_tool_timeline.py`)
+- Record event with all fields creates entry in DB
+- Record event with minimal fields (investigation_id, entity_id, entity_name, event_date) succeeds
+- Record event with invalid date format returns error
+- Events are retrievable from TimelineEventRepo filtered by investigation_id
+- Events are retrievable filtered by entity_id
+
+**Verify:** `cd backend && pytest tests/test_tool_timeline.py -v`
+
 ---
 
 ## 8. Agent Core
+
+#### 8.0 Validate Agent SDK API and create adapter interface
+
+**Depends on:** 1.1
+**Files:** `backend/redthread/agent/sdk_adapter.py`, `backend/tests/test_sdk_adapter.py`
+
+Create a thin adapter layer that wraps the Agent SDK's actual API surface. This isolates all tool definitions and the agent client from SDK-specific imports. If the SDK's actual class names or function signatures differ from what's documented in this plan, only this file needs to change.
+
+The adapter defines:
+- `ToolDecorator` — wraps `@tool` (or whatever the actual decorator is)
+- `create_tool_server()` — wraps `create_sdk_mcp_server()`
+- `AgentClient` — wraps `ClaudeSDKClient` with `chat()` and `stream()` methods
+- `StreamEvent` type alias
+
+First step of this subtask: `pip install claude-agent-sdk` (or discover the actual package name), import the module, and inspect the actual API surface. Document any deviations from the plan's assumptions in the adapter file.
+
+**Test scenarios:** (`backend/tests/test_sdk_adapter.py`)
+- SDK package installs successfully
+- `ToolDecorator` wraps a function without errors
+- `create_tool_server()` creates a server instance
+- `AgentClient` initializes with API key and model
+
+**Verify:** `cd backend && pytest tests/test_sdk_adapter.py -v`
 
 #### 8.1 Adapt system prompt from existing prompts.py
 
@@ -790,7 +870,7 @@ No test file — this is a prompt text file. Validated through integration tests
 
 #### 8.2 Implement Agent SDK client and tool assembly
 
-**Depends on:** 8.1, 3.2, 4.2, 5.2, 6.1, 7.1, 7.2
+**Depends on:** 8.0, 8.1, 3.2, 4.2, 5.2, 6.1, 7.1, 7.2, 7.3
 **Files:** `backend/redthread/agent/client.py`, `backend/redthread/agent/tools/__init__.py`, `backend/tests/test_agent_client.py`
 
 Central agent client that wires together all tools and manages conversation:
@@ -812,12 +892,13 @@ from .ofac import screen_ofac
 from .search import web_search, fetch_url
 from .evidence import record_evidence, query_evidence
 from .sar import generate_sar_narrative
+from .timeline import record_timeline_event
 
 mcp_server = create_sdk_mcp_server(
     "redthread",
     tools=[ingest_file, resolve_entity, add_relationship, query_entity_graph,
            screen_ofac, web_search, fetch_url, record_evidence, query_evidence,
-           generate_sar_narrative],
+           generate_sar_narrative, record_timeline_event],
 )
 ```
 
@@ -835,9 +916,12 @@ mcp_server = create_sdk_mcp_server(
 5. After completion, saves assistant message to MessageRepo
 
 `create_sub_investigation()` method:
-- Creates an `AgentDefinition` with a focused system prompt for the specific question
-- Uses the `Task` tool pattern from Agent SDK
-- Returns the sub-agent's findings as a string
+- **Synchronous execution:** The main agent waits for the sub-agent to complete before continuing. This keeps the conversation flow predictable for the analyst.
+- **Context passed to sub-agent:** The sub-agent receives the specific question, a summary of the investigation so far (entities found, key evidence), and the `investigation_id` for tool access.
+- **Shared tool server:** The sub-agent inherits the same MCP tool server instance (passed by reference to `AgentDefinition`), so it can call all investigation tools against the same data.
+- **Model:** `claude-sonnet-4-6` (same as main agent — keeps costs predictable).
+- **Focused system prompt template:** `"You are a Redthread sub-investigator. Your task is to answer a specific question: {question}. You have access to the same investigation tools. Focus narrowly on this question. When done, summarize your findings with evidence citations."`
+- **Output:** The sub-agent's output is returned as a string to the main agent, which can then record findings as evidence chains via the `record_evidence` tool.
 - (Satisfies R2 — hybrid interaction model with autonomous sub-investigations)
 
 **Test scenarios:** (`backend/tests/test_agent_client.py`)
@@ -845,7 +929,8 @@ mcp_server = create_sdk_mcp_server(
 - MCP server lists all expected tool names
 - Chat method yields stream events (mock the SDK client)
 - Conversation history is persisted after chat completes
-- Sub-investigation creates a scoped agent definition
+- Sub-investigation creates a scoped agent definition with focused system prompt
+- Sub-investigation returns findings string that main agent can use
 - Agent handles tool call → tool result flow correctly
 
 **Verify:** `cd backend && pytest tests/test_agent_client.py -v`
@@ -890,7 +975,7 @@ Graph endpoint returns data formatted for Cytoscape.js consumption:
 }
 ```
 
-Timeline endpoint returns data formatted for Recharts:
+Timeline endpoint queries the `timeline_events` table (populated by the `record_timeline_event` tool in 7.3) and returns data formatted for Recharts:
 ```json
 {
   "events": [{"date": "...", "entity_id": "...", "entity_name": "...", "amount": 0, "description": "..."}]
@@ -1140,6 +1225,31 @@ Loads evidence from `useWebSocket` hook's `evidenceData` state (pushed via `evid
 
 ---
 
+## 12. Data Security & PII Handling
+
+#### 12.1 Implement data security baseline for PII handling
+
+**Depends on:** 1.2, 2.1
+**Files:** `backend/redthread/security.py`, `docker-compose.yml`, `backend/redthread/main.py`
+
+Address the PRD's data sensitivity risk (BSA/AML data contains PII subject to 31 USC 5318(g)(2)):
+
+- SQLite databases stored in `data/` volume with restrictive file permissions (0600). Set via `os.chmod` after creation in the SQLite connection manager.
+- Upload directory (`uploads/`) with restrictive permissions (0700).
+- Docker volumes bind to host directories only (no named volumes that persist in Docker's opaque storage).
+- Docker Compose: bind ports to `127.0.0.1` only (not `0.0.0.0`) to prevent network exposure. E.g., `"127.0.0.1:8000:8000"`.
+- Agent tool call logging: sanitize PII from log output. Log tool names and timing, not input/output content containing entity names or financial data.
+- No data-at-rest encryption in v1 (local-only deployment; filesystem-level encryption like FileVault is the user's responsibility). Document this limitation.
+
+**Test scenarios:** (`backend/tests/test_security.py`)
+- SQLite DB file created with 0600 permissions
+- Upload directory created with 0700 permissions
+- Docker compose binds to 127.0.0.1 not 0.0.0.0
+
+**Verify:** `ls -la data/*.db` shows restrictive permissions. `docker compose config | grep ports` shows 127.0.0.1 binding.
+
+---
+
 ## Testing Strategy
 
 - **Unit tests:** Each module (parsers, entity resolution, OFAC screening, repositories, tools) has dedicated test files. Use pytest with fixtures for database setup/teardown. Mock external APIs (Exa, Agent SDK). Target: All non-UI modules have unit tests.
@@ -1152,7 +1262,7 @@ Loads evidence from `useWebSocket` hook's `evidenceData` state (pushed via `evid
 | Risk | Mitigation |
 |------|------------|
 | LadybugDB is pre-1.0 with limited ecosystem | Graph layer abstracted behind Protocol. NetworkX fallback implemented in 2.2. Evaluate LadybugDB in subtask 2.2 before building on it — switch to fallback if blocking issues found. |
-| Agent SDK API surface may differ from research findings | Subtask 8.2 is the integration point. If SDK patterns differ, the tool definitions (3.2-7.2) are plain Python functions — only the MCP server assembly needs adjustment. |
+| Agent SDK API surface may differ from research findings | Subtask 8.0 validates the SDK API and creates an adapter layer. If SDK patterns differ, only the adapter (8.0) needs adjustment — tool definitions (3.2-7.3) are plain Python functions behind the adapter. |
 | Claude Max may not grant programmatic Agent SDK access | Fallback to standard Anthropic API key with usage-based billing. Config supports both auth methods (8.2). |
 | 50 MB / 500K row file ingestion may be slow | Streaming parsers (3.1) avoid loading entire file in memory. Batch DB inserts (2.3) use `executemany`. Splink batch resolution (4.3) uses DuckDB for SQL-speed processing. |
 | OFAC SDN list changes format or URL | Downloader (5.1) has both XML and CSV fallback paths. Parse errors produce warnings, not crashes. |
@@ -1160,4 +1270,4 @@ Loads evidence from `useWebSocket` hook's `evidenceData` state (pushed via `evid
 
 ## Open Questions
 
-None — all decisions resolved in PRD and research phase.
+- **Agent SDK package name and API surface:** The plan references `claude-agent-sdk` with specific imports (`@tool`, `create_sdk_mcp_server`, `ClaudeSDKClient`). These are based on research findings and may differ from the actual SDK. Subtask 8.0 validates this as the first step of agent core work. If the SDK API differs significantly, only the adapter layer (8.0) needs to change.
