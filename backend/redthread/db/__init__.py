@@ -9,6 +9,13 @@ from redthread.db.models import (
     Record,
     TimelineEvent,
 )
+from redthread.db.repositories import (
+    DatasetRepo,
+    EvidenceRepo,
+    InvestigationRepo,
+    MessageRepo,
+    TimelineEventRepo,
+)
 from redthread.db.sqlite import SQLiteDB
 
 __all__ = [
@@ -21,4 +28,9 @@ __all__ = [
     "EvidenceChain",
     "TimelineEvent",
     "Message",
+    "InvestigationRepo",
+    "DatasetRepo",
+    "EvidenceRepo",
+    "TimelineEventRepo",
+    "MessageRepo",
 ]
