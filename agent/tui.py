@@ -729,6 +729,9 @@ class RichREPL:
         self._agent_thread: threading.Thread | None = None
         self._agent_result: str | None = None
 
+        # Queued input lines (e.g. from slash-command follow-ups)
+        self._queued_input: list[str] = []
+
         # Demo mode: prepare render hook (installed in run() after splash art).
         censor_fn = None
         self._demo_hook = None
