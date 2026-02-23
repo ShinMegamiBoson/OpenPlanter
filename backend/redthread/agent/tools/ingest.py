@@ -37,6 +37,7 @@ async def ingest_file(
     file_path: str,
     investigation_id: str,
     description: str = "",
+    allowed_dir: str = "",
 ) -> str:
     """Ingest a local data file (CSV, JSON, XLSX) into the investigation.
 
@@ -60,6 +61,15 @@ async def ingest_file(
         JSON string with ingestion summary or error details.
     """
     path = Path(file_path).resolve()
+
+    # Validate path is within the allowed directory (prevent agent reading arbitrary files)
+    if allowed_dir:
+        allowed_root = Path(allowed_dir).resolve()
+        if not str(path).startswith(str(allowed_root) + "/") and path != allowed_root:
+            return json.dumps({
+                "status": "error",
+                "message": "File path is outside the upload directory",
+            })
 
     # Detect file type from extension
     file_type = _detect_file_type(file_path)

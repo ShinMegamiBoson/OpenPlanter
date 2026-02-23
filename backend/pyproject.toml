@@ -24,6 +24,7 @@ dependencies = [
     "aiofiles>=23.2.0",
     "chardet>=5.2.0",
     "networkx>=3.2",
+    "python-multipart>=0.0.6",
 ]
 
 [project.optional-dependencies]

@@ -41,6 +41,7 @@ def create_tool_server(
     timeline_repo: TimelineEventRepo,
     message_repo: MessageRepo,
     exa_client: ExaClient | None = None,
+    upload_dir: str = "",
 ) -> ToolServer:
     """Create a ToolServer with all investigation tools registered.
 
@@ -72,7 +73,10 @@ def create_tool_server(
         investigation_id: str,
         description: str = "",
     ) -> str:
-        return await ingest_file(dataset_repo, file_path, investigation_id, description)
+        return await ingest_file(
+            dataset_repo, file_path, investigation_id, description,
+            allowed_dir=upload_dir,
+        )
 
     server.register(ToolDefinition(
         name="ingest_file",
