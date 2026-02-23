@@ -1,4 +1,26 @@
+"use client";
+
+import { useWebSocket } from "@/hooks/useWebSocket";
+import { ChatPanel } from "@/components/ChatPanel";
+import { FileUpload } from "@/components/FileUpload";
+
+/**
+ * Temporary hardcoded investigation ID for development.
+ * In production this would come from route params or a selection screen.
+ */
+const DEV_INVESTIGATION_ID = "dev-investigation";
+
 export default function Home() {
+  const {
+    messages,
+    sendMessage,
+    sendSubInvestigation,
+    isConnected,
+    isStreaming,
+    toolCalls,
+    lastError,
+  } = useWebSocket(DEV_INVESTIGATION_ID);
+
   return (
     <div className="workspace">
       {/* Header */}
@@ -14,20 +36,19 @@ export default function Home() {
 
       {/* Left Panel: Chat */}
       <section className="panel panel--chat">
-        <div className="panel__header">
-          <span className="panel__title">Investigation Chat</span>
-        </div>
-        <div className="panel__content">
-          <div className="empty-state">
-            <div className="empty-state__message">
-              Start an investigation by uploading a dataset or describing what
-              you want to analyze.
-            </div>
-            <div className="empty-state__hint">
-              Supports CSV, JSON, and XLSX files
-            </div>
-          </div>
-        </div>
+        <FileUpload
+          investigationId={DEV_INVESTIGATION_ID}
+          onUploadComplete={sendMessage}
+        />
+        <ChatPanel
+          messages={messages}
+          onSendMessage={sendMessage}
+          onSubInvestigate={sendSubInvestigation}
+          isConnected={isConnected}
+          isStreaming={isStreaming}
+          toolCalls={toolCalls}
+          lastError={lastError}
+        />
       </section>
 
       {/* Center Panel: Visualizations */}
