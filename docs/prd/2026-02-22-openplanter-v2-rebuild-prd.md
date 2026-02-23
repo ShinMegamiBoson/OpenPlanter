@@ -76,17 +76,14 @@ This was chosen over two alternatives because it ships fastest and lets us disco
 - **OFAC as the only v1 live API**: Sanctions screening is non-negotiable for SAR work. All other live APIs are deferred to keep v1 focused on the core investigation workflow.
 - **Hybrid autonomous + interactive**: The analyst drives the investigation but can launch autonomous deep-dives. This preserves the recursive sub-agent concept from OpenPlanter v1 while keeping the analyst in control.
 
-## Open Questions
-
-- **[Affects R1]** What entity resolution library or approach should we use? Options range from simple fuzzy string matching (rapidfuzz) to more sophisticated record linkage (splink, dedupe). The right choice depends on dataset sizes and matching accuracy needs.
-- **[Affects R8]** What persistence layer for evidence chains and entity graphs? Options include SQLite (simple, file-based), PostgreSQL (richer queries, graph extensions), or an in-memory structure that serializes to JSON. Affects session persistence (R10) too.
-- **[Affects R3, R4]** Which visualization libraries for entity graphs and timelines? React ecosystem has options (react-force-graph, vis.js, D3 direct) with different trade-offs for interactivity and performance.
-
 ## Resolved Questions
 
+- **Entity resolution approach (R1, R9)** — Two-tier system. **Tier 1 (pairwise):** rapidfuzz + jellyfish (phonetic matching) + cleanco (business suffix stripping) + nameparser (human name decomposition) for quick entity comparisons during conversation. **Tier 2 (batch):** splink with DuckDB backend for probabilistic record linkage across entire datasets — unsupervised (no training data), multi-field matching with statistical confidence scores suitable for evidence-grade documentation. dedupe (inactive, requires human labeling) and recordlinkage (less mature) were eliminated.
+- **Persistence layer (R8, R10)** — Dual-database: **Kuzu** (embedded graph DB with native Cypher queries) for entity nodes and typed relationships (path-finding, traversal, pattern matching). **SQLite** for evidence chains, investigation sessions, metadata, and ingested data (normalized relational data, ACID, JSON1). Both are embedded, zero-config, installed via pip. PostgreSQL+AGE (server overhead, immature driver), Neo4j (JVM server), and in-memory+JSON (no ACID, crash risk) were eliminated. Fallback: SQLite + NetworkX if Kuzu maturity is a concern.
+- **Visualization libraries (R3, R4)** — **Cytoscape.js** (direct integration, no React wrapper) for entity graphs: 1.5M downloads/week, compound nodes for grouping entities, built-in graph algorithms (shortest path, centrality), 10+ layout plugins, incremental updates via `cy.add()`/`cy.remove()`. **Recharts** for transaction timelines: 7-13M downloads/week, composable React components (ComposedChart with scatter + reference areas + custom tooltips), `syncId` for coordinated multi-entity views. react-force-graph, React Flow, vis-network, and vis-timeline were evaluated and rejected.
 - **OFAC/SDN access method** — Download the full SDN list and screen locally. No external API dependency. The agent will need a tool to fetch/update the list and perform fuzzy matching against it.
 - **Project name** — Renamed to **Redthread**. "Follow the red thread" is a classic investigation metaphor for tracing evidence chains across sources.
 
 ## Next Steps
 
--> Resolve open questions, then create technical plan
+-> Create technical plan
