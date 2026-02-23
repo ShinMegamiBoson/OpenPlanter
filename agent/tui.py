@@ -18,6 +18,12 @@ from .settings import SettingsStore
 SLASH_COMMANDS: list[str] = ["/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning"]
 
 
+def _queue_prompt_style():
+    """Return a prompt_toolkit Style for the queued-input prompt."""
+    from prompt_toolkit.styles import Style
+    return Style.from_dict({"dim": "ansigray"})
+
+
 
 
 def _make_left_markdown():
