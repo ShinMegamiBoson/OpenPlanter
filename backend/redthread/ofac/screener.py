@@ -71,7 +71,7 @@ def _get_entity_type_hint(sdn_entry_type: str) -> str:
     """Map SDN entry_type to the pairwise comparison entity_type hint."""
     if sdn_entry_type == "Individual":
         return "person"
-    if sdn_entry_type in ("Entity",):
+    if sdn_entry_type == "Entity":
         return "organization"
     return "unknown"
 

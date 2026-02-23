@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Callable, Protocol
+from typing import Any, AsyncIterator, Callable
 
 
 # ---------------------------------------------------------------------------
@@ -104,14 +104,14 @@ class ToolServer:
         Returns a list of tool definitions compatible with the
         anthropic Python SDK's messages API.
         """
-        tools = []
-        for td in self._tools.values():
-            tools.append({
+        return [
+            {
                 "name": td.name,
                 "description": td.description,
                 "input_schema": td.parameters,
-            })
-        return tools
+            }
+            for td in self._tools.values()
+        ]
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> str:
         """Call a registered tool by name with the given arguments.
@@ -128,27 +128,6 @@ class ToolServer:
         except Exception as exc:
             return json.dumps({"error": f"Tool error: {str(exc)}"})
 
-
-# ---------------------------------------------------------------------------
-# Agent client protocol
-# ---------------------------------------------------------------------------
-
-class AgentClientProtocol(Protocol):
-    """Protocol for agent clients (SDK or fallback)."""
-
-    async def chat(
-        self,
-        messages: list[dict[str, Any]],
-        system: str,
-        tools: ToolServer,
-    ) -> AsyncIterator[StreamEvent]:
-        """Send messages and stream the response."""
-        ...
-
-
-# ---------------------------------------------------------------------------
-# Fallback client using standard anthropic SDK
-# ---------------------------------------------------------------------------
 
 class AnthropicFallbackClient:
     """Agent client using the standard anthropic Python SDK.
@@ -196,8 +175,9 @@ class AnthropicFallbackClient:
         client = self._get_client()
         anthropic_tools = tools.to_anthropic_tools()
         conversation = list(messages)
+        max_iterations = 25
 
-        while True:
+        for _iteration in range(max_iterations):
             # Make the API call
             response = client.messages.create(
                 model=self._model,
@@ -290,3 +270,9 @@ class AnthropicFallbackClient:
                     content=full_text,
                 )
                 return
+
+        # Safety: iteration limit reached
+        yield StreamEvent(
+            event_type="error",
+            content="Reached maximum tool call iterations. Please try a simpler request.",
+        )

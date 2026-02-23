@@ -6,8 +6,6 @@ All endpoints are under /api/v1. Routes receive dependencies
 
 from __future__ import annotations
 
-import json
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -120,25 +118,26 @@ async def get_graph(
     relationships = state.graph_db.get_all_relationships(investigation_id)
 
     # Format for Cytoscape.js
-    nodes = []
-    for entity in entities:
-        nodes.append({
+    nodes = [
+        {
             "data": {
                 "id": entity["id"],
                 "label": entity.get("name", "Unknown"),
                 "type": entity.get("entity_type", "unknown"),
             },
-        })
-
-    edges = []
-    for rel in relationships:
-        edges.append({
+        }
+        for entity in entities
+    ]
+    edges = [
+        {
             "data": {
                 "source": rel["source_id"],
                 "target": rel["target_id"],
                 "type": rel.get("rel_type", "RELATES_TO"),
             },
-        })
+        }
+        for rel in relationships
+    ]
 
     return {"nodes": nodes, "edges": edges}
 
@@ -154,15 +153,16 @@ async def get_timeline(
     state = _get_state(request)
     events = state.timeline_repo.query_by_investigation(investigation_id)
 
-    formatted_events = []
-    for event in events:
-        formatted_events.append({
+    formatted_events = [
+        {
             "date": event["event_date"],
             "entity_id": event.get("entity_id"),
             "entity_name": event.get("entity_name"),
             "amount": event.get("amount"),
             "description": event.get("description"),
-        })
+        }
+        for event in events
+    ]
 
     return {"events": formatted_events}
 
@@ -217,16 +217,17 @@ async def upload_file(
             detail=f"File exceeds maximum size of {MAX_FILE_SIZE // (1024 * 1024)} MB",
         )
 
-    # Save file
+    # Save file — sanitize filename to prevent path traversal
+    safe_name = Path(file.filename).name  # strips directory components
     upload_dir = Path(state.settings.UPLOAD_DIR) / investigation_id
     upload_dir.mkdir(parents=True, exist_ok=True)
-    file_path = upload_dir / file.filename
+    file_path = upload_dir / safe_name
     file_path.write_bytes(content)
 
     return {
         "status": "uploaded",
-        "filename": file.filename,
+        "filename": safe_name,
         "size_bytes": len(content),
-        "file_path": str(file_path),
+        "file_path": f"{investigation_id}/{safe_name}",
         "investigation_id": investigation_id,
     }

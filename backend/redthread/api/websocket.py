@@ -178,9 +178,9 @@ async def chat_websocket(
                 })
 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for investigation {investigation_id}")
+        logger.info("WebSocket disconnected for investigation %s", investigation_id)
     except Exception as exc:
-        logger.error(f"WebSocket error: {exc}")
+        logger.error("WebSocket error: %s", exc)
         try:
             await _send_json(websocket, {
                 "type": "error",

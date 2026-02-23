@@ -125,9 +125,8 @@ async def query_evidence(
         confidence=confidence if confidence else None,
     )
 
-    evidence_list = []
-    for entry in entries:
-        evidence_list.append({
+    evidence_list = [
+        {
             "id": entry["id"],
             "claim": entry["claim"],
             "supporting_evidence": entry["supporting_evidence"],
@@ -136,7 +135,9 @@ async def query_evidence(
             "source_record_id": entry.get("source_record_id"),
             "source_dataset_id": entry.get("source_dataset_id"),
             "created_at": entry["created_at"],
-        })
+        }
+        for entry in entries
+    ]
 
     return json.dumps({
         "investigation_id": investigation_id,

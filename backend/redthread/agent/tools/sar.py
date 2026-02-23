@@ -35,14 +35,6 @@ _DRAFT_FOOTER = (
     "=" * 72
 )
 
-_CONFIDENCE_RANK = {
-    "confirmed": 0,
-    "probable": 1,
-    "possible": 2,
-    "unresolved": 3,
-}
-
-
 def _format_entity_info(entity: dict[str, Any]) -> str:
     """Format a single entity's information for the subject section."""
     name = entity.get("name", "Unknown")

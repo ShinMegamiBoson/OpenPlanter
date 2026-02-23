@@ -30,24 +30,6 @@ _SDN_NS = "http://tempuri.org/sdnList.xsd"
 # Primary download URL.
 SDN_XML_URL = "https://www.treasury.gov/ofac/downloads/sdn.xml"
 
-# Schema for the sdn_entries table — separate from the main Redthread schema
-# since OFAC screening is a standalone concern.
-_SDN_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS sdn_entries (
-    uid INTEGER PRIMARY KEY,
-    entry_type TEXT,
-    name TEXT NOT NULL,
-    program TEXT,
-    aliases TEXT,
-    addresses TEXT,
-    id_numbers TEXT,
-    remarks TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_sdn_entries_name ON sdn_entries(name);
-"""
-
-
 @dataclass
 class SDNEntry:
     """A single entry from the OFAC SDN list."""
@@ -180,92 +162,61 @@ async def download_sdn_list(target_path: Path) -> DownloadResult:
         return DownloadResult(success=False, error=str(exc))
 
 
-def parse_sdn_xml(xml_path: Path) -> list[SDNEntry]:
-    """Parse an SDN XML file into a list of :class:`SDNEntry` objects.
+def _entries_from_root(root: ET.Element) -> list[SDNEntry]:
+    """Extract SDNEntry objects from a parsed XML root element.
 
     Malformed entries (missing uid or name) are logged and skipped so
     that a single bad record does not prevent the rest from loading.
-
-    Also supports XML provided as a string when *xml_path* points to
-    a file on disk.
     """
     entries: list[SDNEntry] = []
+    for entry_el in root.findall(_ns("sdnEntry")):
+        try:
+            uid_text = _text(entry_el.find(_ns("uid")))
+            if not uid_text:
+                logger.warning("Skipping SDN entry with missing uid")
+                continue
 
+            name = _build_name(entry_el)
+            if not name:
+                logger.warning("Skipping SDN entry uid=%s with empty name", uid_text)
+                continue
+
+            entry = SDNEntry(
+                uid=int(uid_text),
+                entry_type=_text(entry_el.find(_ns("sdnType"))) or "Unknown",
+                name=name,
+                program=_extract_programs(entry_el),
+                aliases=_extract_aliases(entry_el),
+                addresses=_extract_addresses(entry_el),
+                id_numbers=_extract_ids(entry_el),
+                remarks=_text(entry_el.find(_ns("remarks"))),
+            )
+            entries.append(entry)
+        except (ValueError, TypeError) as exc:
+            logger.warning("Skipping malformed SDN entry: %s", exc)
+            continue
+    return entries
+
+
+def parse_sdn_xml(xml_path: Path) -> list[SDNEntry]:
+    """Parse an SDN XML file into a list of :class:`SDNEntry` objects."""
     try:
         tree = ET.parse(xml_path)  # noqa: S314
         root = tree.getroot()
     except ET.ParseError as exc:
         logger.warning("Failed to parse SDN XML at %s: %s", xml_path, exc)
-        return entries
-
-    for entry_el in root.findall(_ns("sdnEntry")):
-        try:
-            uid_text = _text(entry_el.find(_ns("uid")))
-            if not uid_text:
-                logger.warning("Skipping SDN entry with missing uid")
-                continue
-
-            name = _build_name(entry_el)
-            if not name:
-                logger.warning("Skipping SDN entry uid=%s with empty name", uid_text)
-                continue
-
-            entry = SDNEntry(
-                uid=int(uid_text),
-                entry_type=_text(entry_el.find(_ns("sdnType"))) or "Unknown",
-                name=name,
-                program=_extract_programs(entry_el),
-                aliases=_extract_aliases(entry_el),
-                addresses=_extract_addresses(entry_el),
-                id_numbers=_extract_ids(entry_el),
-                remarks=_text(entry_el.find(_ns("remarks"))),
-            )
-            entries.append(entry)
-        except (ValueError, TypeError) as exc:
-            logger.warning("Skipping malformed SDN entry: %s", exc)
-            continue
-
-    return entries
+        return []
+    return _entries_from_root(root)
 
 
 def parse_sdn_xml_string(xml_string: str) -> list[SDNEntry]:
     """Parse SDN XML from a string (convenience for testing)."""
-    entries: list[SDNEntry] = []
-
     try:
         root = ET.fromstring(xml_string)  # noqa: S314
     except ET.ParseError as exc:
         logger.warning("Failed to parse SDN XML string: %s", exc)
-        return entries
-
-    for entry_el in root.findall(_ns("sdnEntry")):
-        try:
-            uid_text = _text(entry_el.find(_ns("uid")))
-            if not uid_text:
-                logger.warning("Skipping SDN entry with missing uid")
-                continue
-
-            name = _build_name(entry_el)
-            if not name:
-                logger.warning("Skipping SDN entry uid=%s with empty name", uid_text)
-                continue
-
-            entry = SDNEntry(
-                uid=int(uid_text),
-                entry_type=_text(entry_el.find(_ns("sdnType"))) or "Unknown",
-                name=name,
-                program=_extract_programs(entry_el),
-                aliases=_extract_aliases(entry_el),
-                addresses=_extract_addresses(entry_el),
-                id_numbers=_extract_ids(entry_el),
-                remarks=_text(entry_el.find(_ns("remarks"))),
-            )
-            entries.append(entry)
-        except (ValueError, TypeError) as exc:
-            logger.warning("Skipping malformed SDN entry: %s", exc)
-            continue
-
-    return entries
+        return []
+    return _entries_from_root(root)
 
 
 def create_sdn_table(db: SQLiteDB) -> None:

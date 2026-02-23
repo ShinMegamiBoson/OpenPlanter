@@ -59,7 +59,7 @@ async def ingest_file(
     str
         JSON string with ingestion summary or error details.
     """
-    path = Path(file_path)
+    path = Path(file_path).resolve()
 
     # Detect file type from extension
     file_type = _detect_file_type(file_path)

@@ -106,20 +106,11 @@ class RedthreadAgent:
         Loads prior messages from the database and appends the new user message.
         """
         history = self._repos.message_repo.get_history(investigation_id)
-        messages: list[dict[str, Any]] = []
-
-        for msg in history:
-            messages.append({
-                "role": msg["role"],
-                "content": msg["content"],
-            })
-
-        # Append the new user message
-        messages.append({
-            "role": "user",
-            "content": user_message,
-        })
-
+        messages = [
+            {"role": msg["role"], "content": msg["content"]}
+            for msg in history
+        ]
+        messages.append({"role": "user", "content": user_message})
         return messages
 
     async def chat(
