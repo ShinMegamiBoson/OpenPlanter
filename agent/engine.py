@@ -15,7 +15,8 @@ from .config import AgentConfig
 from .model import BaseModel, ImageData, ModelError, ModelTurn, ToolCall, ToolResult
 from .prompts import build_system_prompt
 from .replay_log import ReplayLogger
-from .tool_defs import get_tool_definitions
+from .tool_defs import TOOL_DEFINITIONS, get_tool_definitions
+from .tool_registry import ToolRegistry
 from .tools import WorkspaceTools
 
 EventCallback = Callable[[str], None]
@@ -135,6 +136,7 @@ class RLMEngine:
     _shell_command_counts: dict[tuple[int, str], int] = field(default_factory=dict)
     _cancel: threading.Event = field(default_factory=threading.Event)
     _pending_image: threading.local = field(default_factory=threading.local)
+    tool_registry: ToolRegistry | None = None
 
     def __post_init__(self) -> None:
         if not self.system_prompt:
@@ -147,6 +149,137 @@ class RLMEngine:
         tool_defs = get_tool_definitions(include_subtask=self.config.recursive, include_acceptance_criteria=ac)
         if hasattr(self.model, "tool_defs"):
             self.model.tool_defs = tool_defs
+        if self.tool_registry is None:
+            self.tool_registry = ToolRegistry.from_definitions(TOOL_DEFINITIONS)
+        self._register_registry_handlers()
+
+    def _register_registry_handlers(self) -> None:
+        """Register an incremental set of handlers on the registry.
+
+        This is an incremental migration step; all non-registered tools still
+        use the legacy dispatch chain in `_apply_tool_call`.
+        """
+        if self.tool_registry is None:
+            return
+        from .builtin_tool_plugins import get_builtin_tool_plugins
+
+        self.tool_registry.register_plugins(get_builtin_tool_plugins())
+
+    def _registry_think(self, args: dict[str, Any], _ctx: Any) -> str:
+        note = str(args.get("note", ""))
+        return f"Thought noted: {note}"
+
+    def _registry_list_files(self, args: dict[str, Any], _ctx: Any) -> str:
+        glob = args.get("glob")
+        return self.tools.list_files(glob=str(glob) if glob else None)
+
+    def _registry_search_files(self, args: dict[str, Any], _ctx: Any) -> str:
+        query = str(args.get("query", "")).strip()
+        glob = args.get("glob")
+        if not query:
+            return "search_files requires non-empty query"
+        return self.tools.search_files(query=query, glob=str(glob) if glob else None)
+
+    def _registry_repo_map(self, args: dict[str, Any], _ctx: Any) -> str:
+        glob = args.get("glob")
+        raw_max_files = args.get("max_files", 200)
+        max_files = raw_max_files if isinstance(raw_max_files, int) else 200
+        return self.tools.repo_map(glob=str(glob) if glob else None, max_files=max_files)
+
+    def _registry_read_file(self, args: dict[str, Any], _ctx: Any) -> str:
+        path = str(args.get("path", "")).strip()
+        if not path:
+            return "read_file requires path"
+        hashline = args.get("hashline")
+        hashline = hashline if hashline is not None else True
+        return self.tools.read_file(path, hashline=hashline)
+
+    def _registry_fetch_url(self, args: dict[str, Any], _ctx: Any) -> str:
+        urls = args.get("urls")
+        if not isinstance(urls, list):
+            return "fetch_url requires a list of URL strings"
+        return self.tools.fetch_url([str(u) for u in urls if isinstance(u, str)])
+
+    def _registry_web_search(self, args: dict[str, Any], _ctx: Any) -> str:
+        query = str(args.get("query", "")).strip()
+        if not query:
+            return "web_search requires non-empty query"
+        raw_num_results = args.get("num_results", 10)
+        num_results = raw_num_results if isinstance(raw_num_results, int) else 10
+        raw_include_text = args.get("include_text", False)
+        include_text = bool(raw_include_text) if isinstance(raw_include_text, bool) else False
+        return self.tools.web_search(
+            query=query,
+            num_results=num_results,
+            include_text=include_text,
+        )
+
+    def _registry_read_image(self, args: dict[str, Any], _ctx: Any) -> str:
+        path = str(args.get("path", "")).strip()
+        if not path:
+            return "read_image requires path"
+        text, b64, media_type = self.tools.read_image(path)
+        if b64 is not None and media_type is not None:
+            self._pending_image.data = (b64, media_type)
+        return text
+
+    def _registry_write_file(self, args: dict[str, Any], _ctx: Any) -> str:
+        path = str(args.get("path", "")).strip()
+        if not path:
+            return "write_file requires path"
+        content = str(args.get("content", ""))
+        return self.tools.write_file(path, content)
+
+    def _registry_apply_patch(self, args: dict[str, Any], _ctx: Any) -> str:
+        patch = str(args.get("patch", ""))
+        if not patch.strip():
+            return "apply_patch requires non-empty patch"
+        return self.tools.apply_patch(patch)
+
+    def _registry_edit_file(self, args: dict[str, Any], _ctx: Any) -> str:
+        path = str(args.get("path", "")).strip()
+        if not path:
+            return "edit_file requires path"
+        old_text = str(args.get("old_text", ""))
+        new_text = str(args.get("new_text", ""))
+        if not old_text:
+            return "edit_file requires old_text"
+        return self.tools.edit_file(path, old_text, new_text)
+
+    def _registry_hashline_edit(self, args: dict[str, Any], _ctx: Any) -> str:
+        path = str(args.get("path", "")).strip()
+        if not path:
+            return "hashline_edit requires path"
+        edits = args.get("edits")
+        if not isinstance(edits, list):
+            return "hashline_edit requires edits array"
+        return self.tools.hashline_edit(path, edits)
+
+    def _registry_run_shell(self, args: dict[str, Any], _ctx: Any) -> str:
+        command = str(args.get("command", "")).strip()
+        if not command:
+            return "run_shell requires command"
+        raw_timeout = args.get("timeout")
+        timeout = int(raw_timeout) if raw_timeout is not None else None
+        return self.tools.run_shell(command, timeout=timeout)
+
+    def _registry_run_shell_bg(self, args: dict[str, Any], _ctx: Any) -> str:
+        command = str(args.get("command", "")).strip()
+        if not command:
+            return "run_shell_bg requires command"
+        return self.tools.run_shell_bg(command)
+
+    def _registry_check_shell_bg(self, args: dict[str, Any], _ctx: Any) -> str:
+        raw_id = args.get("job_id")
+        if raw_id is None:
+            return "check_shell_bg requires job_id"
+        return self.tools.check_shell_bg(int(raw_id))
+
+    def _registry_kill_shell_bg(self, args: dict[str, Any], _ctx: Any) -> str:
+        raw_id = args.get("job_id")
+        if raw_id is None:
+            return "kill_shell_bg requires job_id"
+        return self.tools.kill_shell_bg(int(raw_id))
 
     def cancel(self) -> None:
         """Signal the engine to stop after the current model call or tool."""
@@ -679,6 +812,11 @@ class RLMEngine:
         policy_error = self._runtime_policy_check(name=name, args=args, depth=depth)
         if policy_error:
             return False, policy_error
+
+        if self.tool_registry is not None:
+            handled, registry_result = self.tool_registry.try_invoke(name, args, self)
+            if handled:
+                return False, registry_result
 
         if name == "think":
             note = str(args.get("note", ""))
