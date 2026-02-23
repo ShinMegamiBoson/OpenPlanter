@@ -1,0 +1,34 @@
+# Doc-Code Coupling Map
+#
+# Defines which docs must be reviewed when source files change.
+# CI will fail on strict couplings, warn on soft couplings.
+#
+# Format:
+#   - sources: [glob patterns for source files]
+#     docs: [paths to docs that should be updated]
+#     description: what this coupling represents
+#     soft: true  # Optional: warn instead of fail
+
+couplings:
+  # Example: Core module documentation
+  - sources:
+      - "src/core/*.py"
+    docs:
+      - "docs/architecture/core.md"
+    description: "Core module architecture"
+
+  # Example: API documentation
+  - sources:
+      - "src/api/*.py"
+    docs:
+      - "docs/api.md"
+    description: "API reference"
+
+  # Example: Configuration
+  - sources:
+      - "src/config.py"
+      - "config/*.yaml"
+    docs:
+      - "docs/configuration.md"
+    description: "Configuration options"
+    soft: true  # Warn only, don't fail CI
