@@ -74,7 +74,20 @@ if [[ -n "$SYNC_STATUS" ]]; then
     fi
 fi
 
-# 5. Branch divergence check
+# 5. Dead code check (if enabled in meta-process.yaml)
+DEAD_CODE=$(find_script "check_dead_code.py")
+if [[ -n "$DEAD_CODE" ]] && [[ -n "$STAGED_PY" ]]; then
+    echo "Checking for dead code..."
+    if ! python "$DEAD_CODE" 2>/dev/null; then
+        echo ""
+        echo "ERROR: Dead code check failed!"
+        echo "Run 'python $DEAD_CODE' to see details."
+        echo ""
+        exit 1
+    fi
+fi
+
+# 6. Branch divergence check
 echo "Checking branch freshness..."
 git fetch origin 2>/dev/null || true
 
