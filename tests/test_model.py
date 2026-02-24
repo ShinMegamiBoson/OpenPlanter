@@ -114,6 +114,37 @@ class ModelPayloadTests(unittest.TestCase):
             self.assertIn("reasoning_effort", calls[0])
             self.assertNotIn("reasoning_effort", calls[1])
 
+    def test_openai_retries_without_reasoning_when_unrecognized_argument(self) -> None:
+        calls: list[dict] = []
+
+        def fake_http_json(url, method, headers, payload=None, timeout_sec=90):  # type: ignore[no-untyped-def]
+            calls.append(dict(payload or {}))
+            if len(calls) == 1:
+                raise ModelError(
+                    "HTTP 400 calling https://api.openai.com/v1/chat/completions: "
+                    "{\"error\":{\"message\":\"Unrecognized request argument supplied: reasoning_effort\"}}"
+                )
+            return {
+                "choices": [
+                    {
+                        "message": {"content": "ok", "tool_calls": None},
+                        "finish_reason": "stop",
+                    }
+                ]
+            }
+
+        with patch("agent.model._http_stream_sse", mock_openai_stream(fake_http_json)):
+            model = OpenAICompatibleModel(
+                model="gpt-4.1-mini",
+                api_key="k",
+                reasoning_effort="high",
+            )
+            conv = model.create_conversation("system", "user msg")
+            turn = model.complete(conv)
+            self.assertEqual(turn.text, "ok")
+            self.assertIn("reasoning_effort", calls[0])
+            self.assertNotIn("reasoning_effort", calls[1])
+
     def test_anthropic_retries_without_thinking_when_unsupported(self) -> None:
         calls: list[dict] = []
 
@@ -141,6 +172,79 @@ class ModelPayloadTests(unittest.TestCase):
             self.assertEqual(turn.text, "ok")
             self.assertIn("thinking", calls[0])
             self.assertNotIn("thinking", calls[1])
+
+    def test_openai_maps_aliased_tool_call_name_back_to_canonical(self) -> None:
+        def fake_http_json(url, method, headers, payload=None, timeout_sec=90):  # type: ignore[no-untyped-def]
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "altdata_query",
+                                        "arguments": "{\"sql\": \"SELECT 1\"}",
+                                    },
+                                }
+                            ],
+                        },
+                        "finish_reason": "tool_calls",
+                    }
+                ]
+            }
+
+        with patch("agent.model._http_stream_sse", mock_openai_stream(fake_http_json)):
+            model = OpenAICompatibleModel(
+                model="gpt-4.1-mini",
+                api_key="k",
+                tool_defs=[
+                    {
+                        "name": "altdata.query",
+                        "description": "Query",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"sql": {"type": "string"}},
+                            "required": ["sql"],
+                            "additionalProperties": False,
+                        },
+                    }
+                ],
+            )
+            conv = model.create_conversation("system", "user msg")
+            turn = model.complete(conv)
+            self.assertEqual(len(turn.tool_calls), 1)
+            self.assertEqual(turn.tool_calls[0].name, "altdata.query")
+            self.assertEqual(turn.tool_calls[0].arguments["sql"], "SELECT 1")
+
+    def test_openai_append_tool_results_uses_aliased_name(self) -> None:
+        from agent.model import Conversation, ToolResult
+
+        model = OpenAICompatibleModel(
+            model="gpt-4.1-mini",
+            api_key="k",
+            tool_defs=[
+                {
+                    "name": "altdata.query",
+                    "description": "Query",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"sql": {"type": "string"}},
+                        "required": ["sql"],
+                        "additionalProperties": False,
+                    },
+                }
+            ],
+        )
+        conv = Conversation(_provider_messages=[])
+        model.append_tool_results(
+            conv,
+            [ToolResult(tool_call_id="call_1", name="altdata.query", content='{"ok":true}')],
+        )
+        self.assertEqual(conv._provider_messages[0]["name"], "altdata_query")
+
 
 
 class OllamaPayloadTests(unittest.TestCase):

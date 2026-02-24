@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Protocol
 
-from .tool_defs import TOOL_DEFINITIONS, to_anthropic_tools, to_openai_tools
+from .tool_defs import TOOL_DEFINITIONS, openai_tool_name_aliases, to_anthropic_tools, to_openai_tools
 
 
 class ModelError(RuntimeError):
@@ -635,6 +635,12 @@ class OpenAICompatibleModel:
     tool_defs: list[dict[str, Any]] | None = None
     on_content_delta: Callable[[str, str], None] | None = None
 
+    def _openai_tool_name_maps(self) -> tuple[dict[str, str], dict[str, str]]:
+        """Return (canonical->alias, alias->canonical) maps for current tool defs."""
+        aliases = openai_tool_name_aliases(self.tool_defs)
+        reverse = {alias: canonical for canonical, alias in aliases.items()}
+        return aliases, reverse
+
     def _is_reasoning_model(self) -> bool:
         """OpenAI reasoning models (o-series, gpt-5 series) have different API constraints."""
         lower = self.model.lower()
@@ -658,6 +664,8 @@ class OpenAICompatibleModel:
 
     def complete(self, conversation: Conversation) -> ModelTurn:
         is_reasoning = self._is_reasoning_model()
+
+        _tool_name_aliases, alias_to_canonical = self._openai_tool_name_maps()
 
         payload: dict[str, Any] = {
             "model": self.model,
@@ -731,7 +739,11 @@ class OpenAICompatibleModel:
             text = str(exc).lower()
             unsupported_reasoning = effort and (
                 "reasoning_effort" in text
-                and ("unsupported_parameter" in text or "unknown" in text)
+                and (
+                    "unsupported_parameter" in text
+                    or "unknown" in text
+                    or "unrecognized request argument" in text
+                )
             )
             if not unsupported_reasoning:
                 raise
@@ -768,7 +780,7 @@ class OpenAICompatibleModel:
                     args = {}
                 tool_calls.append(ToolCall(
                     id=tc.get("id", ""),
-                    name=func.get("name", ""),
+                    name=alias_to_canonical.get(func.get("name", ""), func.get("name", "")),
                     arguments=args if isinstance(args, dict) else {},
                 ))
 
@@ -797,11 +809,12 @@ class OpenAICompatibleModel:
         conversation.turn_count += 1
 
     def append_tool_results(self, conversation: Conversation, results: list[ToolResult]) -> None:
+        aliases, _alias_to_canonical = self._openai_tool_name_maps()
         for r in results:
             conversation._provider_messages.append({
                 "role": "tool",
                 "tool_call_id": r.tool_call_id,
-                "name": r.name,
+                "name": aliases.get(r.name, r.name),
                 "content": r.content,
             })
             # OpenAI tool results are text-only; inject a user message with the image.

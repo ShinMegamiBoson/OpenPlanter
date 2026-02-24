@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import fnmatch
 import re
 import time
 import threading
@@ -9,18 +10,20 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from .config import AgentConfig
 from .model import BaseModel, ImageData, ModelError, ModelTurn, ToolCall, ToolResult
 from .prompts import build_system_prompt
 from .replay_log import ReplayLogger
-from .tool_defs import get_tool_definitions
+from .tool_defs import TOOL_DEFINITIONS, get_tool_definitions
+from .tool_registry import ToolRegistry
 from .tools import WorkspaceTools
 
 EventCallback = Callable[[str], None]
 StepCallback = Callable[[dict[str, Any]], None]
 ContentDeltaCallback = Callable[[str, str], None]
+ToolConfirmationCallback = Callable[[str, dict[str, Any], dict[str, Any]], bool]
 
 
 def _summarize_args(args: dict[str, Any], max_len: int = 120) -> str:
@@ -167,6 +170,9 @@ class RLMEngine:
     _shell_command_counts: dict[tuple[int, str], int] = field(default_factory=dict)
     _cancel: threading.Event = field(default_factory=threading.Event)
     _pending_image: threading.local = field(default_factory=threading.local)
+    _tool_call_ctx: threading.local = field(default_factory=threading.local)
+    tool_registry: ToolRegistry | None = None
+    tool_confirmation_callback: ToolConfirmationCallback | None = None
 
     def __post_init__(self) -> None:
         if not self.system_prompt:
@@ -179,6 +185,29 @@ class RLMEngine:
         tool_defs = get_tool_definitions(include_subtask=self.config.recursive, include_acceptance_criteria=ac)
         if hasattr(self.model, "tool_defs"):
             self.model.tool_defs = tool_defs
+        if self.tool_registry is None:
+            self.tool_registry = ToolRegistry.from_definitions(TOOL_DEFINITIONS)
+        self._register_registry_handlers()
+
+    def _register_registry_handlers(self) -> None:
+        """Register an incremental set of handlers on the registry.
+
+        This is an incremental migration step; all non-registered tools still
+        use the legacy dispatch chain in `_apply_tool_call`.
+        """
+        if self.tool_registry is None:
+            return
+        from .builtin_tool_plugins import get_builtin_tool_plugins
+        from .plugin_loader import load_external_tool_plugins
+
+        self.tool_registry.register_plugins(
+            get_builtin_tool_plugins(),
+            allow_handler_override=True,
+        )
+        if self.config.tool_modules:
+            self.tool_registry.register_plugins(
+                load_external_tool_plugins(self.config.tool_modules),
+            )
 
     def cancel(self) -> None:
         """Signal the engine to stop after the current model call or tool."""
@@ -223,6 +252,24 @@ class RLMEngine:
                 cleanup()
         return result, active_context
 
+    def _confirmation_policy_check(self, *, name: str, args: dict[str, Any]) -> str | None:
+        """Return a policy error if the tool requires explicit confirmation."""
+        if self.tool_registry is None:
+            return None
+        policy = self.tool_registry.get_policy(name)
+        if not bool(policy.get("requires_confirmation", False)):
+            return None
+        callback = self.tool_confirmation_callback
+        if callback is None:
+            return f"Blocked by confirmation policy: {name} requires explicit approval"
+        try:
+            approved = bool(callback(name, args, policy))
+        except Exception as exc:
+            return f"Blocked by confirmation policy: approval callback error for {name}: {exc}"
+        if not approved:
+            return f"Blocked by confirmation policy: approval denied for {name}"
+        return None
+
     def _emit(self, msg: str, on_event: EventCallback | None) -> None:
         if on_event:
             try:
@@ -234,6 +281,18 @@ class RLMEngine:
         return text if len(text) <= self.config.max_observation_chars else (
             f"{text[:self.config.max_observation_chars]}"
             f"\n...[truncated {len(text) - self.config.max_observation_chars} chars]..."
+        )
+
+    def _tool_allowlist_policy_check(self, name: str) -> str | None:
+        """Return a policy error if the tool is outside the configured allowlist."""
+        patterns = tuple(self.config.allowed_tool_patterns)
+        if not patterns:
+            return None
+        if any(fnmatch.fnmatchcase(name, pat) for pat in patterns):
+            return None
+        return (
+            f"Blocked by tool allowlist policy: {name} is not allowed. "
+            f"Allowed patterns: {', '.join(patterns)}"
         )
 
     def _runtime_policy_check(self, name: str, args: dict[str, Any], depth: int) -> str | None:
@@ -252,6 +311,174 @@ class RLMEngine:
             "Blocked by runtime policy: identical run_shell command repeated more than twice "
             "at the same depth. Change strategy instead of retrying the same command."
         )
+
+    def _get_tool_call_ctx(self) -> dict[str, Any] | None:
+        """Return the active tool-call context for registry handlers, if any."""
+        data = getattr(self._tool_call_ctx, "data", None)
+        return data if isinstance(data, dict) else None
+
+    def _registry_subtask(self, args: dict[str, Any], _ctx: Any) -> str:
+        call_ctx = self._get_tool_call_ctx()
+        if call_ctx is None:
+            return "subtask unavailable: missing tool call context"
+
+        depth = int(call_ctx["depth"])
+        context = cast(ExternalContext, call_ctx["context"])
+        on_event = cast(EventCallback | None, call_ctx["on_event"])
+        on_step = cast(StepCallback | None, call_ctx["on_step"])
+        deadline = float(call_ctx["deadline"])
+        current_model = cast(BaseModel | None, call_ctx["current_model"])
+        replay_logger = cast(ReplayLogger | None, call_ctx["replay_logger"])
+        step = int(call_ctx["step"])
+
+        if not self.config.recursive:
+            return "Subtask tool not available in flat mode."
+        if depth >= self.config.max_depth:
+            return "Max recursion depth reached; cannot run subtask."
+        objective = str(args.get("objective", "")).strip()
+        if not objective:
+            return "subtask requires objective"
+        criteria = str(args.get("acceptance_criteria", "") or "").strip()
+        if self.config.acceptance_criteria and not criteria:
+            return (
+                "subtask requires acceptance_criteria when acceptance criteria mode is enabled. "
+                "Provide specific, verifiable criteria for judging the result."
+            )
+
+        requested_model_name = args.get("model")
+        requested_effort = args.get("reasoning_effort")
+        subtask_model: BaseModel | None = None
+
+        if (requested_model_name or requested_effort) and self.model_factory:
+            cur = current_model or self.model
+            cur_name = getattr(cur, "model", "")
+            cur_effort = getattr(cur, "reasoning_effort", None)
+            cur_tier = _model_tier(cur_name, cur_effort)
+
+            req_name = requested_model_name or cur_name
+            req_effort = requested_effort
+            req_tier = _model_tier(req_name, req_effort or cur_effort)
+
+            if req_tier < cur_tier:
+                return (
+                    f"Cannot delegate to higher-tier model "
+                    f"(current tier {cur_tier}, requested tier {req_tier}). "
+                    f"Use an equal or lower-tier model."
+                )
+
+            cache_key = (req_name, requested_effort)
+            with self._lock:
+                if cache_key not in self._model_cache:
+                    self._model_cache[cache_key] = self.model_factory(req_name, requested_effort)
+                subtask_model = self._model_cache[cache_key]
+
+        self._emit(f"[d{depth}] >> entering subtask: {objective}", on_event)
+        child_logger = replay_logger.child(depth, step) if replay_logger else None
+        subtask_result = self._solve_recursive(
+            objective=objective,
+            depth=depth + 1,
+            context=context,
+            on_event=on_event,
+            on_step=on_step,
+            on_content_delta=None,
+            deadline=deadline,
+            model_override=subtask_model,
+            replay_logger=child_logger,
+        )
+        observation = f"Subtask result for '{objective}':\n{subtask_result}"
+
+        if criteria and self.config.acceptance_criteria:
+            verdict = self._judge_result(objective, criteria, subtask_result, current_model)
+            tag = "PASS" if verdict.startswith("PASS") else "FAIL"
+            observation += f"\n\n[ACCEPTANCE CRITERIA: {tag}]\n{verdict}"
+
+        return observation
+
+    def _registry_execute(self, args: dict[str, Any], _ctx: Any) -> str:
+        call_ctx = self._get_tool_call_ctx()
+        if call_ctx is None:
+            return "execute unavailable: missing tool call context"
+
+        depth = int(call_ctx["depth"])
+        context = cast(ExternalContext, call_ctx["context"])
+        on_event = cast(EventCallback | None, call_ctx["on_event"])
+        on_step = cast(StepCallback | None, call_ctx["on_step"])
+        deadline = float(call_ctx["deadline"])
+        current_model = cast(BaseModel | None, call_ctx["current_model"])
+        replay_logger = cast(ReplayLogger | None, call_ctx["replay_logger"])
+        step = int(call_ctx["step"])
+
+        objective = str(args.get("objective", "")).strip()
+        if not objective:
+            return "execute requires objective"
+        criteria = str(args.get("acceptance_criteria", "") or "").strip()
+        if self.config.acceptance_criteria and not criteria:
+            return (
+                "execute requires acceptance_criteria when acceptance criteria mode is enabled. "
+                "Provide specific, verifiable criteria for judging the result."
+            )
+        if depth >= self.config.max_depth:
+            return "Max recursion depth reached; cannot run execute."
+
+        cur = current_model or self.model
+        cur_name = getattr(cur, "model", "")
+        exec_name, exec_effort = _lowest_tier_model(cur_name)
+
+        exec_model: BaseModel | None = None
+        if self.model_factory:
+            cache_key = (exec_name, exec_effort)
+            with self._lock:
+                if cache_key not in self._model_cache:
+                    self._model_cache[cache_key] = self.model_factory(exec_name, exec_effort)
+                exec_model = self._model_cache[cache_key]
+
+        _saved_defs = None
+        if exec_model and hasattr(exec_model, "tool_defs"):
+            exec_model.tool_defs = get_tool_definitions(
+                include_subtask=False,
+                include_acceptance_criteria=self.config.acceptance_criteria,
+            )
+        elif exec_model is None and hasattr(cur, "tool_defs"):
+            _saved_defs = cur.tool_defs
+            cur.tool_defs = get_tool_definitions(
+                include_subtask=False,
+                include_acceptance_criteria=self.config.acceptance_criteria,
+            )
+
+        self._emit(f"[d{depth}] >> executing leaf: {objective}", on_event)
+        child_logger = replay_logger.child(depth, step) if replay_logger else None
+        exec_result = self._solve_recursive(
+            objective=objective,
+            depth=depth + 1,
+            context=context,
+            on_event=on_event,
+            on_step=on_step,
+            on_content_delta=None,
+            deadline=deadline,
+            model_override=exec_model,
+            replay_logger=child_logger,
+        )
+        if _saved_defs is not None:
+            cur.tool_defs = _saved_defs
+        observation = f"Execute result for '{objective}':\n{exec_result}"
+
+        if criteria and self.config.acceptance_criteria:
+            verdict = self._judge_result(objective, criteria, exec_result, current_model)
+            tag = "PASS" if verdict.startswith("PASS") else "FAIL"
+            observation += f"\n\n[ACCEPTANCE CRITERIA: {tag}]\n{verdict}"
+
+        return observation
+
+    def _registry_list_artifacts(self, _args: dict[str, Any], _ctx: Any) -> str:
+        return self._list_artifacts()
+
+    def _registry_read_artifact(self, args: dict[str, Any], _ctx: Any) -> str:
+        aid = str(args.get("artifact_id", "")).strip()
+        if not aid:
+            return "read_artifact requires artifact_id"
+        offset = int(args.get("offset", 0) or 0)
+        limit = int(args.get("limit", 100) or 100)
+        return self._read_artifact(aid, offset, limit)
 
     def _judge_result(
         self,
@@ -717,9 +944,38 @@ class RLMEngine:
     ) -> tuple[bool, str]:
         name = tool_call.name
         args = tool_call.arguments
+        allowlist_error = self._tool_allowlist_policy_check(name=name)
+        if allowlist_error:
+            return False, allowlist_error
         policy_error = self._runtime_policy_check(name=name, args=args, depth=depth)
         if policy_error:
             return False, policy_error
+        confirmation_error = self._confirmation_policy_check(name=name, args=args)
+        if confirmation_error:
+            return False, confirmation_error
+
+        if self.tool_registry is not None:
+            prior_call_ctx = getattr(self._tool_call_ctx, "data", None)
+            self._tool_call_ctx.data = {
+                "depth": depth,
+                "context": context,
+                "on_event": on_event,
+                "on_step": on_step,
+                "deadline": deadline,
+                "current_model": current_model,
+                "replay_logger": replay_logger,
+                "step": step,
+            }
+            try:
+                handled, registry_result = self.tool_registry.try_invoke(name, args, self)
+            finally:
+                if prior_call_ctx is None:
+                    if hasattr(self._tool_call_ctx, "data"):
+                        del self._tool_call_ctx.data
+                else:
+                    self._tool_call_ctx.data = prior_call_ctx
+            if handled:
+                return False, registry_result
 
         if name == "think":
             note = str(args.get("note", ""))

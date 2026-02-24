@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from .plugin_loader import parse_tool_module_list
+
 PROVIDER_DEFAULT_MODELS: dict[str, str] = {
     "openai": "gpt-5.2",
     "anthropic": "claude-opus-4-6",
@@ -33,6 +35,8 @@ class AgentConfig:
     cerebras_api_key: str | None = None
     exa_api_key: str | None = None
     voyage_api_key: str | None = None
+    tool_modules: tuple[str, ...] = ()
+    allowed_tool_patterns: tuple[str, ...] = ()
     max_depth: int = 4
     max_steps_per_call: int = 100
     max_observation_chars: int = 6000
@@ -87,6 +91,8 @@ class AgentConfig:
             cerebras_api_key=cerebras_api_key,
             exa_api_key=exa_api_key,
             voyage_api_key=voyage_api_key,
+            tool_modules=parse_tool_module_list(os.getenv("OPENPLANTER_TOOL_MODULES")),
+            allowed_tool_patterns=parse_tool_module_list(os.getenv("OPENPLANTER_ALLOWED_TOOLS")),
             max_depth=int(os.getenv("OPENPLANTER_MAX_DEPTH", "4")),
             max_steps_per_call=int(os.getenv("OPENPLANTER_MAX_STEPS", "100")),
             max_observation_chars=int(os.getenv("OPENPLANTER_MAX_OBS_CHARS", "6000")),
