@@ -11,9 +11,11 @@ from .credentials import (
     CredentialBundle,
     CredentialStore,
     UserCredentialStore,
+    credential_bundle_from_key_file,
     credentials_from_env,
     discover_env_candidates,
     parse_env_file,
+    parse_api_key_file_spec,
     prompt_for_credentials,
 )
 from .model import ModelError
@@ -84,6 +86,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cerebras-api-key", help="Cerebras API key override.")
     parser.add_argument("--exa-api-key", help="Exa API key override.")
     parser.add_argument("--voyage-api-key", help="Voyage API key override.")
+    parser.add_argument(
+        "--api-key-file",
+        action="append",
+        default=[],
+        metavar="PROVIDER=PATH",
+        help="Load provider API key from a file (repeatable), e.g. openai=api-keys/openai-key.txt.",
+    )
     parser.add_argument(
         "--configure-keys",
         action="store_true",
@@ -240,6 +249,22 @@ def _load_credentials(
     for env_path in discover_env_candidates(cfg.workspace):
         file_creds = parse_env_file(env_path)
         creds.merge_missing(file_creds)
+
+    for spec in args.api_key_file or []:
+        provider, key_path = parse_api_key_file_spec(str(spec), cwd=cfg.workspace)
+        file_creds = credential_bundle_from_key_file(provider, key_path)
+        if file_creds.openai_api_key:
+            creds.openai_api_key = file_creds.openai_api_key
+        if file_creds.anthropic_api_key:
+            creds.anthropic_api_key = file_creds.anthropic_api_key
+        if file_creds.openrouter_api_key:
+            creds.openrouter_api_key = file_creds.openrouter_api_key
+        if file_creds.cerebras_api_key:
+            creds.cerebras_api_key = file_creds.cerebras_api_key
+        if file_creds.exa_api_key:
+            creds.exa_api_key = file_creds.exa_api_key
+        if file_creds.voyage_api_key:
+            creds.voyage_api_key = file_creds.voyage_api_key
 
     if args.api_key:
         creds.openai_api_key = args.api_key.strip() or creds.openai_api_key

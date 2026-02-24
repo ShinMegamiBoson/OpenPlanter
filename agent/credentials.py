@@ -72,6 +72,16 @@ class CredentialBundle:
         )
 
 
+_PROVIDER_ATTR_MAP: dict[str, str] = {
+    "openai": "openai_api_key",
+    "anthropic": "anthropic_api_key",
+    "openrouter": "openrouter_api_key",
+    "cerebras": "cerebras_api_key",
+    "exa": "exa_api_key",
+    "voyage": "voyage_api_key",
+}
+
+
 def _strip_quotes(value: str) -> str:
     value = value.strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
@@ -137,6 +147,42 @@ def credentials_from_env() -> CredentialBundle:
         exa_api_key=(os.getenv("OPENPLANTER_EXA_API_KEY") or os.getenv("EXA_API_KEY") or "").strip() or None,
         voyage_api_key=(os.getenv("OPENPLANTER_VOYAGE_API_KEY") or os.getenv("VOYAGE_API_KEY") or "").strip() or None,
     )
+
+
+def parse_api_key_file_spec(spec: str, cwd: Path | None = None) -> tuple[str, Path]:
+    """Parse ``provider=path`` and return normalized provider + resolved path."""
+    raw = str(spec).strip()
+    if not raw or "=" not in raw:
+        raise ValueError("api-key-file spec must be in the form <provider>=<path>")
+    provider_raw, path_raw = raw.split("=", 1)
+    provider = provider_raw.strip().lower()
+    path_text = path_raw.strip()
+    if provider not in _PROVIDER_ATTR_MAP:
+        raise ValueError(f"unknown api-key-file provider: {provider}")
+    if not path_text:
+        raise ValueError("api-key-file path is required")
+    path = Path(path_text).expanduser()
+    if not path.is_absolute():
+        base = cwd if cwd is not None else Path.cwd()
+        path = (base / path).resolve()
+    return provider, path
+
+
+def credential_bundle_from_key_file(provider: str, path: Path) -> CredentialBundle:
+    """Load one provider key from a text file into a CredentialBundle."""
+    provider_norm = provider.strip().lower()
+    attr = _PROVIDER_ATTR_MAP.get(provider_norm)
+    if attr is None:
+        raise ValueError(f"unknown api-key-file provider: {provider_norm}")
+    try:
+        key = path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise ValueError(f"failed reading api-key-file {path}: {exc}") from exc
+    if not key:
+        raise ValueError(f"api-key-file is empty: {path}")
+    bundle = CredentialBundle()
+    setattr(bundle, attr, key)
+    return bundle
 
 
 def discover_env_candidates(workspace: Path) -> list[Path]:
