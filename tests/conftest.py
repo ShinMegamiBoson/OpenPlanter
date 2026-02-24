@@ -163,7 +163,7 @@ def _anthropic_dict_to_events(
 
 def mock_openai_stream(fake_http_json_fn):
     """Wrap a _http_json-style mock into a _http_stream_sse-style mock for OpenAI."""
-    def wrapper(url, method, headers, payload, first_byte_timeout=10, stream_timeout=120, max_retries=3, on_sse_event=None):
+    def wrapper(url, method, headers, payload, first_byte_timeout=10, stream_timeout=120, max_retries=3, on_sse_event=None, on_retry=None, max_rate_limit_retries=5):
         result = fake_http_json_fn(url, method, headers, payload=payload, timeout_sec=stream_timeout)
         return _openai_dict_to_events(result)
     return wrapper
@@ -171,7 +171,7 @@ def mock_openai_stream(fake_http_json_fn):
 
 def mock_anthropic_stream(fake_http_json_fn):
     """Wrap a _http_json-style mock into a _http_stream_sse-style mock for Anthropic."""
-    def wrapper(url, method, headers, payload, first_byte_timeout=10, stream_timeout=120, max_retries=3, on_sse_event=None):
+    def wrapper(url, method, headers, payload, first_byte_timeout=10, stream_timeout=120, max_retries=3, on_sse_event=None, on_retry=None, max_rate_limit_retries=5):
         result = fake_http_json_fn(url, method, headers, payload=payload, timeout_sec=stream_timeout)
         return _anthropic_dict_to_events(result)
     return wrapper
