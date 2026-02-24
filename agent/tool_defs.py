@@ -5,6 +5,7 @@ provider-specific shapes expected by OpenAI and Anthropic APIs.
 """
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
@@ -422,6 +423,46 @@ _ARTIFACT_TOOLS = {"list_artifacts", "read_artifact"}
 _DELEGATION_TOOLS = {"subtask", "execute", "list_artifacts", "read_artifact"}
 
 
+@lru_cache(maxsize=1)
+def _legacy_tool_registry():
+    """Build a registry wrapper over the existing static tool definitions.
+
+    Transitional helper for the registry migration. `TOOL_DEFINITIONS` remains
+    the source of truth for now; this provides a registry-backed export path.
+    """
+    from .tool_registry import ToolRegistry
+
+    return ToolRegistry.from_definitions(TOOL_DEFINITIONS)
+
+
+@lru_cache(maxsize=1)
+def _plugin_tool_registry():
+    """Build a registry from decorator-collected built-in plugins.
+
+    Transitional plugin-primary path. If the plugin set is incomplete or
+    import/registration fails, callers should fall back to `_legacy_tool_registry`.
+    """
+    from .builtin_tool_plugins import get_builtin_tool_plugins
+    from .tool_registry import ToolRegistry
+
+    registry = ToolRegistry()
+    registry.register_plugins(get_builtin_tool_plugins())
+    return registry
+
+
+def _active_tool_registry():
+    """Return the best available registry, preferring plugin-backed definitions."""
+    try:
+        plugin_registry = _plugin_tool_registry()
+        plugin_names = [d["name"] for d in plugin_registry.list_definitions()]
+        legacy_names = [d["name"] for d in TOOL_DEFINITIONS]
+        if plugin_names == legacy_names:
+            return plugin_registry
+    except Exception:
+        pass
+    return _legacy_tool_registry()
+
+
 def _strip_acceptance_criteria(defs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Remove acceptance_criteria property from subtask/execute schemas."""
     import copy
@@ -449,13 +490,19 @@ def get_tool_definitions(
     - ``include_artifacts=True`` → add list_artifacts + read_artifact.
     - ``include_acceptance_criteria=False`` → strip acceptance_criteria from schemas.
     """
+    registry = _active_tool_registry()
+
     if include_subtask:
-        defs = [d for d in TOOL_DEFINITIONS if d["name"] not in ("execute",) and d["name"] not in _ARTIFACT_TOOLS]
+        defs = registry.filtered_definitions(
+            exclude_names={"execute"} | _ARTIFACT_TOOLS,
+        )
     else:
-        defs = [d for d in TOOL_DEFINITIONS if d["name"] not in _DELEGATION_TOOLS]
+        defs = registry.filtered_definitions(
+            exclude_names=_DELEGATION_TOOLS,
+        )
 
     if include_artifacts:
-        defs += [d for d in TOOL_DEFINITIONS if d["name"] in _ARTIFACT_TOOLS]
+        defs += registry.filtered_definitions(include_names=_ARTIFACT_TOOLS)
 
     if not include_acceptance_criteria:
         defs = _strip_acceptance_criteria(defs)
@@ -515,7 +562,7 @@ def to_openai_tools(
     strict: bool = True,
 ) -> list[dict[str, Any]]:
     """Convert provider-neutral definitions to OpenAI tools array format."""
-    defs = defs if defs is not None else TOOL_DEFINITIONS
+    defs = defs if defs is not None else _active_tool_registry().list_definitions()
     tools: list[dict[str, Any]] = []
     for d in defs:
         parameters = d["parameters"]
@@ -539,7 +586,7 @@ def to_anthropic_tools(
     defs: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Convert provider-neutral definitions to Anthropic tools array format."""
-    defs = defs if defs is not None else TOOL_DEFINITIONS
+    defs = defs if defs is not None else _active_tool_registry().list_definitions()
     tools: list[dict[str, Any]] = []
     for d in defs:
         tools.append(
