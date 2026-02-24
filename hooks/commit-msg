@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Commit-msg hook that validates commit prefixes against meta-process.yaml.
+
+Reads valid_prefixes from meta_process.commits in meta-process.yaml and
+validates the first line of each commit message. Merge commits and
+fixup/squash commits are always allowed. Fails loud if YAML is missing
+or unreadable.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:
+    print("ERROR: PyYAML is required for commit-msg hook.", file=sys.stderr)
+    print("Install with: pip install pyyaml", file=sys.stderr)
+    sys.exit(1)
+
+
+def find_repo_root() -> Path:
+    """Walk up from this script's location to find the git repo root."""
+    current = Path(__file__).resolve().parent
+    while current != current.parent:
+        if (current / ".git").exists():
+            return current
+        current = current.parent
+    # Fallback: assume hooks/ is directly under repo root
+    return Path(__file__).resolve().parent.parent
+
+
+def load_config(repo_root: Path) -> dict:
+    """Load and return the meta_process config from meta-process.yaml.
+
+    Raises SystemExit if the file is missing or unreadable.
+    """
+    config_path = repo_root / "meta-process.yaml"
+    if not config_path.exists():
+        print(
+            f"ERROR: {config_path} not found, cannot validate commit prefix.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        text = config_path.read_text(encoding="utf-8")
+        data = yaml.safe_load(text)
+    except Exception as exc:
+        print(
+            f"ERROR: Failed to parse {config_path}: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if not isinstance(data, dict) or "meta_process" not in data:
+        print(
+            f"ERROR: {config_path} missing 'meta_process' key.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return data["meta_process"]
+
+
+def validate_commit_message(first_line: str, config: dict) -> bool:
+    """Check whether the first line matches any valid prefix pattern.
+
+    Returns True if the message is valid, False otherwise.
+    Merge and fixup/squash commits are always accepted.
+    """
+    # Always allow merge commits
+    if first_line.startswith("Merge"):
+        return True
+
+    # Always allow fixup/squash commits
+    if re.match(r"^(fixup!|squash!)", first_line):
+        return True
+
+    commits_config = config.get("commits", {})
+
+    # If prefix validation is disabled, accept everything
+    if not commits_config.get("require_prefix", True):
+        return True
+
+    prefixes = commits_config.get("valid_prefixes", [])
+    if not prefixes:
+        print(
+            "ERROR: No valid_prefixes defined in meta-process.yaml commits section.",
+            file=sys.stderr,
+        )
+        return False
+
+    for pattern in prefixes:
+        try:
+            if re.match(pattern, first_line):
+                return True
+        except re.error as exc:
+            print(
+                f"WARNING: Invalid regex in valid_prefixes: '{pattern}': {exc}",
+                file=sys.stderr,
+            )
+
+    return False
+
+
+def format_rejection(prefixes: list[str]) -> str:
+    """Build a human-readable rejection message showing valid prefix patterns."""
+    lines = [
+        "",
+        "ERROR: Commit message must start with a valid prefix.",
+        "",
+        "Valid patterns (from meta-process.yaml):",
+    ]
+    for p in prefixes:
+        lines.append(f"  {p}")
+    lines.extend([
+        "",
+        "See docs/plans/TEMPLATE.md for plan format.",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point for the commit-msg hook.
+
+    Reads the commit message file path from argv, loads config from
+    meta-process.yaml, and validates the first line against configured
+    prefix patterns.
+    """
+    args = argv if argv is not None else sys.argv[1:]
+    if not args:
+        print("ERROR: No commit message file provided.", file=sys.stderr)
+        return 1
+
+    commit_msg_file = Path(args[0])
+    if not commit_msg_file.exists():
+        print(f"ERROR: Commit message file not found: {commit_msg_file}", file=sys.stderr)
+        return 1
+
+    first_line = commit_msg_file.read_text(encoding="utf-8").splitlines()[0].strip()
+
+    repo_root = find_repo_root()
+    config = load_config(repo_root)
+
+    if validate_commit_message(first_line, config):
+        return 0
+
+    prefixes = config.get("commits", {}).get("valid_prefixes", [])
+    print(format_rejection(prefixes), file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

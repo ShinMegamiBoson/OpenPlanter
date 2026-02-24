@@ -1,0 +1,43 @@
+meta_process:
+  version: '1.0'
+  plans:
+    enabled: true
+    require_tests: true
+    require_references_reviewed: true
+    trivial_threshold_lines: 20
+    trivial_block_src: false
+    plans_dir: docs/plans
+  claims:
+    enabled: true
+  worktrees:
+    enabled: true
+  commits:
+    require_prefix: true
+    valid_prefixes:
+    - '\[Plan #\d+\]'
+    - \[Trivial\]
+    - \[Unplanned\]
+  quality:
+    doc_coupling:
+      enabled: false
+      strict: false
+      config_file: scripts/doc_coupling.yaml
+    mock_policy:
+      enabled: false
+    adr_governance:
+      enabled: false
+    type_checking:
+      enabled: false
+  acceptance_gates:
+    enabled: false
+  messaging:
+    enabled: false
+  ci:
+    allow_disable_file: true
+    jobs:
+      test: true
+      mypy: false
+      fast_checks: true
+      plan_checks: true
+      post_merge_sync: false
+    change_detection: false

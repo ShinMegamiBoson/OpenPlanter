@@ -1,0 +1,4 @@
+# Doc-code coupling configuration
+# Minimal bootstrap: no enforced couplings yet.
+
+couplings: []
