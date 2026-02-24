@@ -71,6 +71,43 @@ class GetToolDefinitionsTests(unittest.TestCase):
         names = [d["name"] for d in defs]
         self.assertIn("subtask", names)
 
+    def test_include_artifacts_true_adds_artifact_tools(self) -> None:
+        defs = get_tool_definitions(include_subtask=True, include_artifacts=True)
+        names = [d["name"] for d in defs]
+        self.assertIn("subtask", names)
+        self.assertNotIn("execute", names)
+        self.assertIn("list_artifacts", names)
+        self.assertIn("read_artifact", names)
+        # Only execute remains excluded when include_subtask=True and include_artifacts=True.
+        self.assertEqual(len(defs), len(TOOL_DEFINITIONS) - 1)
+        self.assertEqual(names[-2:], ["list_artifacts", "read_artifact"])
+
+    def test_acceptance_criteria_stripped_when_disabled(self) -> None:
+        defs = get_tool_definitions(include_subtask=True, include_acceptance_criteria=False)
+        subtask = next(d for d in defs if d["name"] == "subtask")
+        self.assertNotIn("acceptance_criteria", subtask["parameters"]["properties"])
+        self.assertNotIn("acceptance_criteria", subtask["parameters"].get("required", []))
+
+    def test_acceptance_criteria_preserved_when_enabled(self) -> None:
+        defs = get_tool_definitions(include_subtask=True, include_acceptance_criteria=True)
+        subtask = next(d for d in defs if d["name"] == "subtask")
+        self.assertIn("acceptance_criteria", subtask["parameters"]["properties"])
+
+    def test_get_tool_definitions_calls_do_not_mutate_each_other(self) -> None:
+        stripped = get_tool_definitions(include_subtask=True, include_acceptance_criteria=False)
+        subtask_stripped = next(d for d in stripped if d["name"] == "subtask")
+        self.assertNotIn("acceptance_criteria", subtask_stripped["parameters"]["properties"])
+
+        preserved = get_tool_definitions(include_subtask=True, include_acceptance_criteria=True)
+        subtask_preserved = next(d for d in preserved if d["name"] == "subtask")
+        self.assertIn("acceptance_criteria", subtask_preserved["parameters"]["properties"])
+
+        # Mutating one returned payload should not affect future calls.
+        subtask_preserved["parameters"]["properties"].pop("acceptance_criteria", None)
+        preserved_again = get_tool_definitions(include_subtask=True, include_acceptance_criteria=True)
+        subtask_again = next(d for d in preserved_again if d["name"] == "subtask")
+        self.assertIn("acceptance_criteria", subtask_again["parameters"]["properties"])
+
 
 class MakeStrictParametersTests(unittest.TestCase):
     """Tests for _make_strict_parameters()."""
