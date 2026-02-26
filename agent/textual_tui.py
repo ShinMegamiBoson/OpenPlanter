@@ -406,14 +406,10 @@ class OpenPlanterApp(App):
             self._censor_fn = DemoCensor(ctx.cfg.workspace).censor_text
 
     def _resolve_wiki_dir(self) -> Path | None:
-        """Find the wiki directory."""
-        candidates = [
-            Path(self.ctx.cfg.workspace) / ".openplanter" / "wiki",
-            Path(self.ctx.cfg.workspace) / "wiki",
-        ]
-        for c in candidates:
-            if c.is_dir():
-                return c
+        """Find the runtime wiki directory ({workspace}/{session_root_dir}/wiki/)."""
+        wiki = Path(self.ctx.cfg.workspace) / self.ctx.cfg.session_root_dir / "wiki"
+        if wiki.is_dir():
+            return wiki
         return None
 
     def compose(self) -> ComposeResult:

@@ -39,7 +39,7 @@ class TestCategorySlug:
 
 
 # ---------------------------------------------------------------------------
-# parse_index — real wiki directory
+# parse_index — baseline wiki directory (committed source, seeded to runtime)
 # ---------------------------------------------------------------------------
 
 WIKI_DIR = Path(__file__).resolve().parent.parent / "wiki"
@@ -47,9 +47,14 @@ WIKI_DIR = Path(__file__).resolve().parent.parent / "wiki"
 
 @pytest.fixture
 def wiki_dir():
-    """Return the real wiki directory, skip if missing."""
+    """Return the committed baseline wiki/ directory for parser tests.
+
+    At runtime the wiki lives at {workspace}/.openplanter/wiki/, seeded
+    from this baseline.  Tests here validate the parser against the
+    baseline content which is identical in structure.
+    """
     if not WIKI_DIR.is_dir():
-        pytest.skip("wiki/ directory not found")
+        pytest.skip("wiki/ baseline directory not found")
     return WIKI_DIR
 
 
