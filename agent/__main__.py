@@ -592,12 +592,18 @@ def main() -> None:
         run_plain_repl(ctx)
         return
 
-    if args.textual:
-        try:
-            from .textual_tui import run_textual_app
-        except ImportError as exc:
-            print(f"Textual TUI requires extra dependencies: pip install openplanter-agent[textual]\n({exc})")
+    # Default: Textual TUI (with wiki graph panel) if available,
+    # Rich REPL fallback, plain REPL last resort.
+    # --textual flag forces Textual (hard error if not installed).
+    try:
+        from .textual_tui import run_textual_app
+    except ImportError:
+        if args.textual:
+            print("Textual TUI requires extra dependencies: pip install openplanter-agent[textual]")
             raise SystemExit(1)
+        run_textual_app = None  # type: ignore[assignment]
+
+    if run_textual_app is not None:
         run_textual_app(ctx, startup_info=startup_info)
         return
 
