@@ -1,0 +1,44 @@
+/** Typed Tauri invoke wrappers. */
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  ConfigView,
+  GraphData,
+  ModelInfo,
+  PartialConfig,
+  SessionInfo,
+} from "./types";
+
+export async function solve(objective: string): Promise<void> {
+  return invoke("solve", { objective });
+}
+
+export async function cancel(): Promise<void> {
+  return invoke("cancel");
+}
+
+export async function getConfig(): Promise<ConfigView> {
+  return invoke("get_config");
+}
+
+export async function updateConfig(partial: PartialConfig): Promise<ConfigView> {
+  return invoke("update_config", { partial });
+}
+
+export async function listModels(provider: string): Promise<ModelInfo[]> {
+  return invoke("list_models", { provider });
+}
+
+export async function listSessions(limit?: number): Promise<SessionInfo[]> {
+  return invoke("list_sessions", { limit: limit ?? null });
+}
+
+export async function openSession(
+  id?: string,
+  resume: boolean = false
+): Promise<SessionInfo> {
+  return invoke("open_session", { id: id ?? null, resume });
+}
+
+export async function getGraphData(): Promise<GraphData> {
+  return invoke("get_graph_data");
+}
