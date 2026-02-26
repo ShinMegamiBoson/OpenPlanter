@@ -406,10 +406,19 @@ class OpenPlanterApp(App):
             self._censor_fn = DemoCensor(ctx.cfg.workspace).censor_text
 
     def _resolve_wiki_dir(self) -> Path | None:
-        """Find the runtime wiki directory ({workspace}/{session_root_dir}/wiki/)."""
-        wiki = Path(self.ctx.cfg.workspace) / self.ctx.cfg.session_root_dir / "wiki"
-        if wiki.is_dir():
-            return wiki
+        """Find the wiki directory for graph display.
+
+        Prefers the runtime wiki ({workspace}/{session_root_dir}/wiki/)
+        which the agent writes to.  Falls back to the committed baseline
+        (wiki/) so the graph is always populated even before a session
+        seeds the runtime copy.
+        """
+        runtime = Path(self.ctx.cfg.workspace) / self.ctx.cfg.session_root_dir / "wiki"
+        if runtime.is_dir():
+            return runtime
+        baseline = Path(self.ctx.cfg.workspace) / "wiki"
+        if baseline.is_dir():
+            return baseline
         return None
 
     def compose(self) -> ComposeResult:
@@ -446,11 +455,15 @@ class OpenPlanterApp(App):
         # Update graph legend
         self._update_graph_legend()
 
-        # Start wiki watcher
-        if self._wiki_dir is not None:
+        # Start wiki watcher — always watch the runtime wiki path so we
+        # pick up new entries the agent creates, even if we initially fell
+        # back to the committed baseline for display.
+        runtime_wiki = Path(self.ctx.cfg.workspace) / self.ctx.cfg.session_root_dir / "wiki"
+        watch_dir = runtime_wiki if runtime_wiki.is_dir() else self._wiki_dir
+        if watch_dir is not None:
             try:
                 from .wiki_graph import WikiWatcher
-                self._watcher = WikiWatcher(self._wiki_dir)
+                self._watcher = WikiWatcher(watch_dir)
                 self._watcher.start(on_change=lambda: self.call_from_thread(self.post_message, WikiChanged()))
             except Exception:
                 pass
@@ -680,6 +693,12 @@ class OpenPlanterApp(App):
 
     def on_wiki_changed(self, message: WikiChanged) -> None:
         canvas = self.query_one("#wiki-graph", WikiGraphCanvas)
+        # If the runtime wiki appeared (agent seeded it), switch to it
+        runtime_wiki = Path(self.ctx.cfg.workspace) / self.ctx.cfg.session_root_dir / "wiki"
+        if runtime_wiki.is_dir() and canvas._wiki_dir != runtime_wiki:
+            from .wiki_graph import WikiGraphModel
+            canvas._wiki_dir = runtime_wiki
+            canvas._model = WikiGraphModel(runtime_wiki)
         canvas.rebuild()
         self._update_graph_legend()
 
