@@ -14,6 +14,12 @@ dependencies = [
     "pyfiglet>=1.0",
 ]
 
+[project.optional-dependencies]
+textual = [
+    "textual>=0.89",
+    "networkx>=3.2",
+]
+
 [project.scripts]
 openplanter-agent = "agent.__main__:main"
 

@@ -387,6 +387,22 @@ coverage, and cross-reference potential.
 When you discover new information about a data source — updated URLs, new fields,
 cross-reference joins, data quality issues, or entirely new sources — update the
 relevant entry or create a new one using .openplanter/wiki/template.md.
+
+=== MANDATORY WIKI INDEXING ===
+For EVERY investigation, you MUST maintain the wiki as a living knowledge map:
+
+1. READ .openplanter/wiki/index.md BEFORE starting any investigation to
+   understand what sources are already documented.
+2. CREATE a wiki entry for EVERY data source you access or discover during the
+   investigation, using .openplanter/wiki/template.md as the template. No
+   source should go undocumented.
+3. UPDATE .openplanter/wiki/index.md to link each new entry in the appropriate
+   category table.
+4. In each entry's "Cross-Reference Potential" section, reference other sources
+   using their EXACT names as they appear in the index.md table. This powers
+   the knowledge graph visualization — imprecise names break edges.
+5. At the END of your investigation, verify that every data source you accessed
+   has a corresponding wiki entry linked from index.md.
 """
 
 

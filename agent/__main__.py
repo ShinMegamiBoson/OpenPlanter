@@ -102,6 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Use plain REPL instead of Rich REPL (no colors, no spinner).",
     )
+    parser.add_argument(
+        "--textual",
+        action="store_true",
+        help="Use Textual-based TUI with wiki knowledge graph panel.",
+    )
     parser.add_argument("--task", help="Single objective to run and exit.")
     parser.add_argument(
         "--session-id",
@@ -585,6 +590,15 @@ def main() -> None:
             raise SystemExit(2)
         _print_startup(startup_info)
         run_plain_repl(ctx)
+        return
+
+    if args.textual:
+        try:
+            from .textual_tui import run_textual_app
+        except ImportError as exc:
+            print(f"Textual TUI requires extra dependencies: pip install openplanter-agent[textual]\n({exc})")
+            raise SystemExit(1)
+        run_textual_app(ctx, startup_info=startup_info)
         return
 
     try:
