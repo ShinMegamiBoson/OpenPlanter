@@ -1,0 +1,30 @@
+{
+  "productName": "OpenPlanter",
+  "version": "0.1.0",
+  "identifier": "com.openplanter.desktop",
+  "build": {
+    "frontendDist": "../../frontend/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "cd ../../frontend && npm run dev",
+    "beforeBuildCommand": "cd ../../frontend && npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "OpenPlanter",
+        "width": 1400,
+        "height": 900,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}

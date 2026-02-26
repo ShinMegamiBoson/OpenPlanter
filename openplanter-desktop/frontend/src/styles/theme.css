@@ -1,0 +1,39 @@
+:root {
+  /* Colors */
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #1c2128;
+  --bg-card: #21262d;
+  --border: #30363d;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #484f58;
+  --accent: #58a6ff;
+  --accent-hover: #79c0ff;
+  --success: #3fb950;
+  --warning: #d29922;
+  --error: #f85149;
+
+  /* Graph category colors */
+  --cat-campaign-finance: #f97583;
+  --cat-contracts: #79c0ff;
+  --cat-corporate: #56d364;
+  --cat-financial: #d2a8ff;
+  --cat-infrastructure: #ffa657;
+  --cat-international: #ff7b72;
+  --cat-lobbying: #e3b341;
+  --cat-nonprofits: #a5d6ff;
+  --cat-regulatory: #7ee787;
+  --cat-sanctions: #f778ba;
+
+  /* Sizing */
+  --sidebar-width: 220px;
+  --statusbar-height: 36px;
+  --inputbar-height: 56px;
+  --radius: 6px;
+  --radius-lg: 10px;
+
+  /* Typography */
+  --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", Menlo, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
