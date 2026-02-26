@@ -459,7 +459,7 @@ def main() -> None:
     args = parser.parse_args()
 
     non_tty = not (sys.stdin.isatty() and sys.stdout.isatty())
-    if args.headless or non_tty:
+    if (args.headless or non_tty) and not args.textual:
         args.no_tui = True
 
     cfg = AgentConfig.from_env(args.workspace)
@@ -487,7 +487,7 @@ def main() -> None:
         if not args.task and not args.list_models:
             return
 
-    if (args.headless or non_tty) and not _has_non_interactive_command(args):
+    if (args.headless or non_tty) and not args.textual and not _has_non_interactive_command(args):
         print(
             "Headless/non-interactive mode requires --task or a non-interactive command "
             "(e.g., --list-models, --show-settings)."
