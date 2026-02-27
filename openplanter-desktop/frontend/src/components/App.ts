@@ -19,6 +19,15 @@ export function createApp(root: HTMLElement): void {
   sessionsHeader.textContent = "Sessions";
   sidebar.appendChild(sessionsHeader);
 
+  // New session button
+  const newSessionBtn = document.createElement("div");
+  newSessionBtn.className = "session-item";
+  newSessionBtn.style.color = "var(--accent)";
+  newSessionBtn.style.fontWeight = "600";
+  newSessionBtn.textContent = "+ New Session";
+  newSessionBtn.addEventListener("click", () => switchToNewSession(sessionList));
+  sidebar.appendChild(newSessionBtn);
+
   const sessionList = document.createElement("div");
   sessionList.className = "session-list";
   sidebar.appendChild(sessionList);
@@ -71,8 +80,99 @@ export function createApp(root: HTMLElement): void {
   // Load sessions
   loadSessions(sessionList);
 
+  // Reload session list when session changes
+  appState.subscribe(() => {
+    highlightActiveSession(sessionList);
+  });
+
   // Load credentials status
   loadCredentials(credsDisplay);
+}
+
+/** Switch to a new session, clearing chat state. */
+async function switchToNewSession(sessionList: HTMLElement): Promise<void> {
+  try {
+    const session = await openSession();
+    appState.update((s) => ({
+      ...s,
+      sessionId: session.id,
+      messages: [],
+      inputTokens: 0,
+      outputTokens: 0,
+      currentStep: 0,
+      currentDepth: 0,
+      inputQueue: [],
+    }));
+    // Dispatch event to clear ChatPane DOM
+    window.dispatchEvent(new CustomEvent("session-changed"));
+    // Add welcome message
+    appState.update((s) => ({
+      ...s,
+      messages: [
+        {
+          id: crypto.randomUUID(),
+          role: "system" as const,
+          content: `New session: ${session.id.slice(0, 8)}`,
+          timestamp: Date.now(),
+        },
+      ],
+    }));
+    // Reload session list
+    loadSessions(sessionList);
+  } catch (e) {
+    console.error("Failed to create new session:", e);
+  }
+}
+
+/** Switch to an existing session, clearing chat state. */
+async function switchToSession(sessionId: string, sessionList: HTMLElement): Promise<void> {
+  try {
+    const resumed = await openSession(sessionId, true);
+    appState.update((s) => ({
+      ...s,
+      sessionId: resumed.id,
+      messages: [],
+      inputTokens: 0,
+      outputTokens: 0,
+      currentStep: 0,
+      currentDepth: 0,
+      inputQueue: [],
+    }));
+    // Dispatch event to clear ChatPane DOM
+    window.dispatchEvent(new CustomEvent("session-changed"));
+    // Add info message
+    const info = resumed.last_objective
+      ? `Resumed session ${resumed.id.slice(0, 8)} \u2014 ${resumed.last_objective}`
+      : `Resumed session ${resumed.id.slice(0, 8)}`;
+    appState.update((s) => ({
+      ...s,
+      messages: [
+        {
+          id: crypto.randomUUID(),
+          role: "system" as const,
+          content: info,
+          timestamp: Date.now(),
+        },
+      ],
+    }));
+    highlightActiveSession(sessionList);
+  } catch (e) {
+    console.error("Failed to resume session:", e);
+  }
+}
+
+function highlightActiveSession(container: HTMLElement): void {
+  const currentId = appState.get().sessionId;
+  for (const item of container.querySelectorAll(".session-item")) {
+    const el = item as HTMLElement;
+    if (el.title === currentId) {
+      el.style.background = "var(--bg-tertiary)";
+      el.style.color = "var(--accent)";
+    } else {
+      el.style.background = "";
+      el.style.color = "";
+    }
+  }
 }
 
 async function loadSessions(container: HTMLElement): Promise<void> {
@@ -90,6 +190,7 @@ async function loadSessions(container: HTMLElement): Promise<void> {
     for (const session of sessions) {
       const item = document.createElement("div");
       item.className = "session-item";
+      item.title = session.id;
       const date = new Date(session.created_at);
       const dateStr = date.toLocaleDateString(undefined, {
         month: "short",
@@ -100,19 +201,11 @@ async function loadSessions(container: HTMLElement): Promise<void> {
       item.textContent = session.last_objective
         ? `${dateStr} \u2014 ${session.last_objective}`
         : dateStr;
-      item.title = session.id;
 
-      item.addEventListener("click", async () => {
-        try {
-          const resumed = await openSession(session.id, true);
-          appState.update((s) => ({ ...s, sessionId: resumed.id }));
-        } catch (e) {
-          console.error("Failed to resume session:", e);
-        }
-      });
-
+      item.addEventListener("click", () => switchToSession(session.id, container));
       container.appendChild(item);
     }
+    highlightActiveSession(container);
   } catch (e) {
     console.error("Failed to load sessions:", e);
   }

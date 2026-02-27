@@ -1,5 +1,6 @@
 /** Slash command dispatcher. */
 import { appState } from "../state/store";
+import { openSession } from "../api/invoke";
 import { handleModelCommand, type CommandResult } from "./model";
 import { handleReasoningCommand } from "./reasoning";
 
@@ -19,6 +20,7 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
         lines: [
           "Available commands:",
           "  /help               Show this help",
+          "  /new                Start a new session",
           "  /clear              Clear chat messages",
           "  /quit, /exit        Quit the application",
           "  /status             Show current status",
@@ -30,6 +32,32 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
           "  /reasoning <level>  Set level (low, medium, high, off)",
         ],
       };
+
+    case "/new": {
+      try {
+        const session = await openSession();
+        appState.update((s) => ({
+          ...s,
+          sessionId: session.id,
+          messages: [],
+          inputTokens: 0,
+          outputTokens: 0,
+          currentStep: 0,
+          currentDepth: 0,
+          inputQueue: [],
+        }));
+        window.dispatchEvent(new CustomEvent("session-changed"));
+        return {
+          action: "handled",
+          lines: [`New session: ${session.id.slice(0, 8)}`],
+        };
+      } catch (e) {
+        return {
+          action: "handled",
+          lines: [`Failed to create session: ${e}`],
+        };
+      }
+    }
 
     case "/clear":
       return { action: "clear", lines: [] };
