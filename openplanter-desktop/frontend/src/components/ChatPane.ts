@@ -186,6 +186,14 @@ export function createChatPane(): HTMLElement {
     }
   });
 
+  // Clear pane DOM when session changes
+  window.addEventListener("session-changed", () => {
+    pane.innerHTML = "";
+    renderedCount = 0;
+    streamingEl = null;
+    thinkingEl = null;
+  });
+
   return pane;
 }
 
