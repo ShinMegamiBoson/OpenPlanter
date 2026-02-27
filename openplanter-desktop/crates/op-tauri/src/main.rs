@@ -17,6 +17,8 @@ fn main() {
             commands::config::get_config,
             commands::config::update_config,
             commands::config::list_models,
+            commands::config::save_settings,
+            commands::config::get_credentials_status,
             commands::session::list_sessions,
             commands::session::open_session,
             commands::wiki::get_graph_data,

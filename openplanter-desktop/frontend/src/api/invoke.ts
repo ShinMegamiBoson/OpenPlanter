@@ -5,6 +5,7 @@ import type {
   GraphData,
   ModelInfo,
   PartialConfig,
+  PersistentSettings,
   SessionInfo,
 } from "./types";
 
@@ -26,6 +27,14 @@ export async function updateConfig(partial: PartialConfig): Promise<ConfigView> 
 
 export async function listModels(provider: string): Promise<ModelInfo[]> {
   return invoke("list_models", { provider });
+}
+
+export async function saveSettings(settings: PersistentSettings): Promise<void> {
+  return invoke("save_settings", { settings });
+}
+
+export async function getCredentialsStatus(): Promise<Record<string, boolean>> {
+  return invoke("get_credentials_status");
 }
 
 export async function listSessions(limit?: number): Promise<SessionInfo[]> {

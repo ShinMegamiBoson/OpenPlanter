@@ -1,4 +1,4 @@
-/** Status bar: model, provider, tokens, session info. */
+/** Status bar: model, provider, tokens, reasoning, mode, session. */
 import { appState } from "../state/store";
 
 export function createStatusBar(): HTMLElement {
@@ -11,6 +11,12 @@ export function createStatusBar(): HTMLElement {
   const modelEl = document.createElement("span");
   modelEl.className = "model";
 
+  const reasoningEl = document.createElement("span");
+  reasoningEl.className = "reasoning";
+
+  const modeEl = document.createElement("span");
+  modeEl.className = "mode";
+
   const sessionEl = document.createElement("span");
   sessionEl.className = "session";
 
@@ -19,13 +25,19 @@ export function createStatusBar(): HTMLElement {
 
   bar.appendChild(providerEl);
   bar.appendChild(modelEl);
+  bar.appendChild(reasoningEl);
+  bar.appendChild(modeEl);
   bar.appendChild(sessionEl);
   bar.appendChild(tokensEl);
 
   function render() {
     const s = appState.get();
-    providerEl.textContent = s.provider || "—";
-    modelEl.textContent = s.model || "—";
+    providerEl.textContent = s.provider || "\u2014";
+    modelEl.textContent = s.model || "\u2014";
+    reasoningEl.textContent = s.reasoningEffort
+      ? `reasoning:${s.reasoningEffort}`
+      : "";
+    modeEl.textContent = s.recursive ? "recursive" : "flat";
     sessionEl.textContent = s.sessionId ? `session ${s.sessionId.slice(0, 8)}` : "";
 
     const inK = (s.inputTokens / 1000).toFixed(1);

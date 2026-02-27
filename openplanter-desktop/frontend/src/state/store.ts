@@ -30,6 +30,21 @@ export class Store<T> {
   }
 }
 
+export interface ToolCallDisplay {
+  name: string;
+  args: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant" | "tool" | "system" | "thinking" | "step-header" | "tool-tree" | "splash";
+  content: string;
+  toolName?: string;
+  timestamp: number;
+  isRendered?: boolean;
+  toolCalls?: ToolCallDisplay[];
+}
+
 export interface AppState {
   provider: string;
   model: string;
@@ -38,14 +53,16 @@ export interface AppState {
   outputTokens: number;
   isRunning: boolean;
   messages: ChatMessage[];
-}
-
-export interface ChatMessage {
-  id: string;
-  role: "user" | "assistant" | "tool" | "system";
-  content: string;
-  toolName?: string;
-  timestamp: number;
+  reasoningEffort: string | null;
+  recursive: boolean;
+  workspace: string;
+  maxDepth: number;
+  maxStepsPerCall: number;
+  currentStep: number;
+  currentDepth: number;
+  perModelTokens: Record<string, { input: number; output: number }>;
+  inputHistory: string[];
+  inputQueue: string[];
 }
 
 export const appState = new Store<AppState>({
@@ -56,4 +73,14 @@ export const appState = new Store<AppState>({
   outputTokens: 0,
   isRunning: false,
   messages: [],
+  reasoningEffort: null,
+  recursive: true,
+  workspace: "",
+  maxDepth: 4,
+  maxStepsPerCall: 100,
+  currentStep: 0,
+  currentDepth: 0,
+  perModelTokens: {},
+  inputHistory: [],
+  inputQueue: [],
 });

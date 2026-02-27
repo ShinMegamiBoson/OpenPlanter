@@ -82,6 +82,16 @@ export interface SessionInfo {
   last_objective: string | null;
 }
 
+export interface PersistentSettings {
+  default_model?: string | null;
+  default_reasoning_effort?: string | null;
+  default_model_openai?: string | null;
+  default_model_anthropic?: string | null;
+  default_model_openrouter?: string | null;
+  default_model_cerebras?: string | null;
+  default_model_ollama?: string | null;
+}
+
 export interface SlashResult {
   output: string;
   success: boolean;

@@ -1,15 +1,16 @@
-/** Input bar: prompt input + submit button. */
+/** Input bar: textarea, slash commands, input history, input queuing. */
 import { solve, cancel } from "../api/invoke";
 import { appState } from "../state/store";
+import { dispatchSlashCommand } from "../commands/slash";
 
 export function createInputBar(): HTMLElement {
   const bar = document.createElement("div");
   bar.className = "input-bar";
 
-  const input = document.createElement("input");
-  input.type = "text";
-  input.placeholder = "Enter objective or /command...";
-  input.autofocus = true;
+  const textarea = document.createElement("textarea");
+  textarea.rows = 1;
+  textarea.placeholder = "Enter objective or /command...";
+  textarea.autofocus = true;
 
   const submitBtn = document.createElement("button");
   submitBtn.textContent = "Send";
@@ -19,15 +20,70 @@ export function createInputBar(): HTMLElement {
   cancelBtn.style.display = "none";
   cancelBtn.style.background = "var(--error)";
 
-  bar.appendChild(input);
+  bar.appendChild(textarea);
   bar.appendChild(submitBtn);
   bar.appendChild(cancelBtn);
 
+  let historyIndex = -1;
+  let savedInput = "";
+
+  function autoResize() {
+    textarea.style.height = "auto";
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + "px";
+  }
+
   async function handleSubmit() {
-    const text = input.value.trim();
+    const text = textarea.value.trim();
     if (!text) return;
 
-    // Add user message
+    // Add to input history
+    appState.update((s) => ({
+      ...s,
+      inputHistory: [text, ...s.inputHistory.filter((h) => h !== text)].slice(0, 100),
+    }));
+    historyIndex = -1;
+    savedInput = "";
+
+    // Check for slash commands
+    if (text.startsWith("/")) {
+      textarea.value = "";
+      autoResize();
+
+      const result = await dispatchSlashCommand(text);
+      if (!result) return;
+
+      if (result.action === "clear") {
+        appState.update((s) => ({ ...s, messages: [] }));
+        return;
+      }
+
+      if (result.action === "quit") {
+        // In Tauri, we could close the window; for now just show message
+        if (result.lines.length > 0) {
+          addSystemMessage(result.lines.join("\n"));
+        }
+        return;
+      }
+
+      if (result.lines.length > 0) {
+        addSystemMessage(result.lines.join("\n"));
+      }
+      return;
+    }
+
+    // If running, queue the input instead of blocking
+    if (appState.get().isRunning) {
+      appState.update((s) => ({
+        ...s,
+        inputQueue: [...s.inputQueue, text],
+      }));
+      addSystemMessage(`Queued: "${text.length > 60 ? text.slice(0, 60) + "..." : text}"`);
+      textarea.value = "";
+      autoResize();
+      return;
+    }
+
+    // Normal submit
     appState.update((s) => ({
       ...s,
       isRunning: true,
@@ -42,7 +98,8 @@ export function createInputBar(): HTMLElement {
       ],
     }));
 
-    input.value = "";
+    textarea.value = "";
+    autoResize();
 
     try {
       await solve(text);
@@ -71,25 +128,114 @@ export function createInputBar(): HTMLElement {
     }
   }
 
+  function addSystemMessage(content: string) {
+    appState.update((s) => ({
+      ...s,
+      messages: [
+        ...s.messages,
+        {
+          id: crypto.randomUUID(),
+          role: "system" as const,
+          content,
+          timestamp: Date.now(),
+        },
+      ],
+    }));
+  }
+
   submitBtn.addEventListener("click", handleSubmit);
   cancelBtn.addEventListener("click", handleCancel);
-  input.addEventListener("keydown", (e) => {
+
+  textarea.addEventListener("input", autoResize);
+
+  textarea.addEventListener("keydown", (e) => {
+    // Enter submits (unless Shift+Enter for newline)
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
+      return;
     }
+
+    // Escape cancels
     if (e.key === "Escape") {
       handleCancel();
+      return;
+    }
+
+    // Up/Down arrow for input history (when textarea is empty or single line)
+    const history = appState.get().inputHistory;
+    if (e.key === "ArrowUp" && textarea.value === "" && history.length > 0) {
+      e.preventDefault();
+      if (historyIndex === -1) {
+        savedInput = textarea.value;
+      }
+      if (historyIndex < history.length - 1) {
+        historyIndex++;
+        textarea.value = history[historyIndex];
+        autoResize();
+      }
+      return;
+    }
+
+    if (e.key === "ArrowDown" && historyIndex >= 0) {
+      e.preventDefault();
+      historyIndex--;
+      if (historyIndex < 0) {
+        textarea.value = savedInput;
+      } else {
+        textarea.value = history[historyIndex];
+      }
+      autoResize();
+      return;
     }
   });
 
-  // Toggle buttons based on running state
+  // Handle queued-submit events from main.ts
+  window.addEventListener("queued-submit", ((e: CustomEvent) => {
+    const { text } = e.detail;
+    if (!text) return;
+
+    appState.update((s) => ({
+      ...s,
+      isRunning: true,
+      messages: [
+        ...s.messages,
+        {
+          id: crypto.randomUUID(),
+          role: "user" as const,
+          content: text,
+          timestamp: Date.now(),
+        },
+      ],
+    }));
+
+    solve(text).catch((err) => {
+      appState.update((s) => ({
+        ...s,
+        isRunning: false,
+        messages: [
+          ...s.messages,
+          {
+            id: crypto.randomUUID(),
+            role: "system" as const,
+            content: `Failed to start queued task: ${err}`,
+            timestamp: Date.now(),
+          },
+        ],
+      }));
+    });
+  }) as EventListener);
+
+  // Toggle buttons and placeholder based on running state
   appState.subscribe(() => {
     const running = appState.get().isRunning;
-    submitBtn.disabled = running;
     submitBtn.style.display = running ? "none" : "";
     cancelBtn.style.display = running ? "" : "none";
-    input.disabled = running;
+    textarea.placeholder = running
+      ? "Type to queue..."
+      : "Enter objective or /command...";
+    // Keep textarea enabled during execution for queuing
+    submitBtn.disabled = false;
   });
 
   return bar;
