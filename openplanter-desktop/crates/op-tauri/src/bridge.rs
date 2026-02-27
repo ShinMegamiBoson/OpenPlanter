@@ -20,6 +20,7 @@ impl TauriEmitter {
 
 impl SolveEmitter for TauriEmitter {
     fn emit_trace(&self, message: &str) {
+        eprintln!("[bridge] trace: {message}");
         let _ = self.handle.emit(
             "agent:trace",
             TraceEvent {
@@ -29,14 +30,17 @@ impl SolveEmitter for TauriEmitter {
     }
 
     fn emit_delta(&self, event: DeltaEvent) {
+        eprintln!("[bridge] delta: kind={:?} text={:?}", event.kind, event.text);
         let _ = self.handle.emit("agent:delta", event);
     }
 
     fn emit_step(&self, event: StepEvent) {
+        eprintln!("[bridge] step: depth={} step={} is_final={}", event.depth, event.step, event.is_final);
         let _ = self.handle.emit("agent:step", event);
     }
 
     fn emit_complete(&self, result: &str) {
+        eprintln!("[bridge] complete: {result}");
         let _ = self.handle.emit(
             "agent:complete",
             CompleteEvent {
@@ -46,6 +50,7 @@ impl SolveEmitter for TauriEmitter {
     }
 
     fn emit_error(&self, message: &str) {
+        eprintln!("[bridge] error: {message}");
         let _ = self.handle.emit(
             "agent:error",
             ErrorEvent {
