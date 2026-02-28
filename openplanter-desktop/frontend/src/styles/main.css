@@ -93,6 +93,27 @@ html, body {
   color: var(--text-primary);
 }
 
+.sidebar .session-delete {
+  display: none;
+  flex-shrink: 0;
+  margin-left: 4px;
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: var(--radius);
+}
+
+.sidebar .session-delete:hover {
+  color: var(--error);
+  background: var(--bg-secondary);
+}
+
+.sidebar .session-item:hover .session-delete {
+  display: inline;
+}
+
 .sidebar .settings-display {
   font-size: 11px;
   color: var(--text-secondary);

@@ -48,6 +48,10 @@ export async function openSession(
   return invoke("open_session", { id: id ?? null, resume });
 }
 
+export async function deleteSession(id: string): Promise<void> {
+  return invoke("delete_session", { id });
+}
+
 export async function getGraphData(): Promise<GraphData> {
   return invoke("get_graph_data");
 }

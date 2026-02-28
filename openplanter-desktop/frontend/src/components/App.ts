@@ -4,7 +4,7 @@ import { createChatPane } from "./ChatPane";
 import { createInputBar } from "./InputBar";
 import { createGraphPane } from "./GraphPane";
 import { appState } from "../state/store";
-import { listSessions, openSession, getCredentialsStatus } from "../api/invoke";
+import { listSessions, openSession, deleteSession, getCredentialsStatus } from "../api/invoke";
 
 export function createApp(root: HTMLElement): void {
   // Status bar
@@ -191,6 +191,15 @@ async function loadSessions(container: HTMLElement): Promise<void> {
       const item = document.createElement("div");
       item.className = "session-item";
       item.title = session.id;
+      item.style.display = "flex";
+      item.style.alignItems = "center";
+      item.style.justifyContent = "space-between";
+
+      const label = document.createElement("span");
+      label.style.overflow = "hidden";
+      label.style.textOverflow = "ellipsis";
+      label.style.whiteSpace = "nowrap";
+      label.style.flex = "1";
       const date = new Date(session.created_at);
       const dateStr = date.toLocaleDateString(undefined, {
         month: "short",
@@ -198,11 +207,34 @@ async function loadSessions(container: HTMLElement): Promise<void> {
         hour: "2-digit",
         minute: "2-digit",
       });
-      item.textContent = session.last_objective
+      label.textContent = session.last_objective
         ? `${dateStr} \u2014 ${session.last_objective}`
         : dateStr;
 
-      item.addEventListener("click", () => switchToSession(session.id, container));
+      label.addEventListener("click", () => switchToSession(session.id, container));
+
+      const deleteBtn = document.createElement("span");
+      deleteBtn.className = "session-delete";
+      deleteBtn.textContent = "\u00d7";
+      deleteBtn.title = "Delete session";
+      deleteBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Delete session ${session.id.slice(0, 8)}? This cannot be undone.`)) return;
+        try {
+          await deleteSession(session.id);
+          // If deleted session was active, switch to new one
+          if (appState.get().sessionId === session.id) {
+            await switchToNewSession(container);
+          } else {
+            await loadSessions(container);
+          }
+        } catch (err) {
+          console.error("Failed to delete session:", err);
+        }
+      });
+
+      item.appendChild(label);
+      item.appendChild(deleteBtn);
       container.appendChild(item);
     }
     highlightActiveSession(container);

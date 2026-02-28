@@ -117,6 +117,37 @@ pub async fn open_session(
     Ok(info)
 }
 
+/// Delete a session by removing its directory.
+#[tauri::command]
+pub async fn delete_session(
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let dir = sessions_dir(&state).await;
+    let session_dir = dir.join(&id);
+
+    if !session_dir.exists() {
+        return Err(format!("Session '{id}' not found"));
+    }
+    if !session_dir.is_dir() {
+        return Err(format!("Session '{id}' is not a directory"));
+    }
+    // Ensure it's actually a session directory (has metadata.json)
+    if !session_dir.join("metadata.json").exists() {
+        return Err(format!("Session '{id}' has no metadata — refusing to delete"));
+    }
+
+    fs::remove_dir_all(&session_dir).map_err(|e| format!("Failed to delete session: {e}"))?;
+
+    // If the deleted session is the current one, clear the active session
+    let mut session_lock = state.session_id.lock().await;
+    if session_lock.as_deref() == Some(id.as_str()) {
+        *session_lock = None;
+    }
+
+    Ok(())
+}
+
 /// Simple pseudo-random hex value using system time.
 fn rand_hex() -> u32 {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -286,5 +317,32 @@ mod tests {
         let info = create_session(&dir).unwrap();
         assert_eq!(info.turn_count, 0);
         assert!(info.last_objective.is_none());
+    }
+
+    // ── delete_session helpers ──
+
+    #[test]
+    fn test_delete_session_removes_dir() {
+        let tmp = tempdir().unwrap();
+        let dir = tmp.path().join("sessions");
+        write_session(&dir, "to-delete", "2026-01-01T12:00:00Z");
+        assert!(dir.join("to-delete").exists());
+        fs::remove_dir_all(dir.join("to-delete")).unwrap();
+        assert!(!dir.join("to-delete").exists());
+        // Verify it's gone from collect_sessions too
+        let sessions = collect_sessions(&dir, 20);
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn test_delete_session_does_not_affect_others() {
+        let tmp = tempdir().unwrap();
+        let dir = tmp.path().join("sessions");
+        write_session(&dir, "keep-me", "2026-01-01T12:00:00Z");
+        write_session(&dir, "delete-me", "2026-01-01T13:00:00Z");
+        fs::remove_dir_all(dir.join("delete-me")).unwrap();
+        let sessions = collect_sessions(&dir, 20);
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, "keep-me");
     }
 }
