@@ -14,6 +14,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::agent::solve,
             commands::agent::cancel,
+            commands::agent::debug_log,
             commands::config::get_config,
             commands::config::update_config,
             commands::config::list_models,

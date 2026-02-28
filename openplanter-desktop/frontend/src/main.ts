@@ -80,12 +80,12 @@ async function init() {
     ],
   }));
 
-  // Subscribe to agent events
-  onAgentTrace((msg) => {
+  // Subscribe to agent events — await each to ensure listeners are registered
+  await onAgentTrace((msg) => {
     console.log("[trace]", msg);
   });
 
-  onAgentStep((event) => {
+  await onAgentStep((event) => {
     const now = new Date();
     const ts = [
       now.getHours().toString().padStart(2, "0"),
@@ -115,12 +115,12 @@ async function init() {
     }));
   });
 
-  onAgentDelta((event) => {
+  await onAgentDelta((event) => {
     const detail = new CustomEvent("agent-delta", { detail: event });
     window.dispatchEvent(detail);
   });
 
-  onAgentComplete((result) => {
+  await onAgentComplete((result) => {
     appState.update((s) => ({
       ...s,
       isRunning: false,
@@ -142,7 +142,7 @@ async function init() {
     processQueue();
   });
 
-  onAgentError((message) => {
+  await onAgentError((message) => {
     appState.update((s) => ({
       ...s,
       isRunning: false,
@@ -163,7 +163,7 @@ async function init() {
     processQueue();
   });
 
-  onWikiUpdated((data) => {
+  await onWikiUpdated((data) => {
     const detail = new CustomEvent("wiki-updated", { detail: data });
     window.dispatchEvent(detail);
   });

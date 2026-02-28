@@ -51,3 +51,7 @@ export async function openSession(
 export async function getGraphData(): Promise<GraphData> {
   return invoke("get_graph_data");
 }
+
+export async function debugLog(msg: string): Promise<void> {
+  return invoke("debug_log", { msg });
+}

@@ -37,3 +37,10 @@ pub async fn cancel(
     token.cancel();
     Ok(())
 }
+
+/// Debug logging from frontend (temporary).
+#[tauri::command]
+pub async fn debug_log(msg: String) -> Result<(), String> {
+    eprintln!("[frontend] {msg}");
+    Ok(())
+}
