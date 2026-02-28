@@ -342,4 +342,211 @@ mod tests {
         };
         assert_eq!(resolve_model_name(&cfg).unwrap(), "gpt-5.2");
     }
+
+    // ── resolve_provider ──
+
+    #[test]
+    fn test_resolve_provider_explicit() {
+        let cfg = AgentConfig {
+            provider: "openai".into(),
+            ..Default::default()
+        };
+        assert_eq!(resolve_provider(&cfg).unwrap(), "openai");
+    }
+
+    #[test]
+    fn test_resolve_provider_auto_infers_from_model() {
+        let cfg = AgentConfig {
+            provider: "auto".into(),
+            model: "claude-opus-4-6".into(),
+            ..Default::default()
+        };
+        assert_eq!(resolve_provider(&cfg).unwrap(), "anthropic");
+    }
+
+    #[test]
+    fn test_resolve_provider_auto_falls_back_to_key() {
+        let cfg = AgentConfig {
+            provider: "auto".into(),
+            model: "some-unknown-model".into(),
+            openai_api_key: Some("sk-test".into()),
+            ..Default::default()
+        };
+        // anthropic checked first but no key, openai has key
+        assert_eq!(resolve_provider(&cfg).unwrap(), "openai");
+    }
+
+    #[test]
+    fn test_resolve_provider_auto_no_keys_defaults_ollama() {
+        let cfg = AgentConfig {
+            provider: "auto".into(),
+            model: "some-unknown-model".into(),
+            ..Default::default()
+        };
+        assert_eq!(resolve_provider(&cfg).unwrap(), "ollama");
+    }
+
+    #[test]
+    fn test_resolve_provider_anthropic_key_preferred_first() {
+        let cfg = AgentConfig {
+            provider: "auto".into(),
+            model: "some-unknown-model".into(),
+            anthropic_api_key: Some("sk-ant-test".into()),
+            openai_api_key: Some("sk-test".into()),
+            ..Default::default()
+        };
+        assert_eq!(resolve_provider(&cfg).unwrap(), "anthropic");
+    }
+
+    // ── resolve_endpoint ──
+
+    #[test]
+    fn test_resolve_endpoint_anthropic() {
+        let cfg = AgentConfig {
+            anthropic_api_key: Some("sk-ant-key".into()),
+            ..Default::default()
+        };
+        let (url, key) = resolve_endpoint(&cfg, "anthropic").unwrap();
+        assert_eq!(url, "https://api.anthropic.com/v1");
+        assert_eq!(key, "sk-ant-key");
+    }
+
+    #[test]
+    fn test_resolve_endpoint_anthropic_fallback_to_api_key() {
+        let cfg = AgentConfig {
+            api_key: Some("fallback-key".into()),
+            ..Default::default()
+        };
+        let (_, key) = resolve_endpoint(&cfg, "anthropic").unwrap();
+        assert_eq!(key, "fallback-key");
+    }
+
+    #[test]
+    fn test_resolve_endpoint_anthropic_missing_key() {
+        let cfg = AgentConfig::default();
+        let result = resolve_endpoint(&cfg, "anthropic");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Anthropic API key"));
+    }
+
+    #[test]
+    fn test_resolve_endpoint_openai() {
+        let cfg = AgentConfig {
+            openai_api_key: Some("sk-openai".into()),
+            ..Default::default()
+        };
+        let (url, key) = resolve_endpoint(&cfg, "openai").unwrap();
+        assert_eq!(url, "https://api.openai.com/v1");
+        assert_eq!(key, "sk-openai");
+    }
+
+    #[test]
+    fn test_resolve_endpoint_ollama_dummy_key() {
+        let cfg = AgentConfig::default();
+        let (url, key) = resolve_endpoint(&cfg, "ollama").unwrap();
+        assert!(url.contains("11434"));
+        assert_eq!(key, "ollama");
+    }
+
+    #[test]
+    fn test_resolve_endpoint_unknown_provider() {
+        let cfg = AgentConfig::default();
+        let result = resolve_endpoint(&cfg, "unknown");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Unknown provider"));
+    }
+
+    // ── build_model ──
+
+    #[test]
+    fn test_build_model_anthropic() {
+        let cfg = AgentConfig {
+            provider: "anthropic".into(),
+            model: "claude-opus-4-6".into(),
+            anthropic_api_key: Some("sk-ant-key".into()),
+            ..Default::default()
+        };
+        let model = build_model(&cfg).unwrap();
+        assert_eq!(model.model_name(), "claude-opus-4-6");
+        assert_eq!(model.provider_name(), "anthropic");
+    }
+
+    #[test]
+    fn test_build_model_openai() {
+        let cfg = AgentConfig {
+            provider: "openai".into(),
+            model: "gpt-4o".into(),
+            openai_api_key: Some("sk-key".into()),
+            ..Default::default()
+        };
+        let model = build_model(&cfg).unwrap();
+        assert_eq!(model.model_name(), "gpt-4o");
+        assert_eq!(model.provider_name(), "openai");
+    }
+
+    #[test]
+    fn test_build_model_ollama_no_key_needed() {
+        let cfg = AgentConfig {
+            provider: "ollama".into(),
+            model: "llama3.2".into(),
+            ..Default::default()
+        };
+        let model = build_model(&cfg).unwrap();
+        assert_eq!(model.model_name(), "llama3.2");
+        assert_eq!(model.provider_name(), "ollama");
+    }
+
+    #[test]
+    fn test_build_model_auto_anthropic() {
+        let cfg = AgentConfig {
+            provider: "auto".into(),
+            model: "claude-sonnet-4-5".into(),
+            anthropic_api_key: Some("sk-ant-key".into()),
+            ..Default::default()
+        };
+        let model = build_model(&cfg).unwrap();
+        assert_eq!(model.provider_name(), "anthropic");
+        assert_eq!(model.model_name(), "claude-sonnet-4-5");
+    }
+
+    #[test]
+    fn test_build_model_missing_key_errors() {
+        let cfg = AgentConfig {
+            provider: "openai".into(),
+            model: "gpt-4o".into(),
+            // No key set
+            ..Default::default()
+        };
+        let result = build_model(&cfg);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_build_model_mismatch_errors() {
+        let cfg = AgentConfig {
+            provider: "anthropic".into(),
+            model: "gpt-4o".into(),
+            anthropic_api_key: Some("key".into()),
+            ..Default::default()
+        };
+        let result = build_model(&cfg);
+        assert!(result.is_err());
+        let err_msg = match result {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected error"),
+        };
+        assert!(err_msg.contains("openai"), "error should mention openai: {err_msg}");
+    }
+
+    #[test]
+    fn test_build_model_openrouter_has_extra_headers() {
+        let cfg = AgentConfig {
+            provider: "openrouter".into(),
+            model: "anthropic/claude-sonnet-4-5".into(),
+            openrouter_api_key: Some("sk-or-key".into()),
+            ..Default::default()
+        };
+        let model = build_model(&cfg).unwrap();
+        assert_eq!(model.provider_name(), "openrouter");
+    }
 }

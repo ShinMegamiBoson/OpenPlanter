@@ -309,3 +309,156 @@ impl BaseModel for OpenAIModel {
         &self.provider
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_model(model: &str, reasoning_effort: Option<&str>) -> OpenAIModel {
+        OpenAIModel::new(
+            model.to_string(),
+            "openai".to_string(),
+            "https://api.openai.com/v1".to_string(),
+            "sk-test".to_string(),
+            reasoning_effort.map(|s| s.to_string()),
+            HashMap::new(),
+        )
+    }
+
+    // ── is_reasoning_model ──
+
+    #[test]
+    fn test_reasoning_model_o1() {
+        assert!(make_model("o1", None).is_reasoning_model());
+        assert!(make_model("o1-preview", None).is_reasoning_model());
+    }
+
+    #[test]
+    fn test_reasoning_model_o3() {
+        assert!(make_model("o3", None).is_reasoning_model());
+        assert!(make_model("o3-mini", None).is_reasoning_model());
+    }
+
+    #[test]
+    fn test_reasoning_model_gpt5() {
+        assert!(make_model("gpt-5.2", None).is_reasoning_model());
+        assert!(make_model("gpt-5", None).is_reasoning_model());
+    }
+
+    #[test]
+    fn test_not_reasoning_model() {
+        assert!(!make_model("gpt-4o", None).is_reasoning_model());
+        assert!(!make_model("claude-opus-4-6", None).is_reasoning_model());
+    }
+
+    // ── convert_messages ──
+
+    #[test]
+    fn test_convert_system_message() {
+        let msgs = vec![Message::System {
+            content: "You are helpful.".to_string(),
+        }];
+        let converted = OpenAIModel::convert_messages(&msgs);
+        assert_eq!(converted.len(), 1);
+        assert_eq!(converted[0]["role"], "system");
+        assert_eq!(converted[0]["content"], "You are helpful.");
+    }
+
+    #[test]
+    fn test_convert_user_message() {
+        let msgs = vec![Message::User {
+            content: "Hello".to_string(),
+        }];
+        let converted = OpenAIModel::convert_messages(&msgs);
+        assert_eq!(converted[0]["role"], "user");
+        assert_eq!(converted[0]["content"], "Hello");
+    }
+
+    #[test]
+    fn test_convert_assistant_with_tool_calls() {
+        let msgs = vec![Message::Assistant {
+            content: "Let me help.".to_string(),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "read_file".to_string(),
+                arguments: r#"{"path":"test.txt"}"#.to_string(),
+            }]),
+        }];
+        let converted = OpenAIModel::convert_messages(&msgs);
+        assert_eq!(converted[0]["role"], "assistant");
+        assert_eq!(converted[0]["content"], "Let me help.");
+        let tcs = converted[0]["tool_calls"].as_array().unwrap();
+        assert_eq!(tcs.len(), 1);
+        assert_eq!(tcs[0]["id"], "call_1");
+        assert_eq!(tcs[0]["function"]["name"], "read_file");
+    }
+
+    #[test]
+    fn test_convert_tool_message() {
+        let msgs = vec![Message::Tool {
+            tool_call_id: "call_1".to_string(),
+            content: "file contents".to_string(),
+        }];
+        let converted = OpenAIModel::convert_messages(&msgs);
+        assert_eq!(converted[0]["role"], "tool");
+        assert_eq!(converted[0]["tool_call_id"], "call_1");
+        assert_eq!(converted[0]["content"], "file contents");
+    }
+
+    // ── build_payload ──
+
+    #[test]
+    fn test_payload_non_reasoning_has_temperature() {
+        let model = make_model("gpt-4o", None);
+        let msgs = vec![Message::User {
+            content: "Hi".to_string(),
+        }];
+        let payload = model.build_payload(&msgs, &[], true);
+        assert_eq!(payload["temperature"], 0.0);
+        assert_eq!(payload["stream"], true);
+        assert!(payload.get("stream_options").is_some());
+    }
+
+    #[test]
+    fn test_payload_reasoning_omits_temperature() {
+        let model = make_model("o3", Some("high"));
+        let msgs = vec![Message::User {
+            content: "Hi".to_string(),
+        }];
+        let payload = model.build_payload(&msgs, &[], true);
+        assert!(payload.get("temperature").is_none());
+        assert_eq!(payload["reasoning_effort"], "high");
+    }
+
+    #[test]
+    fn test_payload_with_tools() {
+        let model = make_model("gpt-4o", None);
+        let msgs = vec![Message::User {
+            content: "Hi".to_string(),
+        }];
+        let tools = vec![serde_json::json!({"type": "function", "function": {"name": "test"}})];
+        let payload = model.build_payload(&msgs, &tools, true);
+        assert!(payload.get("tools").is_some());
+        assert_eq!(payload["tool_choice"], "auto");
+    }
+
+    #[test]
+    fn test_payload_no_tools_omits_tool_choice() {
+        let model = make_model("gpt-4o", None);
+        let msgs = vec![Message::User {
+            content: "Hi".to_string(),
+        }];
+        let payload = model.build_payload(&msgs, &[], true);
+        assert!(payload.get("tools").is_none());
+        assert!(payload.get("tool_choice").is_none());
+    }
+
+    // ── model_name / provider_name ──
+
+    #[test]
+    fn test_model_name_and_provider() {
+        let model = make_model("gpt-4o", None);
+        assert_eq!(model.model_name(), "gpt-4o");
+        assert_eq!(model.provider_name(), "openai");
+    }
+}

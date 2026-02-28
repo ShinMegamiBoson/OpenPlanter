@@ -385,3 +385,147 @@ impl BaseModel for AnthropicModel {
         "anthropic"
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_model(model: &str, reasoning_effort: Option<&str>) -> AnthropicModel {
+        AnthropicModel::new(
+            model.to_string(),
+            "https://api.anthropic.com/v1".to_string(),
+            "sk-ant-test".to_string(),
+            reasoning_effort.map(|s| s.to_string()),
+        )
+    }
+
+    // ── is_opus_46 ──
+
+    #[test]
+    fn test_is_opus_46() {
+        assert!(make_model("claude-opus-4-6", None).is_opus_46());
+        assert!(make_model("claude-opus-4.6-20250610", None).is_opus_46());
+        assert!(!make_model("claude-sonnet-4-5", None).is_opus_46());
+    }
+
+    // ── extract_system ──
+
+    #[test]
+    fn test_extract_system_present() {
+        let msgs = vec![
+            Message::System { content: "Be helpful.".to_string() },
+            Message::User { content: "Hi".to_string() },
+        ];
+        assert_eq!(AnthropicModel::extract_system(&msgs), Some("Be helpful.".to_string()));
+    }
+
+    #[test]
+    fn test_extract_system_absent() {
+        let msgs = vec![Message::User { content: "Hi".to_string() }];
+        assert_eq!(AnthropicModel::extract_system(&msgs), None);
+    }
+
+    // ── convert_messages ──
+
+    #[test]
+    fn test_convert_filters_system() {
+        let msgs = vec![
+            Message::System { content: "System prompt".to_string() },
+            Message::User { content: "Hello".to_string() },
+        ];
+        let converted = AnthropicModel::convert_messages(&msgs);
+        assert_eq!(converted.len(), 1); // System is filtered out
+        assert_eq!(converted[0]["role"], "user");
+    }
+
+    #[test]
+    fn test_convert_assistant_with_tool_calls() {
+        let msgs = vec![Message::Assistant {
+            content: "I'll check.".to_string(),
+            tool_calls: Some(vec![ToolCall {
+                id: "toolu_1".to_string(),
+                name: "read_file".to_string(),
+                arguments: r#"{"path":"test.txt"}"#.to_string(),
+            }]),
+        }];
+        let converted = AnthropicModel::convert_messages(&msgs);
+        assert_eq!(converted[0]["role"], "assistant");
+        let content = converted[0]["content"].as_array().unwrap();
+        assert_eq!(content.len(), 2); // text block + tool_use block
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[1]["type"], "tool_use");
+        assert_eq!(content[1]["name"], "read_file");
+        assert_eq!(content[1]["input"]["path"], "test.txt");
+    }
+
+    #[test]
+    fn test_convert_tool_result() {
+        let msgs = vec![Message::Tool {
+            tool_call_id: "toolu_1".to_string(),
+            content: "file contents here".to_string(),
+        }];
+        let converted = AnthropicModel::convert_messages(&msgs);
+        assert_eq!(converted[0]["role"], "user");
+        let content = converted[0]["content"].as_array().unwrap();
+        assert_eq!(content[0]["type"], "tool_result");
+        assert_eq!(content[0]["tool_use_id"], "toolu_1");
+    }
+
+    // ── build_payload ──
+
+    #[test]
+    fn test_payload_no_thinking_has_temperature() {
+        let model = make_model("claude-sonnet-4-5", None);
+        let msgs = vec![
+            Message::System { content: "System".to_string() },
+            Message::User { content: "Hi".to_string() },
+        ];
+        let payload = model.build_payload(&msgs, &[]);
+        assert_eq!(payload["temperature"], 0.0);
+        assert_eq!(payload["system"], "System");
+        assert_eq!(payload["stream"], true);
+        assert!(payload.get("thinking").is_none());
+    }
+
+    #[test]
+    fn test_payload_opus_46_adaptive_thinking() {
+        let model = make_model("claude-opus-4-6", Some("high"));
+        let msgs = vec![Message::User { content: "Hi".to_string() }];
+        let payload = model.build_payload(&msgs, &[]);
+        assert!(payload.get("temperature").is_none()); // No temperature with thinking
+        assert_eq!(payload["thinking"]["type"], "adaptive");
+        assert_eq!(payload["output_config"]["effort"], "high");
+    }
+
+    #[test]
+    fn test_payload_older_model_enabled_thinking() {
+        let model = make_model("claude-sonnet-4-5", Some("medium"));
+        let msgs = vec![Message::User { content: "Hi".to_string() }];
+        let payload = model.build_payload(&msgs, &[]);
+        assert_eq!(payload["thinking"]["type"], "enabled");
+        assert_eq!(payload["thinking"]["budget_tokens"], 4096);
+    }
+
+    #[test]
+    fn test_payload_system_extracted_to_top_level() {
+        let model = make_model("claude-sonnet-4-5", None);
+        let msgs = vec![
+            Message::System { content: "You are helpful.".to_string() },
+            Message::User { content: "Test".to_string() },
+        ];
+        let payload = model.build_payload(&msgs, &[]);
+        // System should be top-level, not in messages array
+        assert_eq!(payload["system"], "You are helpful.");
+        let messages = payload["messages"].as_array().unwrap();
+        assert!(messages.iter().all(|m| m["role"] != "system"));
+    }
+
+    // ── model_name / provider_name ──
+
+    #[test]
+    fn test_model_name_and_provider() {
+        let model = make_model("claude-opus-4-6", None);
+        assert_eq!(model.model_name(), "claude-opus-4-6");
+        assert_eq!(model.provider_name(), "anthropic");
+    }
+}
