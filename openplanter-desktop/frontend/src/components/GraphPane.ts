@@ -195,6 +195,8 @@ export function createGraphPane(): HTMLElement {
   }
 
   // --- Initialize graph ---
+  let interactionsBound = false;
+
   function initializeWithData(data: GraphData): void {
     // Remove placeholder if present
     const placeholder = pane.querySelector(".graph-placeholder");
@@ -202,10 +204,13 @@ export function createGraphPane(): HTMLElement {
 
     initGraph(graphContainer, data);
 
-    bindInteractions({
-      onNodeSelect: (nodeData) => showDetail(nodeData),
-      onNodeDeselect: () => hideDetail(),
-    });
+    if (!interactionsBound) {
+      bindInteractions({
+        onNodeSelect: (nodeData) => showDetail(nodeData),
+        onNodeDeselect: () => hideDetail(),
+      });
+      interactionsBound = true;
+    }
 
     buildLegend(getCategories());
   }
