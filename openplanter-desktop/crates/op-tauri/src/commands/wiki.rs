@@ -248,6 +248,8 @@ pub fn parse_source_file(
     let mut current_h2_id: Option<String> = None;
     let mut current_section_id: Option<String> = None; // tracks the most recent section (h2 or h3)
     let mut table_state = TableState::Outside;
+    // Track the last bold-bullet fact so we can accumulate indented continuation lines
+    let mut last_fact_idx: Option<usize> = None;
 
     for line in content.lines() {
         let trimmed = line.trim();
@@ -255,6 +257,7 @@ pub fn parse_source_file(
         // Detect heading transitions — any heading exits table state
         if trimmed.starts_with('#') {
             table_state = TableState::Outside;
+            last_fact_idx = None;
         }
 
         // ## Heading → section node (child of source)
@@ -320,6 +323,7 @@ pub fn parse_source_file(
         // Bold bullet: - **Key**: value → fact node
         if trimmed.starts_with("- **") {
             table_state = TableState::Outside;
+            last_fact_idx = None;
             if let Some(parent_id) = &current_section_id {
                 // Extract the key text from - **Key**: ...
                 if let Some(rest) = trimmed.strip_prefix("- **") {
@@ -347,14 +351,32 @@ pub fn parse_source_file(
                             target: id,
                             label: Some("contains".to_string()),
                         });
+                        last_fact_idx = Some(nodes.len() - 1);
                     }
                 }
                 continue;
             }
         }
 
+        // Indented continuation line (sub-bullet under a bold bullet)
+        // e.g. "  - Candidate/committee records: 1979-present" under "- **Time range**:"
+        if let Some(idx) = last_fact_idx {
+            if line.starts_with("  ") && !trimmed.is_empty() {
+                if let Some(ref mut c) = nodes[idx].content {
+                    c.push('\n');
+                    c.push_str(trimmed);
+                }
+                continue;
+            }
+            // Non-continuation line → stop accumulating
+            if !trimmed.is_empty() {
+                last_fact_idx = None;
+            }
+        }
+
         // Table rows
         if trimmed.starts_with('|') {
+            last_fact_idx = None;
             match table_state {
                 TableState::Outside => {
                     // First table row = header
@@ -431,6 +453,50 @@ pub fn parse_source_file(
         if !trimmed.is_empty() && !trimmed.starts_with('|') {
             table_state = TableState::Outside;
         }
+    }
+
+    // Post-process: remove childless sections and empty-content facts
+    let node_ids: HashSet<String> = nodes.iter().map(|n| n.id.clone()).collect();
+    // Find section IDs that are the source of at least one structural child edge
+    let parent_section_ids: HashSet<&str> = edges.iter()
+        .filter(|e| {
+            let label = e.label.as_deref().unwrap_or("");
+            (label == "has-section" || label == "contains") && node_ids.contains(&e.target)
+        })
+        .map(|e| e.source.as_str())
+        .collect();
+
+    // IDs to remove: childless sections + empty-content facts
+    let remove_ids: HashSet<String> = nodes.iter()
+        .filter(|n| {
+            match n.node_type.as_ref() {
+                Some(NodeType::Section) => !parent_section_ids.contains(n.id.as_str()),
+                Some(NodeType::Fact) => {
+                    // Remove facts where content after "**:" is empty (no value, no sub-bullets)
+                    if let Some(content) = &n.content {
+                        // Check if content is just "- **Key**:" or "- **Key**: " with nothing after
+                        if let Some(pos) = content.find("**:") {
+                            let after = content[pos + 3..].trim();
+                            after.is_empty()
+                        } else if let Some(pos) = content.find("**: ") {
+                            let after = content[pos + 4..].trim();
+                            after.is_empty()
+                        } else {
+                            false
+                        }
+                    } else {
+                        true // No content at all → remove
+                    }
+                }
+                _ => false,
+            }
+        })
+        .map(|n| n.id.clone())
+        .collect();
+
+    if !remove_ids.is_empty() {
+        nodes.retain(|n| !remove_ids.contains(&n.id));
+        edges.retain(|e| !remove_ids.contains(&e.source) && !remove_ids.contains(&e.target));
     }
 
     (nodes, edges)
@@ -945,38 +1011,53 @@ mod tests {
     #[test]
     fn test_parse_single_section() {
         let source = make_source("fec");
-        let (nodes, edges) = parse_source_file(&source, "## Summary\n\nSome text.");
-        assert_eq!(nodes.len(), 1);
+        let (nodes, edges) = parse_source_file(&source, "## Summary\n\n- **Key**: value");
+        // 1 section + 1 fact (childless sections are pruned, so section needs a fact)
+        assert_eq!(nodes.len(), 2);
         assert_eq!(nodes[0].id, "fec::summary");
         assert_eq!(nodes[0].label, "Summary");
         assert_eq!(nodes[0].node_type, Some(NodeType::Section));
         assert_eq!(nodes[0].parent_id.as_deref(), Some("fec"));
-        assert_eq!(edges.len(), 1);
+        assert_eq!(edges.len(), 2); // has-section + contains
         assert_eq!(edges[0].label.as_deref(), Some("has-section"));
+    }
+
+    #[test]
+    fn test_childless_sections_pruned() {
+        let source = make_source("fec");
+        let (nodes, edges) = parse_source_file(&source, "## Summary\n\nSome text.");
+        // Section has no facts/subsections → pruned
+        assert!(nodes.is_empty());
+        assert!(edges.is_empty());
     }
 
     #[test]
     fn test_parse_multiple_sections() {
         let source = make_source("fec");
-        let content = "## Summary\n\nText.\n\n## Access Methods\n\nMore text.";
+        let content = "## Summary\n\n- **Key**: val\n\n## Access Methods\n\n- **Method**: API";
         let (nodes, edges) = parse_source_file(&source, content);
-        assert_eq!(nodes.len(), 2);
+        // 2 sections + 2 facts
+        assert_eq!(nodes.len(), 4);
         assert_eq!(nodes[0].id, "fec::summary");
-        assert_eq!(nodes[1].id, "fec::access-methods");
-        assert_eq!(edges.len(), 2);
+        assert_eq!(nodes[2].id, "fec::access-methods");
+        assert_eq!(edges.len(), 4); // 2 has-section + 2 contains
     }
 
     #[test]
     fn test_parse_subsections() {
         let source = make_source("fec");
-        let content = "## Data Schema\n\n### Candidate Records\n\nText.\n\n### Committee Records\n\nMore.";
+        let content = "## Data Schema\n\n### Candidate Records\n\n- **Field**: id\n\n### Committee Records\n\n- **Name**: test";
         let (nodes, edges) = parse_source_file(&source, content);
-        assert_eq!(nodes.len(), 3); // Data Schema + 2 subsections
+        // Data Schema + 2 subsections + 2 facts = 5
+        assert_eq!(nodes.len(), 5);
+        let sections: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Section)).collect();
+        assert_eq!(sections.len(), 3);
         // Subsections are children of the h2
-        assert_eq!(nodes[1].parent_id.as_deref(), Some("fec::data-schema"));
-        assert_eq!(nodes[2].parent_id.as_deref(), Some("fec::data-schema"));
-        // All section edges
-        assert!(edges.iter().all(|e| e.label.as_deref() == Some("has-section")));
+        assert_eq!(sections[1].parent_id.as_deref(), Some("fec::data-schema"));
+        assert_eq!(sections[2].parent_id.as_deref(), Some("fec::data-schema"));
+        // has-section edges
+        let has_section: Vec<_> = edges.iter().filter(|e| e.label.as_deref() == Some("has-section")).collect();
+        assert_eq!(has_section.len(), 3);
     }
 
     #[test]
@@ -997,6 +1078,32 @@ mod tests {
         // Contains edges
         let contains: Vec<_> = edges.iter().filter(|e| e.label.as_deref() == Some("contains")).collect();
         assert_eq!(contains.len(), 2);
+    }
+
+    #[test]
+    fn test_sub_bullet_accumulation() {
+        let source = make_source("fec");
+        let content = "## Coverage\n\n- **Time range**:\n  - Records: 1979-present\n  - Contributions: 1979-present\n- **Jurisdiction**: Federal";
+        let (nodes, _) = parse_source_file(&source, content);
+        let facts: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Fact)).collect();
+        assert_eq!(facts.len(), 2);
+        // Time range should have accumulated sub-bullets
+        let time_range = facts.iter().find(|f| f.label == "Time range").unwrap();
+        let content = time_range.content.as_ref().unwrap();
+        assert!(content.contains("Records: 1979-present"), "should contain sub-bullet");
+        assert!(content.contains("Contributions: 1979-present"), "should contain second sub-bullet");
+    }
+
+    #[test]
+    fn test_empty_value_bullet_pruned() {
+        let source = make_source("fec");
+        // Bold bullet with NO sub-bullets and NO value after colon → should be pruned
+        let content = "## Coverage\n\n- **Empty**:\n- **Jurisdiction**: Federal";
+        let (nodes, _) = parse_source_file(&source, content);
+        let facts: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Fact)).collect();
+        // "Empty" should be pruned, only "Jurisdiction" remains
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].label, "Jurisdiction");
     }
 
     #[test]
@@ -1034,12 +1141,13 @@ mod tests {
     #[test]
     fn test_parse_duplicate_ids() {
         let source = make_source("fec");
-        // Two sections with same name
-        let content = "## Summary\n\nFirst.\n\n## Summary\n\nSecond.";
+        // Two sections with same name, each with a fact so they survive pruning
+        let content = "## Summary\n\n- **A**: 1\n\n## Summary\n\n- **B**: 2";
         let (nodes, _) = parse_source_file(&source, content);
-        assert_eq!(nodes.len(), 2);
-        assert_eq!(nodes[0].id, "fec::summary");
-        assert_eq!(nodes[1].id, "fec::summary-2"); // deduplicated
+        let sections: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Section)).collect();
+        assert_eq!(sections.len(), 2);
+        assert_eq!(sections[0].id, "fec::summary");
+        assert_eq!(sections[1].id, "fec::summary-2"); // deduplicated
     }
 
     #[test]
@@ -1079,14 +1187,14 @@ Links here.";
         let (nodes, edges) = parse_source_file(&source, content);
         let sections: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Section)).collect();
         let facts: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Fact)).collect();
-        // 4 h2 sections + 1 h3 subsection = 5 sections
-        assert_eq!(sections.len(), 5);
+        // Summary and References pruned (no children), Coverage + Data Schema + Records remain = 3
+        assert_eq!(sections.len(), 3);
         // 2 bullets + 2 table rows = 4 facts
         assert_eq!(facts.len(), 4);
-        // Structural edges: 4 has-section (h2→source) + 1 has-section (h3→h2) + 4 contains
+        // Structural edges: 2 has-section (Coverage→source, Data Schema→source) + 1 has-section (Records→Data Schema) + 4 contains
         let has_section_count = edges.iter().filter(|e| e.label.as_deref() == Some("has-section")).count();
         let contains_count = edges.iter().filter(|e| e.label.as_deref() == Some("contains")).count();
-        assert_eq!(has_section_count, 5);
+        assert_eq!(has_section_count, 3);
         assert_eq!(contains_count, 4);
     }
 
@@ -1266,4 +1374,5 @@ Links here.";
         let edges = find_shared_field_edges(&vec![fact_a, fact_b]);
         assert!(edges.is_empty(), "should only match facts under data-schema sections");
     }
+
 }
