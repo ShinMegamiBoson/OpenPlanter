@@ -1,10 +1,23 @@
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use regex::Regex;
 use tauri::State;
 use crate::state::AppState;
 use op_core::events::{GraphData, GraphEdge, GraphNode};
+
+/// Walk up from `start` to find a directory containing `wiki/index.md`.
+fn find_wiki_dir(start: &Path) -> Option<PathBuf> {
+    let mut dir = start.canonicalize().ok();
+    while let Some(d) = dir {
+        let wiki = d.join("wiki");
+        if wiki.join("index.md").exists() {
+            return Some(wiki);
+        }
+        dir = d.parent().map(|p| p.to_path_buf());
+    }
+    None
+}
 
 /// Parse wiki/index.md content into graph nodes.
 pub fn parse_index_nodes(content: &str) -> Vec<GraphNode> {
@@ -109,19 +122,16 @@ pub async fn get_graph_data(
     state: State<'_, AppState>,
 ) -> Result<GraphData, String> {
     let cfg = state.config.lock().await;
-    let wiki_dir = cfg.workspace.join("wiki");
+    let wiki_dir = match find_wiki_dir(&cfg.workspace) {
+        Some(d) => d,
+        None => return Ok(GraphData { nodes: vec![], edges: vec![] }),
+    };
+
     let index_path = wiki_dir.join("index.md");
-
-    if !index_path.exists() {
-        return Ok(GraphData {
-            nodes: vec![],
-            edges: vec![],
-        });
-    }
-
     let content = fs::read_to_string(&index_path).map_err(|e| e.to_string())?;
     let nodes = parse_index_nodes(&content);
-    let edges = find_cross_references(&nodes, &cfg.workspace);
+    let project_root = wiki_dir.parent().unwrap_or(&cfg.workspace);
+    let edges = find_cross_references(&nodes, project_root);
 
     Ok(GraphData { nodes, edges })
 }
@@ -258,6 +268,40 @@ mod tests {
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0].source, "a");
         assert_eq!(edges[0].target, "b");
+    }
+
+    // ── find_wiki_dir ──
+
+    #[test]
+    fn test_find_wiki_dir_none_when_missing() {
+        let tmp = tempdir().unwrap();
+        assert!(find_wiki_dir(tmp.path()).is_none());
+    }
+
+    #[test]
+    fn test_find_wiki_dir_at_start() {
+        let tmp = tempdir().unwrap();
+        let wiki = tmp.path().join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join("index.md"), "# Index").unwrap();
+
+        let found = find_wiki_dir(tmp.path()).unwrap();
+        assert_eq!(found, wiki.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn test_find_wiki_dir_in_parent() {
+        let tmp = tempdir().unwrap();
+        let wiki = tmp.path().join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join("index.md"), "# Index").unwrap();
+
+        // Start from a subdirectory two levels deep
+        let child = tmp.path().join("a").join("b");
+        fs::create_dir_all(&child).unwrap();
+
+        let found = find_wiki_dir(&child).unwrap();
+        assert_eq!(found, wiki.canonicalize().unwrap());
     }
 
     #[test]

@@ -19,7 +19,7 @@ html, body {
 #app {
   display: grid;
   grid-template-rows: var(--statusbar-height) 1fr var(--inputbar-height);
-  grid-template-columns: var(--sidebar-width) 3fr 1fr;
+  grid-template-columns: var(--sidebar-width) 1fr 1fr;
   height: 100vh;
   gap: 1px;
   background: var(--border);
