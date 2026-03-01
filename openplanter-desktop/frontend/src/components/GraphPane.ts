@@ -11,10 +11,11 @@ import {
   getCurrentLayout,
   filterByCategory,
   filterByTier,
-  searchNodes,
+  filterBySearch,
+  filterBySession,
   fitSearchMatches,
-  clearSearchHighlights,
   getCategories,
+  getNodeIds,
 } from "../graph/cytoGraph";
 import { bindInteractions } from "../graph/interaction";
 import { getCategoryColor } from "../graph/colors";
@@ -61,12 +62,22 @@ export function createGraphPane(): HTMLElement {
     tierSelect.appendChild(opt);
   }
 
+  const sessionToggle = document.createElement("button");
+  sessionToggle.className = "graph-session-toggle";
+  sessionToggle.textContent = "\u2726"; // ✦
+  sessionToggle.title = "Toggle new nodes";
+
+  const refreshBtn = document.createElement("button");
+  refreshBtn.className = "graph-refresh-btn";
+  refreshBtn.textContent = "\u21bb"; // ↻
+  refreshBtn.title = "Refresh graph data";
+
   const fitBtn = document.createElement("button");
   fitBtn.className = "graph-fit-btn";
   fitBtn.textContent = "\u229e"; // ⊞
   fitBtn.title = "Fit to view";
 
-  toolbar.append(searchInput, layoutSelect, tierSelect, fitBtn);
+  toolbar.append(searchInput, layoutSelect, tierSelect, sessionToggle, refreshBtn, fitBtn);
 
   // --- Graph container ---
   const graphContainer = document.createElement("div");
@@ -85,19 +96,28 @@ export function createGraphPane(): HTMLElement {
 
   // State
   const hiddenCategories = new Set<string>();
+  let baselineNodeIds = new Set<string>();
+  let baselineCaptured = false;
+  let sessionFilterActive = false;
 
-  // --- Search handler ---
+  // --- Search handler (200ms debounce) ---
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
   searchInput.addEventListener("input", () => {
-    searchNodes(searchInput.value);
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      filterBySearch(searchInput.value);
+    }, 200);
   });
   searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
-      const matches = searchNodes(searchInput.value);
+      if (searchTimer) clearTimeout(searchTimer);
+      const matches = filterBySearch(searchInput.value);
       if (matches.length > 0) fitSearchMatches();
     }
     if (e.key === "Escape") {
+      if (searchTimer) clearTimeout(searchTimer);
       searchInput.value = "";
-      clearSearchHighlights();
+      filterBySearch("");
       searchInput.blur();
     }
   });
@@ -110,6 +130,36 @@ export function createGraphPane(): HTMLElement {
   // --- Tier filter handler ---
   tierSelect.addEventListener("change", () => {
     filterByTier(tierSelect.value as "all" | "sources-sections" | "sources");
+  });
+
+  // --- Session toggle handler ---
+  sessionToggle.addEventListener("click", () => {
+    sessionFilterActive = !sessionFilterActive;
+    if (sessionFilterActive) {
+      sessionToggle.classList.add("active");
+    } else {
+      sessionToggle.classList.remove("active");
+    }
+    filterBySession(sessionFilterActive, baselineNodeIds);
+  });
+
+  // --- Refresh handler ---
+  refreshBtn.addEventListener("click", async () => {
+    refreshBtn.classList.add("spinning");
+    try {
+      const data = await getGraphData();
+      if (data.nodes.length > 0) {
+        updateGraph(data);
+        buildLegend(getCategories());
+        if (sessionFilterActive) {
+          filterBySession(true, baselineNodeIds);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to refresh graph data:", e);
+    } finally {
+      refreshBtn.classList.remove("spinning");
+    }
   });
 
   // --- Fit handler ---
@@ -256,6 +306,12 @@ export function createGraphPane(): HTMLElement {
       interactionsBound = true;
     }
 
+    // Capture baseline node IDs on first load
+    if (!baselineCaptured) {
+      baselineNodeIds = getNodeIds();
+      baselineCaptured = true;
+    }
+
     buildLegend(getCategories());
   }
 
@@ -279,10 +335,30 @@ export function createGraphPane(): HTMLElement {
     const data = e.detail;
     if (data.nodes.length > 0) {
       initializeWithData(data);
+      // Re-apply session filter if active
+      if (sessionFilterActive) {
+        filterBySession(true, baselineNodeIds);
+      }
     } else {
       updateGraph(data);
     }
   }) as EventListener);
+
+  // Listen for session changes — reset baseline
+  window.addEventListener("session-changed", () => {
+    baselineNodeIds = new Set<string>();
+    baselineCaptured = false;
+    sessionFilterActive = false;
+    sessionToggle.classList.remove("active");
+    // Re-fetch graph for new session
+    getGraphData().then((data) => {
+      if (data.nodes.length > 0) {
+        initializeWithData(data);
+      }
+    }).catch((e) => {
+      console.error("Failed to load graph data on session change:", e);
+    });
+  });
 
   return pane;
 }

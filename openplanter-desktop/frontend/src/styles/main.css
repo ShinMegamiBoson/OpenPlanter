@@ -606,6 +606,65 @@ html, body {
   border-color: var(--accent);
 }
 
+/* Session toggle button */
+.graph-session-toggle {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 14px;
+  width: 28px;
+  height: 26px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.graph-session-toggle:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.graph-session-toggle.active {
+  border-color: #3fb950;
+  color: #3fb950;
+  background: rgba(63, 185, 80, 0.1);
+}
+
+/* Refresh button */
+.graph-refresh-btn {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 14px;
+  width: 28px;
+  height: 26px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.graph-refresh-btn:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.graph-refresh-btn.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Input bar */
 .input-bar {
   grid-column: 2 / 4;

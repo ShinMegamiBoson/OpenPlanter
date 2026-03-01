@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
   MOCK_GRAPH_DATA,
+  MOCK_GRAPH_DATA_WITH_NEW_NODES,
   MOCK_CONFIG,
   MOCK_SESSIONS,
   MOCK_CREDENTIALS,
@@ -134,11 +135,23 @@ test.describe("Graph Pane", () => {
     await expect(dots).toHaveCount(10);
   });
 
-  test("search input filters and highlights nodes", async ({ page }) => {
+  test("search input filters and hides non-matching nodes", async ({ page }) => {
     const searchInput = page.locator(".graph-search");
     await searchInput.fill("Acme");
 
+    // Wait for debounce + filtering
     await page.waitForTimeout(500);
+
+    // Non-matching nodes should be hidden
+    const visibleCount = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      return cy ? cy.nodes(":visible").length : 0;
+    });
+    // Acme Corp + its neighbors should be visible, others hidden
+    expect(visibleCount).toBeLessThan(15);
+    expect(visibleCount).toBeGreaterThan(0);
+
     await page.screenshot({ path: "e2e/screenshots/05-search-acme.png" });
 
     // Press Enter to zoom to matches
@@ -146,9 +159,16 @@ test.describe("Graph Pane", () => {
     await page.waitForTimeout(500);
     await page.screenshot({ path: "e2e/screenshots/06-search-zoom.png" });
 
-    // Clear search
+    // Clear search — all nodes should return
     await searchInput.press("Escape");
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
+
+    const allVisible = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      return cy ? cy.nodes(":visible").length : 0;
+    });
+    expect(allVisible).toBe(15);
   });
 
   test("layout dropdown switches layout", async ({ page }) => {
@@ -524,5 +544,236 @@ test.describe("Graph Pane", () => {
     expect(edgeLabels).toContain("donated to");
 
     await page.screenshot({ path: "e2e/screenshots/21-edge-types.png" });
+  });
+
+  // ── Search filter tests ──
+
+  test("search matches category field", async ({ page }) => {
+    const searchInput = page.locator(".graph-search");
+    await searchInput.fill("campaign");
+    await page.waitForTimeout(500);
+
+    // campaign-finance nodes should be visible (PAC Fund Alpha + its children)
+    const visibleIds = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      if (!cy) return [];
+      return cy.nodes(":visible").map((n: any) => n.id());
+    });
+    expect(visibleIds).toContain("pac-fund-alpha");
+    expect(visibleIds.length).toBeLessThan(15);
+
+    await page.screenshot({ path: "e2e/screenshots/22-search-category.png" });
+
+    // Clear
+    await searchInput.press("Escape");
+    await page.waitForTimeout(500);
+  });
+
+  test("search matches content field", async ({ page }) => {
+    const searchInput = page.locator(".graph-search");
+    // "entity_id" appears in the content of acme-corp::data-schema::entity-id
+    await searchInput.fill("entity_id");
+    await page.waitForTimeout(500);
+
+    const visibleIds = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      if (!cy) return [];
+      return cy.nodes(":visible").map((n: any) => n.id());
+    });
+    expect(visibleIds).toContain("acme-corp::data-schema::entity-id");
+    expect(visibleIds.length).toBeLessThan(15);
+
+    await page.screenshot({ path: "e2e/screenshots/23-search-content.png" });
+    await searchInput.press("Escape");
+    await page.waitForTimeout(500);
+  });
+
+  test("search filter composes with tier filter", async ({ page }) => {
+    // Set tier to "Sources only"
+    const tierSelect = page.locator(".graph-tier-select");
+    await tierSelect.selectOption("sources");
+    await page.waitForTimeout(500);
+
+    // Now search for "Acme"
+    const searchInput = page.locator(".graph-search");
+    await searchInput.fill("Acme");
+    await page.waitForTimeout(500);
+
+    // Sections and facts should remain hidden (tier-hidden), plus non-matching sources
+    const visibleCount = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      return cy ? cy.nodes(":visible").length : 0;
+    });
+    // Only source-tier nodes that match or are neighbors of Acme should be visible
+    expect(visibleCount).toBeLessThan(10);
+    expect(visibleCount).toBeGreaterThan(0);
+
+    await page.screenshot({ path: "e2e/screenshots/24-search-tier-compose.png" });
+
+    // Clean up
+    await searchInput.press("Escape");
+    await tierSelect.selectOption("all");
+    await page.waitForTimeout(500);
+  });
+
+  // ── Session toggle and refresh button tests ──
+
+  test("toolbar has session toggle and refresh buttons", async ({ page }) => {
+    await expect(page.locator(".graph-session-toggle")).toBeVisible();
+    await expect(page.locator(".graph-refresh-btn")).toBeVisible();
+
+    await page.screenshot({ path: "e2e/screenshots/25-toolbar-buttons.png" });
+  });
+
+  test("session toggle button toggles active state", async ({ page }) => {
+    const toggle = page.locator(".graph-session-toggle");
+
+    // Initially not active
+    await expect(toggle).not.toHaveClass(/active/);
+
+    // Click to activate
+    await toggle.click();
+    await page.waitForTimeout(300);
+    await expect(toggle).toHaveClass(/active/);
+
+    // Click again to deactivate
+    await toggle.click();
+    await page.waitForTimeout(300);
+    await expect(toggle).not.toHaveClass(/active/);
+  });
+
+  test("session toggle filters to new nodes after refresh", async ({ page: _ }, testInfo) => {
+    // Create a fresh page where refresh returns data with new nodes
+    const context = await (await import("@playwright/test")).chromium.launch();
+    const page = await (await context.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+
+    let callCount = 0;
+    await page.addInitScript(
+      ({ graphData, graphDataNew, config, sessions, credentials }) => {
+        let invokeCount = 0;
+        (window as any).__TAURI_INTERNALS__ = {
+          invoke: async (cmd: string, args?: any) => {
+            switch (cmd) {
+              case "get_graph_data":
+                invokeCount++;
+                // First call returns base data, subsequent calls return new data
+                return invokeCount <= 1 ? graphData : graphDataNew;
+              case "get_config":
+                return config;
+              case "list_sessions":
+                return sessions;
+              case "get_credentials_status":
+                return credentials;
+              case "open_session":
+                return { id: "s", created_at: "", turn_count: 0, last_objective: null };
+              case "debug_log":
+                return;
+              case "list_models":
+                return [];
+              case "save_settings":
+                return;
+              default:
+                return;
+            }
+          },
+          transformCallback: (cb: Function) => {
+            const id = Math.floor(Math.random() * 1e6);
+            return id;
+          },
+          convertFileSrc: (p: string) => p,
+          metadata: {
+            currentWindow: { label: "main" },
+            currentWebview: { windowLabel: "main", label: "main" },
+          },
+        };
+        (window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+          unregisterListener: () => {},
+        };
+      },
+      {
+        graphData: MOCK_GRAPH_DATA,
+        graphDataNew: MOCK_GRAPH_DATA_WITH_NEW_NODES,
+        config: MOCK_CONFIG,
+        sessions: MOCK_SESSIONS,
+        credentials: MOCK_CREDENTIALS,
+      }
+    );
+
+    await page.goto("http://localhost:5173/");
+    await page.waitForSelector(".graph-pane", { timeout: 5000 });
+    await page.waitForTimeout(2000);
+
+    // Initial state: 15 nodes visible
+    const initialCount = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      return cy ? cy.nodes().length : 0;
+    });
+    expect(initialCount).toBe(15);
+
+    // Click refresh — should get 17 nodes (2 new ones)
+    await page.locator(".graph-refresh-btn").click();
+    await page.waitForTimeout(1000);
+
+    const afterRefresh = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      return cy ? cy.nodes().length : 0;
+    });
+    expect(afterRefresh).toBe(17);
+
+    // Toggle session filter — should show only new nodes + neighbors
+    await page.locator(".graph-session-toggle").click();
+    await page.waitForTimeout(500);
+
+    const visibleAfterToggle = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      return cy ? cy.nodes(":visible").length : 0;
+    });
+    // 2 new nodes + their neighbors (acme-corp, bank-of-west), not all 17
+    expect(visibleAfterToggle).toBeLessThan(17);
+    expect(visibleAfterToggle).toBeGreaterThanOrEqual(2);
+
+    // New nodes should have .new-node class
+    const newNodeCount = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      return cy ? cy.nodes(".new-node").length : 0;
+    });
+    expect(newNodeCount).toBe(2);
+
+    await page.screenshot({ path: "e2e/screenshots/26-session-toggle.png" });
+
+    await context.close();
+  });
+
+  test("refresh button re-fetches graph data", async ({ page }) => {
+    const refreshBtn = page.locator(".graph-refresh-btn");
+
+    // Count nodes before refresh
+    const before = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      return cy ? cy.nodes().length : 0;
+    });
+    expect(before).toBe(15);
+
+    // Click refresh
+    await refreshBtn.click();
+    await page.waitForTimeout(1000);
+
+    // Graph should still have data (same mock returns same data)
+    const after = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      return cy ? cy.nodes().length : 0;
+    });
+    expect(after).toBe(15);
+
+    await page.screenshot({ path: "e2e/screenshots/27-refresh.png" });
   });
 });

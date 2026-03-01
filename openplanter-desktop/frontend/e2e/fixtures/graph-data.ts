@@ -75,3 +75,17 @@ export const MOCK_CREDENTIALS = {
   ollama: true,
   exa: false,
 };
+
+/** Extended mock data with 2 new source nodes + edges (for session toggle tests). */
+export const MOCK_GRAPH_DATA_WITH_NEW_NODES = {
+  nodes: [
+    ...MOCK_GRAPH_DATA.nodes,
+    { id: "new-entity-alpha", label: "New Entity Alpha", category: "corporate", path: "wiki/new-entity-alpha.md", node_type: "source" },
+    { id: "new-entity-beta", label: "New Entity Beta", category: "financial", path: "wiki/new-entity-beta.md", node_type: "source" },
+  ],
+  edges: [
+    ...MOCK_GRAPH_DATA.edges,
+    { source: "new-entity-alpha", target: "acme-corp", label: "subsidiary of" },
+    { source: "new-entity-beta", target: "bank-of-west", label: "account at" },
+  ],
+};

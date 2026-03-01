@@ -165,6 +165,39 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
       display: "none",
     },
   },
+  {
+    selector: "node.filter-hidden",
+    style: {
+      display: "none",
+    },
+  },
+  {
+    selector: "edge.filter-hidden",
+    style: {
+      display: "none",
+    },
+  },
+  {
+    selector: "node.session-hidden",
+    style: {
+      display: "none",
+    },
+  },
+  {
+    selector: "edge.session-hidden",
+    style: {
+      display: "none",
+    },
+  },
+  {
+    selector: "node.new-node",
+    style: {
+      "border-width": 3,
+      "border-color": "#3fb950",
+      "border-opacity": 1,
+      "background-opacity": 1,
+    },
+  },
 ] as any;
 
 /** Tier-based sizing parameters. */
@@ -379,7 +412,24 @@ export function setLayout(name: string): void {
   cy.layout(getLayoutOptions(name)).run();
 }
 
-/** Show/hide nodes by category. Returns set of currently visible categories. */
+/** Hidden class names used by all filter systems. */
+const HIDDEN_CLASSES = ["hidden", "tier-hidden", "filter-hidden", "session-hidden"] as const;
+
+/** Sync edge visibility — an edge inherits a hidden class if either endpoint has it. */
+function syncEdgeVisibility(): void {
+  if (!cy) return;
+  cy.edges().forEach((edge) => {
+    for (const cls of HIDDEN_CLASSES) {
+      if (edge.source().hasClass(cls) || edge.target().hasClass(cls)) {
+        edge.addClass(cls);
+      } else {
+        edge.removeClass(cls);
+      }
+    }
+  });
+}
+
+/** Show/hide nodes by category. */
 export function filterByCategory(
   hiddenCategories: Set<string>
 ): void {
@@ -389,47 +439,11 @@ export function filterByCategory(
     const cat = node.data("category") as string;
     if (hiddenCategories.has(cat)) {
       node.addClass("hidden");
-      // Hide connected edges to hidden nodes
-      node.connectedEdges().forEach((edge) => {
-        const src = edge.source();
-        const tgt = edge.target();
-        if (hiddenCategories.has(src.data("category")) || hiddenCategories.has(tgt.data("category"))) {
-          edge.addClass("hidden");
-        }
-      });
     } else {
       node.removeClass("hidden");
-      node.connectedEdges().forEach((edge) => {
-        const src = edge.source();
-        const tgt = edge.target();
-        if (!hiddenCategories.has(src.data("category")) && !hiddenCategories.has(tgt.data("category"))) {
-          edge.removeClass("hidden");
-        }
-      });
     }
   });
-}
-
-/** Search nodes by label. Returns matching node IDs. */
-export function searchNodes(query: string): string[] {
-  if (!cy || !query.trim()) {
-    clearSearchHighlights();
-    return [];
-  }
-
-  clearSearchHighlights();
-  const lowerQuery = query.toLowerCase();
-  const matches: string[] = [];
-
-  cy.nodes().forEach((node) => {
-    const label = (node.data("label") as string || "").toLowerCase();
-    if (label.includes(lowerQuery)) {
-      node.addClass("search-match");
-      matches.push(node.id());
-    }
-  });
-
-  return matches;
+  syncEdgeVisibility();
 }
 
 /** Zoom to fit search matches. */
@@ -460,12 +474,6 @@ export function clearHighlights(): void {
   if (!cy) return;
   cy.elements().removeClass("dimmed highlighted");
   cy.nodes().unselect();
-}
-
-/** Clear search-match highlights only. */
-export function clearSearchHighlights(): void {
-  if (!cy) return;
-  cy.nodes().removeClass("search-match");
 }
 
 /** Get the Cytoscape core instance (for interaction handlers). */
@@ -509,14 +517,110 @@ export function filterByTier(tier: "all" | "sources-sections" | "sources"): void
     }
   });
 
-  // Hide edges connected to hidden nodes
-  cy.edges().forEach((edge) => {
-    const src = edge.source();
-    const tgt = edge.target();
-    if (src.hasClass("tier-hidden") || tgt.hasClass("tier-hidden")) {
-      edge.addClass("tier-hidden");
-    } else {
-      edge.removeClass("tier-hidden");
+  syncEdgeVisibility();
+}
+
+/** Filter graph by search query. Hides non-matching nodes (+ their non-neighbor nodes).
+ * Returns matching node IDs. Empty query clears the filter. */
+export function filterBySearch(query: string): string[] {
+  if (!cy) return [];
+
+  // Clear previous search state
+  cy.nodes().removeClass("search-match filter-hidden");
+
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) {
+    syncEdgeVisibility();
+    return [];
+  }
+
+  // Find matches: label, category, or content (case-insensitive substring)
+  const matchIds: string[] = [];
+  cy.nodes().forEach((node) => {
+    const label = ((node.data("label") as string) || "").toLowerCase();
+    const category = ((node.data("category") as string) || "").toLowerCase();
+    const content = ((node.data("content") as string) || "").toLowerCase();
+    if (label.includes(trimmed) || category.includes(trimmed) || content.includes(trimmed)) {
+      matchIds.push(node.id());
     }
   });
+
+  // No matches → don't hide anything (avoids blank graph)
+  if (matchIds.length === 0) {
+    syncEdgeVisibility();
+    return [];
+  }
+
+  // Collect match + 1-hop neighbors
+  const visible = new Set<string>();
+  for (const id of matchIds) {
+    const node = cy.getElementById(id);
+    node.addClass("search-match");
+    visible.add(id);
+    node.neighborhood().nodes().forEach((n) => visible.add(n.id()));
+  }
+
+  // Hide everything else
+  cy.nodes().forEach((node) => {
+    if (!visible.has(node.id())) {
+      node.addClass("filter-hidden");
+    }
+  });
+
+  syncEdgeVisibility();
+  return matchIds;
+}
+
+/** Filter graph to show only "new" nodes (not in baseline) + their 1-hop neighbors.
+ * When active=false, clears the session filter. */
+export function filterBySession(active: boolean, baselineNodeIds: Set<string>): void {
+  if (!cy) return;
+
+  // Clear previous session state
+  cy.nodes().removeClass("new-node session-hidden");
+
+  if (!active) {
+    syncEdgeVisibility();
+    return;
+  }
+
+  // Identify new nodes
+  const newIds: string[] = [];
+  cy.nodes().forEach((node) => {
+    if (!baselineNodeIds.has(node.id())) {
+      newIds.push(node.id());
+    }
+  });
+
+  // If no new nodes, don't hide anything
+  if (newIds.length === 0) {
+    syncEdgeVisibility();
+    return;
+  }
+
+  // Collect new + 1-hop neighbors
+  const visible = new Set<string>();
+  for (const id of newIds) {
+    const node = cy.getElementById(id);
+    node.addClass("new-node");
+    visible.add(id);
+    node.neighborhood().nodes().forEach((n) => visible.add(n.id()));
+  }
+
+  // Hide everything else
+  cy.nodes().forEach((node) => {
+    if (!visible.has(node.id())) {
+      node.addClass("session-hidden");
+    }
+  });
+
+  syncEdgeVisibility();
+}
+
+/** Get all current node IDs (for baseline capture). */
+export function getNodeIds(): Set<string> {
+  if (!cy) return new Set();
+  const ids = new Set<string>();
+  cy.nodes().forEach((node) => ids.add(node.id()));
+  return ids;
 }
