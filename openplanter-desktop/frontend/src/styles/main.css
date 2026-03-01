@@ -321,11 +321,233 @@ html, body {
   background: var(--bg-secondary);
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .graph-pane canvas {
   width: 100% !important;
   height: 100% !important;
+}
+
+/* Graph toolbar */
+.graph-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.graph-search {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  outline: none;
+}
+
+.graph-search:focus {
+  border-color: var(--accent);
+}
+
+.graph-search::placeholder {
+  color: var(--text-muted);
+}
+
+.graph-layout-select {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 6px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.graph-layout-select:focus {
+  border-color: var(--accent);
+}
+
+.graph-fit-btn {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 14px;
+  width: 28px;
+  height: 26px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.graph-fit-btn:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+/* Graph canvas (Cytoscape container) */
+.graph-canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* Graph legend */
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 30px;
+}
+
+.graph-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.graph-legend-item:hover {
+  background: var(--bg-card);
+}
+
+.graph-legend-item.legend-hidden {
+  opacity: 0.35;
+}
+
+.graph-legend-item.legend-hidden .graph-legend-dot {
+  background-color: var(--text-muted) !important;
+}
+
+.graph-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.graph-legend-label {
+  white-space: nowrap;
+}
+
+/* Node detail overlay */
+.graph-detail {
+  position: absolute;
+  top: 44px;
+  right: 8px;
+  width: 240px;
+  max-height: calc(100% - 90px);
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  z-index: 10;
+  font-size: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.graph-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.graph-detail-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.graph-detail-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.graph-detail-close:hover {
+  color: var(--text-primary);
+}
+
+.graph-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.graph-detail-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid;
+  border-radius: 3px;
+  color: var(--text-secondary);
+}
+
+.graph-detail-path {
+  font-size: 10px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.graph-detail-conn-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.graph-detail-conn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.graph-detail-conn-item {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.graph-detail-conn-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent-hover);
 }
 
 /* Input bar */

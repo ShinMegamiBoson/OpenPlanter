@@ -1,4 +1,5 @@
 /target
 /frontend/node_modules
 /frontend/dist
+/frontend/e2e/screenshots
 *.DS_Store
