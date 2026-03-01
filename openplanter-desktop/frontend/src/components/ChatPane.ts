@@ -1,5 +1,6 @@
 /** Chat pane: terminal-style messages, streaming, markdown rendering. */
 import { appState, type ChatMessage } from "../state/store";
+import { createInputBar } from "./InputBar";
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js";
 
@@ -35,6 +36,12 @@ const md = new MarkdownIt({
 export function createChatPane(): HTMLElement {
   const pane = document.createElement("div");
   pane.className = "chat-pane";
+
+  const messagesEl = document.createElement("div");
+  messagesEl.className = "chat-messages";
+  pane.appendChild(messagesEl);
+
+  pane.appendChild(createInputBar());
 
   let renderedCount = 0;
 
@@ -113,10 +120,10 @@ export function createChatPane(): HTMLElement {
     const messages = appState.get().messages;
     while (renderedCount < messages.length) {
       const msgEl = renderMessage(messages[renderedCount]);
-      pane.appendChild(msgEl);
+      messagesEl.appendChild(msgEl);
       renderedCount++;
     }
-    pane.scrollTop = pane.scrollHeight;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
   appState.subscribe(render);
@@ -132,10 +139,10 @@ export function createChatPane(): HTMLElement {
       if (!thinkingEl) {
         thinkingEl = document.createElement("div");
         thinkingEl.className = "message thinking";
-        pane.appendChild(thinkingEl);
+        messagesEl.appendChild(thinkingEl);
       }
       thinkingEl.textContent += text;
-      pane.scrollTop = pane.scrollHeight;
+      messagesEl.scrollTop = messagesEl.scrollHeight;
     } else if (kind === "text") {
       // Transition from thinking to streaming
       if (thinkingEl) {
@@ -144,10 +151,10 @@ export function createChatPane(): HTMLElement {
       if (!streamingEl) {
         streamingEl = document.createElement("div");
         streamingEl.className = "message assistant streaming";
-        pane.appendChild(streamingEl);
+        messagesEl.appendChild(streamingEl);
       }
       streamingEl.textContent += text;
-      pane.scrollTop = pane.scrollHeight;
+      messagesEl.scrollTop = messagesEl.scrollHeight;
     } else if (kind === "tool_call_start") {
       // Finalize previous stream
       thinkingEl = null;
@@ -158,11 +165,11 @@ export function createChatPane(): HTMLElement {
       fn.className = "tool-fn";
       fn.textContent = text;
       toolEl.appendChild(fn);
-      pane.appendChild(toolEl);
-      pane.scrollTop = pane.scrollHeight;
+      messagesEl.appendChild(toolEl);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
     } else if (kind === "tool_call_args") {
       // Append args to last tool tree line
-      const lastTool = pane.querySelector(".tool-tree-line:last-child");
+      const lastTool = messagesEl.querySelector(".tool-tree-line:last-child");
       if (lastTool) {
         let argSpan = lastTool.querySelector(".tool-arg");
         if (!argSpan) {
@@ -186,9 +193,9 @@ export function createChatPane(): HTMLElement {
     }
   });
 
-  // Clear pane DOM when session changes
+  // Clear messages DOM when session changes
   window.addEventListener("session-changed", () => {
-    pane.innerHTML = "";
+    messagesEl.innerHTML = "";
     renderedCount = 0;
     streamingEl = null;
     thinkingEl = null;

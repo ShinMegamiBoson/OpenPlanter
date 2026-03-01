@@ -6,6 +6,14 @@ vi.mock("@tauri-apps/api/core", async () => {
   return { invoke: mock.invoke };
 });
 
+vi.mock("./InputBar", () => ({
+  createInputBar: () => {
+    const el = document.createElement("div");
+    el.className = "input-bar";
+    return el;
+  },
+}));
+
 import { appState, type ChatMessage } from "../state/store";
 import { createChatPane, KEY_ARGS } from "./ChatPane";
 
@@ -319,7 +327,8 @@ describe("createChatPane", () => {
     expect(pane.querySelectorAll(".message").length).toBe(1);
 
     window.dispatchEvent(new CustomEvent("session-changed"));
-    expect(pane.innerHTML).toBe("");
+    const messagesContainer = pane.querySelector(".chat-messages")!;
+    expect(messagesContainer.innerHTML).toBe("");
 
     document.body.removeChild(pane);
   });

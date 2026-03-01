@@ -1,7 +1,6 @@
 /** Root layout component. */
 import { createStatusBar } from "./StatusBar";
 import { createChatPane } from "./ChatPane";
-import { createInputBar } from "./InputBar";
 import { createGraphPane } from "./GraphPane";
 import { appState } from "../state/store";
 import { listSessions, openSession, deleteSession, getCredentialsStatus } from "../api/invoke";
@@ -59,10 +58,6 @@ export function createApp(root: HTMLElement): void {
   // Graph pane
   const graphPane = createGraphPane();
   root.appendChild(graphPane);
-
-  // Input bar
-  const inputBar = createInputBar();
-  root.appendChild(inputBar);
 
   // Reactive settings display
   function renderSettings() {

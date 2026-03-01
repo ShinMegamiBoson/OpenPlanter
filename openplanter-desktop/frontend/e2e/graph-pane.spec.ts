@@ -628,21 +628,20 @@ test.describe("Graph Pane", () => {
     await page.screenshot({ path: "e2e/screenshots/25-toolbar-buttons.png" });
   });
 
-  test("session toggle button toggles active state", async ({ page }) => {
+  test("session toggle shows hint when no new nodes exist", async ({ page }) => {
     const toggle = page.locator(".graph-session-toggle");
+    const hint = page.locator(".graph-session-hint");
 
     // Initially not active
     await expect(toggle).not.toHaveClass(/active/);
 
-    // Click to activate
-    await toggle.click();
-    await page.waitForTimeout(300);
-    await expect(toggle).toHaveClass(/active/);
-
-    // Click again to deactivate
+    // Click with no new nodes — should auto-deactivate and show hint
     await toggle.click();
     await page.waitForTimeout(300);
     await expect(toggle).not.toHaveClass(/active/);
+    await expect(hint).toHaveClass(/visible/);
+    const text = await hint.textContent();
+    expect(text).toContain("no new nodes");
   });
 
   test("session toggle filters to new nodes after refresh", async ({ page: _ }, testInfo) => {

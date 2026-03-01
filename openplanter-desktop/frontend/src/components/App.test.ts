@@ -15,9 +15,6 @@ vi.mock("./ChatPane", () => ({
   createChatPane: () => document.createElement("div"),
   KEY_ARGS: {},
 }));
-vi.mock("./InputBar", () => ({
-  createInputBar: () => document.createElement("div"),
-}));
 vi.mock("./GraphPane", () => ({
   createGraphPane: () => document.createElement("div"),
 }));

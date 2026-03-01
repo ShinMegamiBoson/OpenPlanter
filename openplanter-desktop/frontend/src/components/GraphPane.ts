@@ -65,7 +65,10 @@ export function createGraphPane(): HTMLElement {
   const sessionToggle = document.createElement("button");
   sessionToggle.className = "graph-session-toggle";
   sessionToggle.textContent = "\u2726"; // ✦
-  sessionToggle.title = "Toggle new nodes";
+  sessionToggle.title = "Show only new nodes from this session";
+
+  const sessionHint = document.createElement("span");
+  sessionHint.className = "graph-session-hint";
 
   const refreshBtn = document.createElement("button");
   refreshBtn.className = "graph-refresh-btn";
@@ -77,7 +80,7 @@ export function createGraphPane(): HTMLElement {
   fitBtn.textContent = "\u229e"; // ⊞
   fitBtn.title = "Fit to view";
 
-  toolbar.append(searchInput, layoutSelect, tierSelect, sessionToggle, refreshBtn, fitBtn);
+  toolbar.append(searchInput, layoutSelect, tierSelect, sessionToggle, sessionHint, refreshBtn, fitBtn);
 
   // --- Graph container ---
   const graphContainer = document.createElement("div");
@@ -133,6 +136,16 @@ export function createGraphPane(): HTMLElement {
   });
 
   // --- Session toggle handler ---
+  let hintTimer: ReturnType<typeof setTimeout> | null = null;
+  function showHint(text: string): void {
+    if (hintTimer) clearTimeout(hintTimer);
+    sessionHint.textContent = text;
+    sessionHint.classList.add("visible");
+    hintTimer = setTimeout(() => {
+      sessionHint.classList.remove("visible");
+    }, 3000);
+  }
+
   sessionToggle.addEventListener("click", () => {
     sessionFilterActive = !sessionFilterActive;
     if (sessionFilterActive) {
@@ -142,18 +155,15 @@ export function createGraphPane(): HTMLElement {
     }
     const newCount = filterBySession(sessionFilterActive, baselineNodeIds);
 
-    // Flash feedback when toggled on but no new nodes exist
     if (sessionFilterActive && newCount === 0) {
-      sessionToggle.title = "No new nodes yet — research or refresh first";
-      sessionToggle.classList.add("no-new");
-      setTimeout(() => {
-        sessionToggle.classList.remove("no-new");
-        sessionToggle.title = "Toggle new nodes";
-      }, 2000);
+      // Immediately deactivate — nothing to show
+      sessionFilterActive = false;
+      sessionToggle.classList.remove("active");
+      showHint("no new nodes yet");
+    } else if (sessionFilterActive) {
+      showHint(`${newCount} new`);
     } else {
-      sessionToggle.title = sessionFilterActive
-        ? `Showing ${newCount} new node${newCount !== 1 ? "s" : ""}`
-        : "Toggle new nodes";
+      sessionHint.classList.remove("visible");
     }
   });
 
