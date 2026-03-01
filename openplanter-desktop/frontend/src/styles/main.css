@@ -325,11 +325,6 @@ html, body {
   flex-direction: column;
 }
 
-.graph-pane canvas {
-  width: 100% !important;
-  height: 100% !important;
-}
-
 /* Graph toolbar */
 .graph-toolbar {
   display: flex;
