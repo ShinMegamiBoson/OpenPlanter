@@ -140,7 +140,21 @@ export function createGraphPane(): HTMLElement {
     } else {
       sessionToggle.classList.remove("active");
     }
-    filterBySession(sessionFilterActive, baselineNodeIds);
+    const newCount = filterBySession(sessionFilterActive, baselineNodeIds);
+
+    // Flash feedback when toggled on but no new nodes exist
+    if (sessionFilterActive && newCount === 0) {
+      sessionToggle.title = "No new nodes yet — research or refresh first";
+      sessionToggle.classList.add("no-new");
+      setTimeout(() => {
+        sessionToggle.classList.remove("no-new");
+        sessionToggle.title = "Toggle new nodes";
+      }, 2000);
+    } else {
+      sessionToggle.title = sessionFilterActive
+        ? `Showing ${newCount} new node${newCount !== 1 ? "s" : ""}`
+        : "Toggle new nodes";
+    }
   });
 
   // --- Refresh handler ---

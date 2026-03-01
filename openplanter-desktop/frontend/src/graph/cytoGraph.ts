@@ -572,16 +572,16 @@ export function filterBySearch(query: string): string[] {
 }
 
 /** Filter graph to show only "new" nodes (not in baseline) + their 1-hop neighbors.
- * When active=false, clears the session filter. */
-export function filterBySession(active: boolean, baselineNodeIds: Set<string>): void {
-  if (!cy) return;
+ * When active=false, clears the session filter. Returns count of new nodes found. */
+export function filterBySession(active: boolean, baselineNodeIds: Set<string>): number {
+  if (!cy) return 0;
 
   // Clear previous session state
   cy.nodes().removeClass("new-node session-hidden");
 
   if (!active) {
     syncEdgeVisibility();
-    return;
+    return 0;
   }
 
   // Identify new nodes
@@ -595,7 +595,7 @@ export function filterBySession(active: boolean, baselineNodeIds: Set<string>): 
   // If no new nodes, don't hide anything
   if (newIds.length === 0) {
     syncEdgeVisibility();
-    return;
+    return 0;
   }
 
   // Collect new + 1-hop neighbors
@@ -615,6 +615,7 @@ export function filterBySession(active: boolean, baselineNodeIds: Set<string>): 
   });
 
   syncEdgeVisibility();
+  return newIds.length;
 }
 
 /** Get all current node IDs (for baseline capture). */

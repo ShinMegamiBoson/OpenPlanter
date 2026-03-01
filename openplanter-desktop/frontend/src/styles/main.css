@@ -634,6 +634,18 @@ html, body {
   background: rgba(63, 185, 80, 0.1);
 }
 
+.graph-session-toggle.no-new {
+  border-color: var(--warning);
+  color: var(--warning);
+  background: rgba(210, 153, 34, 0.1);
+  animation: flash-warn 0.4s ease 2;
+}
+
+@keyframes flash-warn {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 /* Refresh button */
 .graph-refresh-btn {
   background: var(--bg-primary);
