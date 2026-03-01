@@ -11,95 +11,90 @@ cytoscape.use(dagre);
 let cy: Core | null = null;
 let resizeObserver: ResizeObserver | null = null;
 
-/** Cytoscape stylesheet */
-const graphStyle: cytoscape.StylesheetStyle[] = [
+/** Cytoscape stylesheet — colored circles with degree-based sizing. */
+const graphStyle: cytoscape.Stylesheet[] = [
   {
     selector: "node",
     style: {
       label: "data(label)",
-      "background-color": "#21262d",
-      "border-width": 2,
+      "background-color": "data(color)",
+      "background-opacity": 0.85,
+      "border-width": 1,
       "border-color": "data(color)",
-      color: "#e6edf3",
-      "text-valign": "center",
+      "border-opacity": 0.5,
+      color: "#ffffff",
+      "text-valign": "bottom",
       "text-halign": "center",
-      "font-size": "11px",
+      "text-margin-y": 4,
+      "font-size": "9px",
       "font-family": "JetBrains Mono, Fira Code, SF Mono, Menlo, monospace",
-      shape: "round-rectangle",
-      width: "label",
-      height: 28,
-      "padding-left": "8px" as any,
-      "padding-right": "8px" as any,
+      shape: "ellipse",
+      width: "data(size)",
+      height: "data(size)",
       "text-wrap": "ellipsis",
-      "text-max-width": "120px",
-      "min-zoomed-font-size": 8,
+      "text-max-width": "100px",
+      "min-zoomed-font-size": 6,
+      "text-outline-color": "#0d1117",
+      "text-outline-width": 1.5,
+      "text-outline-opacity": 0.8,
     },
   },
   {
     selector: "node:selected",
     style: {
       "border-width": 3,
-      "border-color": "#58a6ff",
-      "background-color": "#1c2128",
+      "border-color": "#ffffff",
+      "border-opacity": 1,
+      "background-opacity": 1,
     },
   },
   {
     selector: "node.highlighted",
     style: {
-      "border-width": 3,
-      "border-color": "#58a6ff",
+      "border-width": 2,
+      "border-color": "#ffffff",
+      "border-opacity": 0.8,
+      "background-opacity": 1,
     },
   },
   {
     selector: "node.search-match",
     style: {
       "border-width": 3,
-      "border-color": "#d29922",
-      "background-color": "#1c2128",
+      "border-color": "#f0e68c",
+      "border-opacity": 1,
+      "background-opacity": 1,
     },
   },
   {
     selector: "node.dimmed",
     style: {
-      opacity: 0.2,
+      opacity: 0.15,
+      "text-opacity": 0,
     },
   },
   {
     selector: "edge",
     style: {
-      width: 1.5,
-      "line-color": "#8b949e",
-      "target-arrow-color": "#8b949e",
-      "target-arrow-shape": "triangle",
+      width: 1,
+      "line-color": "data(color)",
+      "target-arrow-shape": "none",
       "curve-style": "bezier",
-      "arrow-scale": 0.8,
-      opacity: 0.7,
-    },
-  },
-  {
-    selector: "edge[label]",
-    style: {
-      label: "data(label)",
-      "font-size": "9px",
-      color: "#484f58",
-      "text-rotation": "autorotate",
-      "text-margin-y": -8,
-      "font-family": "JetBrains Mono, Fira Code, SF Mono, Menlo, monospace",
+      opacity: 0.25,
     },
   },
   {
     selector: "edge.highlighted",
     style: {
       "line-color": "#58a6ff",
-      "target-arrow-color": "#58a6ff",
       width: 2,
-      opacity: 1,
+      opacity: 0.8,
     },
   },
   {
     selector: "edge.dimmed",
     style: {
-      opacity: 0.1,
+      opacity: 0.05,
     },
   },
   {
@@ -114,10 +109,25 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
       display: "none",
     },
   },
-];
+] as any;
 
-/** Convert GraphData to Cytoscape element definitions. */
+/** Convert GraphData to Cytoscape element definitions with degree-based sizing. */
 function toCytoElements(data: GraphData): cytoscape.ElementDefinition[] {
+  // Count degree (connections) for each node
+  const degree = new Map<string, number>();
+  for (const n of data.nodes) degree.set(n.id, 0);
+  for (const e of data.edges) {
+    degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
+    degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
+  }
+
+  // Build a node category map for edge coloring
+  const nodeCategory = new Map<string, string>();
+  for (const n of data.nodes) nodeCategory.set(n.id, n.category);
+
+  const minSize = 20;
+  const sizeScale = 8;
+
   const nodes: cytoscape.ElementDefinition[] = data.nodes.map((n) => ({
     data: {
       id: n.id,
@@ -125,6 +135,7 @@ function toCytoElements(data: GraphData): cytoscape.ElementDefinition[] {
       category: n.category,
       path: n.path,
       color: getCategoryColor(n.category),
+      size: minSize + Math.sqrt(degree.get(n.id) ?? 0) * sizeScale,
     },
   }));
 
@@ -134,6 +145,7 @@ function toCytoElements(data: GraphData): cytoscape.ElementDefinition[] {
       source: e.source,
       target: e.target,
       label: e.label ?? undefined,
+      color: getCategoryColor(nodeCategory.get(e.source) ?? ""),
     },
   }));
 
@@ -183,10 +195,13 @@ function getLayoutOptions(name: string): cytoscape.LayoutOptions {
         animationDuration: 500,
         randomize: true,
         quality: "proof",
-        nodeSeparation: 100,
-        idealEdgeLength: 120,
-        nodeRepulsion: () => 8000,
-        gravity: 0.25,
+        nodeSeparation: 75,
+        idealEdgeLength: 150,
+        nodeRepulsion: () => 12000,
+        edgeElasticity: () => 0.45,
+        gravity: 0.15,
+        gravityRange: 3.8,
+        numIter: 2500,
       } as any;
   }
 }

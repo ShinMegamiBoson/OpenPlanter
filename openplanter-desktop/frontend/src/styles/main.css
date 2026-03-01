@@ -318,7 +318,7 @@ html, body {
 .graph-pane {
   grid-column: 3;
   grid-row: 2;
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
   position: relative;
   overflow: hidden;
   display: flex;
