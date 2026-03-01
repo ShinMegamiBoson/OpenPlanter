@@ -8,6 +8,7 @@ import {
   fitView,
   focusNode,
   setLayout,
+  getCurrentLayout,
   filterByCategory,
   searchNodes,
   fitSearchMatches,
@@ -34,6 +35,7 @@ export function createGraphPane(): HTMLElement {
   layoutSelect.className = "graph-layout-select";
   const layouts = [
     { value: "fcose", label: "Force" },
+    { value: "concentric", label: "Grouped" },
     { value: "dagre", label: "Hierarchical" },
     { value: "circle", label: "Circle" },
   ];
@@ -203,6 +205,9 @@ export function createGraphPane(): HTMLElement {
     if (placeholder) placeholder.remove();
 
     initGraph(graphContainer, data);
+
+    // Sync dropdown to actual layout (may differ from default if no edges)
+    layoutSelect.value = getCurrentLayout();
 
     if (!interactionsBound) {
       bindInteractions({

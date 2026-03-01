@@ -68,12 +68,12 @@ const graphStyle: cytoscape.StylesheetStyle[] = [
     selector: "edge",
     style: {
       width: 1.5,
-      "line-color": "#30363d",
-      "target-arrow-color": "#30363d",
+      "line-color": "#8b949e",
+      "target-arrow-color": "#8b949e",
       "target-arrow-shape": "triangle",
       "curve-style": "bezier",
       "arrow-scale": 0.8,
-      opacity: 0.6,
+      opacity: 0.7,
     },
   },
   {
@@ -159,6 +159,22 @@ function getLayoutOptions(name: string): cytoscape.LayoutOptions {
         animationDuration: 300,
         avoidOverlap: true,
       };
+    case "concentric":
+      return {
+        name: "concentric",
+        animate: true,
+        animationDuration: 300,
+        avoidOverlap: true,
+        minNodeSpacing: 30,
+        concentric: (node: any) => {
+          // Group by category — same category gets same level
+          const cats = Array.from(new Set(
+            cy?.nodes().map((n) => n.data("category") as string) ?? []
+          )).sort();
+          return cats.length - cats.indexOf(node.data("category"));
+        },
+        levelWidth: () => 1,
+      } as any;
     case "fcose":
     default:
       return {
@@ -177,6 +193,15 @@ function getLayoutOptions(name: string): cytoscape.LayoutOptions {
 
 let currentLayout = "fcose";
 
+/** Pick the best default layout based on graph structure. */
+function pickDefaultLayout(data: GraphData): string {
+  if (data.edges.length === 0) {
+    // No edges — force-directed is meaningless, group by category
+    return "concentric";
+  }
+  return "fcose";
+}
+
 /** Initialize the Cytoscape graph in the given container. */
 export function initGraph(container: HTMLElement, data: GraphData): void {
   if (cy) {
@@ -184,11 +209,14 @@ export function initGraph(container: HTMLElement, data: GraphData): void {
     return;
   }
 
+  const defaultLayout = pickDefaultLayout(data);
+  currentLayout = defaultLayout;
+
   cy = cytoscape({
     container,
     elements: toCytoElements(data),
     style: graphStyle,
-    layout: getLayoutOptions("fcose"),
+    layout: getLayoutOptions(defaultLayout),
     minZoom: 0.1,
     maxZoom: 5,
     wheelSensitivity: 0.3,
@@ -248,6 +276,11 @@ export function focusNode(id: string): void {
     zoom: 2,
     duration: 300,
   });
+}
+
+/** Get current layout name (for syncing UI). */
+export function getCurrentLayout(): string {
+  return currentLayout;
 }
 
 /** Switch layout algorithm. */

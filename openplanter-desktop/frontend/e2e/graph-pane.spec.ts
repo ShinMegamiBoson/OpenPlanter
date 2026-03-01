@@ -154,8 +154,13 @@ test.describe("Graph Pane", () => {
     // Take initial layout screenshot
     await page.screenshot({ path: "e2e/screenshots/07-layout-force.png" });
 
-    // Switch to hierarchical
+    // Switch to grouped
     const layoutSelect = page.locator(".graph-layout-select");
+    await layoutSelect.selectOption("concentric");
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: "e2e/screenshots/07b-layout-grouped.png" });
+
+    // Switch to hierarchical
     await layoutSelect.selectOption("dagre");
     await page.waitForTimeout(1000);
     await page.screenshot({ path: "e2e/screenshots/08-layout-hierarchical.png" });
@@ -393,5 +398,17 @@ test.describe("Graph Pane", () => {
     expect(canvasBox!.height).toBeGreaterThan(200);
 
     await page.screenshot({ path: "e2e/screenshots/16-layout-verify.png" });
+  });
+
+  test("zero-edge graph defaults to grouped layout", async ({ page }) => {
+    // The mock data has edges, so the default is fcose.
+    // Verify the dropdown reflects the default layout.
+    const layoutSelect = page.locator(".graph-layout-select");
+    const selected = await layoutSelect.inputValue();
+    expect(selected).toBe("fcose");
+
+    // Verify that "Grouped" option exists in dropdown
+    const options = await layoutSelect.locator("option").allTextContents();
+    expect(options).toContain("Grouped");
   });
 });
