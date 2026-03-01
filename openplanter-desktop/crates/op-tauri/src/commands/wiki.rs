@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use regex::Regex;
@@ -78,24 +78,78 @@ pub fn parse_index_nodes(content: &str) -> Vec<GraphNode> {
     nodes
 }
 
+/// Extract distinctive search terms from a node's label for text-based matching.
+fn search_terms_for_node(node: &GraphNode) -> Vec<String> {
+    let stopwords: HashSet<&str> = [
+        "a", "an", "the", "of", "and", "or", "in", "to", "for", "by",
+        "on", "at", "is", "it", "its", "us", "gov", "list",
+    ].into_iter().collect();
+
+    let generic: HashSet<&str> = [
+        "federal", "state", "united", "states", "government", "bureau",
+        "department", "database", "national", "public",
+    ].into_iter().collect();
+
+    let mut terms = Vec::new();
+
+    // Full label (lowercased)
+    terms.push(node.label.to_lowercase());
+
+    for word in node.label.split(|c: char| c.is_whitespace() || c == '/' || c == '(' || c == ')') {
+        let clean: String = word.chars()
+            .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-')
+            .collect();
+        if clean.is_empty() { continue; }
+        let lower = clean.to_lowercase();
+        if stopwords.contains(lower.as_str()) { continue; }
+
+        // Acronyms: all uppercase, >= 2 chars (OCPF, FEC, EDGAR, FDIC, etc.)
+        let alpha_chars: String = clean.chars().filter(|c| c.is_alphabetic()).collect();
+        if alpha_chars.len() >= 2 && alpha_chars.chars().all(|c| c.is_uppercase()) {
+            terms.push(lower);
+            continue;
+        }
+
+        // Distinctive words: >= 5 chars, not generic
+        if clean.len() >= 5 && !generic.contains(lower.as_str()) {
+            terms.push(lower);
+        }
+    }
+
+    terms.sort();
+    terms.dedup();
+    terms
+}
+
 /// Find cross-references between nodes by reading wiki files from `wiki_dir`.
+/// Uses both markdown link detection and text-based mention matching.
 pub fn find_cross_references(nodes: &[GraphNode], wiki_dir: &Path) -> Vec<GraphEdge> {
     let link_re = Regex::new(r"\[([^\]]+)\]\(([^)]+\.md)\)").unwrap();
     let node_ids: HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
     let mut edges = Vec::new();
+    let mut seen: HashSet<(String, String)> = HashSet::new();
 
-    // wiki_dir is the workspace root; node.path is relative (e.g. "wiki/file.md")
-    for node in nodes {
-        let file_path = wiki_dir.join(&node.path);
-        if !file_path.exists() {
-            continue;
-        }
-        let file_content = match fs::read_to_string(&file_path) {
-            Ok(c) => c,
-            Err(_) => continue,
+    // Pre-compute search terms for all nodes
+    let node_terms: Vec<Vec<String>> = nodes.iter()
+        .map(|n| search_terms_for_node(n))
+        .collect();
+
+    // Read all file contents upfront
+    let file_contents: HashMap<String, String> = nodes.iter()
+        .filter_map(|node| {
+            let file_path = wiki_dir.join(&node.path);
+            fs::read_to_string(&file_path).ok().map(|c| (node.id.clone(), c))
+        })
+        .collect();
+
+    for (i, node) in nodes.iter().enumerate() {
+        let file_content = match file_contents.get(&node.id) {
+            Some(c) => c,
+            None => continue,
         };
 
-        for caps in link_re.captures_iter(&file_content) {
+        // 1. Markdown link-based edges (existing logic)
+        for caps in link_re.captures_iter(file_content) {
             let ref_path = &caps[2];
             let ref_id = ref_path
                 .rsplit('/')
@@ -104,10 +158,31 @@ pub fn find_cross_references(nodes: &[GraphNode], wiki_dir: &Path) -> Vec<GraphE
                 .trim_end_matches(".md");
 
             if ref_id != node.id && node_ids.contains(ref_id) {
+                let key = (node.id.clone(), ref_id.to_string());
+                if seen.insert(key) {
+                    edges.push(GraphEdge {
+                        source: node.id.clone(),
+                        target: ref_id.to_string(),
+                        label: Some("link".to_string()),
+                    });
+                }
+            }
+        }
+
+        // 2. Text-based mention edges
+        let content_lower = file_content.to_lowercase();
+        for (j, other) in nodes.iter().enumerate() {
+            if i == j { continue; }
+            let key = (node.id.clone(), other.id.clone());
+            if seen.contains(&key) { continue; }
+
+            let matched = node_terms[j].iter().any(|term| content_lower.contains(term.as_str()));
+            if matched {
+                seen.insert(key);
                 edges.push(GraphEdge {
                     source: node.id.clone(),
-                    target: ref_id.to_string(),
-                    label: Some("cross-ref".to_string()),
+                    target: other.id.clone(),
+                    label: Some("mentions".to_string()),
                 });
             }
         }
@@ -302,6 +377,109 @@ mod tests {
 
         let found = find_wiki_dir(&child).unwrap();
         assert_eq!(found, wiki.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn test_text_mention_creates_edge() {
+        let tmp = tempdir().unwrap();
+        let wiki_dir = tmp.path().join("wiki");
+        fs::create_dir_all(&wiki_dir).unwrap();
+        // File A mentions EDGAR (from B's label "SEC EDGAR") but doesn't link to it
+        fs::write(wiki_dir.join("a.md"), "Cross-reference with EDGAR filings for details.").unwrap();
+        fs::write(wiki_dir.join("b.md"), "# SEC EDGAR\nContent.").unwrap();
+
+        let nodes = vec![
+            GraphNode {
+                id: "a".to_string(),
+                label: "FEC Data".to_string(),
+                category: "campaign-finance".to_string(),
+                path: "wiki/a.md".to_string(),
+            },
+            GraphNode {
+                id: "b".to_string(),
+                label: "SEC EDGAR".to_string(),
+                category: "corporate".to_string(),
+                path: "wiki/b.md".to_string(),
+            },
+        ];
+        let edges = find_cross_references(&nodes, tmp.path());
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].source, "a");
+        assert_eq!(edges[0].target, "b");
+        assert_eq!(edges[0].label.as_deref(), Some("mentions"));
+    }
+
+    #[test]
+    fn test_text_mention_no_self_match() {
+        let tmp = tempdir().unwrap();
+        let wiki_dir = tmp.path().join("wiki");
+        fs::create_dir_all(&wiki_dir).unwrap();
+        // File A mentions its own label — should not create edge
+        fs::write(wiki_dir.join("a.md"), "# EDGAR\nThis is SEC EDGAR data.").unwrap();
+
+        let nodes = vec![
+            GraphNode {
+                id: "a".to_string(),
+                label: "SEC EDGAR".to_string(),
+                category: "corporate".to_string(),
+                path: "wiki/a.md".to_string(),
+            },
+        ];
+        let edges = find_cross_references(&nodes, tmp.path());
+        assert!(edges.is_empty(), "should not create self-referencing edge from text mention");
+    }
+
+    #[test]
+    fn test_text_mention_case_insensitive() {
+        let tmp = tempdir().unwrap();
+        let wiki_dir = tmp.path().join("wiki");
+        fs::create_dir_all(&wiki_dir).unwrap();
+        fs::write(wiki_dir.join("a.md"), "Check osha records for violations.").unwrap();
+        fs::write(wiki_dir.join("b.md"), "# OSHA\nInspections.").unwrap();
+
+        let nodes = vec![
+            GraphNode {
+                id: "a".to_string(),
+                label: "EPA Data".to_string(),
+                category: "regulatory".to_string(),
+                path: "wiki/a.md".to_string(),
+            },
+            GraphNode {
+                id: "b".to_string(),
+                label: "OSHA Inspections".to_string(),
+                category: "regulatory".to_string(),
+                path: "wiki/b.md".to_string(),
+            },
+        ];
+        let edges = find_cross_references(&nodes, tmp.path());
+        assert_eq!(edges.len(), 1, "case-insensitive match should work");
+    }
+
+    #[test]
+    fn test_no_duplicate_edges() {
+        let tmp = tempdir().unwrap();
+        let wiki_dir = tmp.path().join("wiki");
+        fs::create_dir_all(&wiki_dir).unwrap();
+        // File A links to B AND mentions B's label — should produce only one edge
+        fs::write(wiki_dir.join("a.md"), "See [B](b.md). Also check EDGAR.").unwrap();
+        fs::write(wiki_dir.join("b.md"), "# EDGAR\nContent.").unwrap();
+
+        let nodes = vec![
+            GraphNode {
+                id: "a".to_string(),
+                label: "A Data".to_string(),
+                category: "test".to_string(),
+                path: "wiki/a.md".to_string(),
+            },
+            GraphNode {
+                id: "b".to_string(),
+                label: "SEC EDGAR".to_string(),
+                category: "corporate".to_string(),
+                path: "wiki/b.md".to_string(),
+            },
+        ];
+        let edges = find_cross_references(&nodes, tmp.path());
+        assert_eq!(edges.len(), 1, "should not produce duplicate edges");
     }
 
     #[test]
