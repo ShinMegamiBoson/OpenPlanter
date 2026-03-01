@@ -35,14 +35,27 @@ export interface ToolCallDisplay {
   args: string;
 }
 
+export interface StepToolCall {
+  name: string;
+  keyArg: string;
+  elapsed: number;
+}
+
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant" | "tool" | "system" | "thinking" | "step-header" | "tool-tree" | "splash";
+  role: "user" | "assistant" | "tool" | "system" | "thinking" | "step-header" | "step-summary" | "tool-tree" | "splash";
   content: string;
   toolName?: string;
   timestamp: number;
   isRendered?: boolean;
   toolCalls?: ToolCallDisplay[];
+  /** Step summary data (only for role "step-summary") */
+  stepNumber?: number;
+  stepTokensIn?: number;
+  stepTokensOut?: number;
+  stepElapsed?: number;
+  stepToolCalls?: StepToolCall[];
+  stepModelPreview?: string;
 }
 
 export interface AppState {

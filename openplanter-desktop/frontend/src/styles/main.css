@@ -322,6 +322,157 @@ html, body {
   color: var(--text-secondary);
 }
 
+/* ── Activity Indicator (transient streaming display) ── */
+
+@keyframes activity-spin {
+  0% { content: "\2800\280B"; }
+  12.5% { content: "\2800\2819"; }
+  25% { content: "\2800\2839"; }
+  37.5% { content: "\2800\2838"; }
+  50% { content: "\2800\283C"; }
+  62.5% { content: "\2800\2834"; }
+  75% { content: "\2800\2826"; }
+  87.5% { content: "\2800\2827"; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+.activity-indicator {
+  padding: 4px 0;
+  margin: 2px 0;
+}
+
+.activity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.activity-icon {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--text-muted);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.activity-indicator[data-mode="thinking"] .activity-icon {
+  border-top-color: #79c0ff;
+}
+
+.activity-indicator[data-mode="streaming"] .activity-icon {
+  border-top-color: var(--success);
+}
+
+.activity-indicator[data-mode="tool_args"] .activity-icon,
+.activity-indicator[data-mode="tool"] .activity-icon {
+  border-top-color: var(--warning);
+}
+
+.activity-label {
+  font-weight: 600;
+}
+
+.activity-indicator[data-mode="thinking"] .activity-label {
+  color: #79c0ff;
+}
+
+.activity-indicator[data-mode="streaming"] .activity-label {
+  color: var(--success);
+}
+
+.activity-indicator[data-mode="tool_args"] .activity-label,
+.activity-indicator[data-mode="tool"] .activity-label {
+  color: var(--warning);
+}
+
+.activity-elapsed {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.activity-step {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.activity-preview {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: italic;
+  padding-left: 20px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 3.6em;
+  overflow: hidden;
+  line-height: 1.2;
+}
+
+/* ── Step Summary (permanent, replaces activity indicator) ── */
+
+.message.step-summary {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 4px;
+  padding-bottom: 2px;
+}
+
+.step-header-line {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.step-model-text {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+  padding: 2px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 3em;
+  overflow: hidden;
+}
+
+.step-tool-tree {
+  padding-left: 4px;
+  font-size: 12px;
+}
+
+.step-tool-line {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.step-tool-line .tool-fn {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.step-tool-line .tool-arg {
+  color: var(--text-muted);
+}
+
+.step-tool-line .tool-elapsed {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 /* Graph pane */
 .graph-pane {
   grid-column: 3;

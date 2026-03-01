@@ -86,33 +86,18 @@ async function init() {
   });
 
   await onAgentStep((event) => {
-    const now = new Date();
-    const ts = [
-      now.getHours().toString().padStart(2, "0"),
-      now.getMinutes().toString().padStart(2, "0"),
-      now.getSeconds().toString().padStart(2, "0"),
-    ].join(":");
-
-    const inK = (event.tokens.input_tokens / 1000).toFixed(1);
-    const outK = (event.tokens.output_tokens / 1000).toFixed(1);
-    const stepLabel = `--- ${ts} Step ${event.step} | depth ${event.depth} | ${inK}k in / ${outK}k out ---`;
-
     appState.update((s) => ({
       ...s,
       inputTokens: s.inputTokens + event.tokens.input_tokens,
       outputTokens: s.outputTokens + event.tokens.output_tokens,
       currentStep: event.step,
       currentDepth: event.depth,
-      messages: [
-        ...s.messages,
-        {
-          id: crypto.randomUUID(),
-          role: "step-header" as const,
-          content: stepLabel,
-          timestamp: Date.now(),
-        },
-      ],
     }));
+
+    // Dispatch to ChatPane for rich step summary rendering
+    window.dispatchEvent(
+      new CustomEvent("agent-step", { detail: event })
+    );
   });
 
   await onAgentDelta((event) => {

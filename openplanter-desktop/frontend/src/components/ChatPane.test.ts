@@ -206,40 +206,25 @@ describe("createChatPane", () => {
     expect(pane.querySelectorAll(".message").length).toBe(2);
   });
 
-  it("handles streaming text delta", () => {
+  // ── Activity indicator tests ──
+
+  it("shows activity indicator on thinking delta", () => {
     const pane = createChatPane();
     document.body.appendChild(pane);
 
     window.dispatchEvent(
-      new CustomEvent("agent-delta", { detail: { kind: "text", text: "Hello " } })
-    );
-    window.dispatchEvent(
-      new CustomEvent("agent-delta", { detail: { kind: "text", text: "world" } })
+      new CustomEvent("agent-delta", { detail: { kind: "thinking", text: "analyzing..." } })
     );
 
-    const streaming = pane.querySelector(".message.assistant.streaming");
-    expect(streaming).not.toBeNull();
-    expect(streaming!.textContent).toBe("Hello world");
+    const indicator = pane.querySelector(".activity-indicator");
+    expect(indicator).not.toBeNull();
+    expect(indicator!.getAttribute("data-mode")).toBe("thinking");
+    expect(pane.querySelector(".activity-label")!.textContent).toBe("Thinking...");
 
     document.body.removeChild(pane);
   });
 
-  it("handles streaming thinking delta", () => {
-    const pane = createChatPane();
-    document.body.appendChild(pane);
-
-    window.dispatchEvent(
-      new CustomEvent("agent-delta", { detail: { kind: "thinking", text: "thinking..." } })
-    );
-
-    const thinking = pane.querySelector(".message.thinking");
-    expect(thinking).not.toBeNull();
-    expect(thinking!.textContent).toBe("thinking...");
-
-    document.body.removeChild(pane);
-  });
-
-  it("transitions from thinking to text stream", () => {
+  it("transitions activity indicator from thinking to streaming on text delta", () => {
     const pane = createChatPane();
     document.body.appendChild(pane);
 
@@ -247,20 +232,19 @@ describe("createChatPane", () => {
     window.dispatchEvent(
       new CustomEvent("agent-delta", { detail: { kind: "thinking", text: "hmm" } })
     );
-    expect(pane.querySelector(".message.thinking")).not.toBeNull();
+    expect(pane.querySelector(".activity-indicator")!.getAttribute("data-mode")).toBe("thinking");
 
     // Transition to text
     window.dispatchEvent(
       new CustomEvent("agent-delta", { detail: { kind: "text", text: "answer" } })
     );
-    const streaming = pane.querySelector(".message.assistant.streaming");
-    expect(streaming).not.toBeNull();
-    expect(streaming!.textContent).toBe("answer");
+    expect(pane.querySelector(".activity-indicator")!.getAttribute("data-mode")).toBe("streaming");
+    expect(pane.querySelector(".activity-label")!.textContent).toBe("Responding...");
 
     document.body.removeChild(pane);
   });
 
-  it("handles tool_call_start delta", () => {
+  it("shows activity indicator in tool_args mode on tool_call_start", () => {
     const pane = createChatPane();
     document.body.appendChild(pane);
 
@@ -268,37 +252,90 @@ describe("createChatPane", () => {
       new CustomEvent("agent-delta", { detail: { kind: "tool_call_start", text: "read_file" } })
     );
 
-    const toolLine = pane.querySelector(".tool-tree-line");
-    expect(toolLine).not.toBeNull();
-    expect(toolLine!.querySelector(".tool-fn")!.textContent).toBe("read_file");
+    const indicator = pane.querySelector(".activity-indicator");
+    expect(indicator).not.toBeNull();
+    expect(indicator!.getAttribute("data-mode")).toBe("tool_args");
+    expect(pane.querySelector(".activity-label")!.textContent).toBe("Generating read_file...");
 
     document.body.removeChild(pane);
   });
 
-  it("handles tool_call_args delta", () => {
+  it("transitions to tool mode when key arg is extracted", () => {
     const pane = createChatPane();
     document.body.appendChild(pane);
 
-    // First create a tool call
     window.dispatchEvent(
       new CustomEvent("agent-delta", { detail: { kind: "tool_call_start", text: "read_file" } })
     );
-    // Then add args
     window.dispatchEvent(
-      new CustomEvent("agent-delta", { detail: { kind: "tool_call_args", text: "/src" } })
-    );
-    window.dispatchEvent(
-      new CustomEvent("agent-delta", { detail: { kind: "tool_call_args", text: "/main.ts" } })
+      new CustomEvent("agent-delta", { detail: { kind: "tool_call_args", text: '{"path": "/src/main.ts"}' } })
     );
 
-    const argSpan = pane.querySelector(".tool-tree-line .tool-arg");
-    expect(argSpan).not.toBeNull();
-    expect(argSpan!.textContent).toBe("/src/main.ts");
+    const indicator = pane.querySelector(".activity-indicator");
+    expect(indicator!.getAttribute("data-mode")).toBe("tool");
+    expect(pane.querySelector(".activity-label")!.textContent).toBe("Running read_file...");
+    expect(pane.querySelector(".activity-preview")!.textContent).toBe("/src/main.ts");
 
     document.body.removeChild(pane);
   });
 
-  it("clears streaming on complete (isRunning false)", () => {
+  it("renders step summary on agent-step event", () => {
+    const pane = createChatPane();
+    document.body.appendChild(pane);
+
+    // Simulate some streaming
+    window.dispatchEvent(
+      new CustomEvent("agent-delta", { detail: { kind: "text", text: "The answer is 42." } })
+    );
+    window.dispatchEvent(
+      new CustomEvent("agent-delta", { detail: { kind: "tool_call_start", text: "read_file" } })
+    );
+    window.dispatchEvent(
+      new CustomEvent("agent-delta", { detail: { kind: "tool_call_args", text: '{"path": "/src/main.ts"}' } })
+    );
+
+    // Fire step event
+    window.dispatchEvent(
+      new CustomEvent("agent-step", {
+        detail: {
+          step: 1,
+          depth: 0,
+          tokens: { input_tokens: 12300, output_tokens: 2100 },
+          elapsed_ms: 5000,
+          is_final: false,
+          tool_name: null,
+        },
+      })
+    );
+
+    // Activity indicator should be removed
+    expect(pane.querySelector(".activity-indicator")).toBeNull();
+
+    // Step summary should be rendered
+    const summary = pane.querySelector(".message.step-summary");
+    expect(summary).not.toBeNull();
+
+    const header = summary!.querySelector(".step-header-line");
+    expect(header).not.toBeNull();
+    expect(header!.textContent).toContain("Step 1");
+    expect(header!.textContent).toContain("12.3k in");
+    expect(header!.textContent).toContain("2.1k out");
+
+    // Model text preview
+    const modelText = summary!.querySelector(".step-model-text");
+    expect(modelText).not.toBeNull();
+    expect(modelText!.textContent).toContain("The answer is 42.");
+
+    // Tool tree
+    const toolLines = summary!.querySelectorAll(".step-tool-line");
+    expect(toolLines.length).toBe(1);
+    expect(toolLines[0].querySelector(".tool-fn")!.textContent).toBe("read_file");
+    expect(toolLines[0].querySelector(".tool-arg")!.textContent).toContain("/src/main.ts");
+
+    document.body.removeChild(pane);
+  });
+
+  it("removes activity indicator on complete (isRunning false)", () => {
     const pane = createChatPane();
     document.body.appendChild(pane);
 
@@ -307,11 +344,11 @@ describe("createChatPane", () => {
     window.dispatchEvent(
       new CustomEvent("agent-delta", { detail: { kind: "text", text: "streaming" } })
     );
-    expect(pane.querySelector(".streaming")).not.toBeNull();
+    expect(pane.querySelector(".activity-indicator")).not.toBeNull();
 
     // Complete
     appState.update((s) => ({ ...s, isRunning: false }));
-    expect(pane.querySelector(".streaming")).toBeNull();
+    expect(pane.querySelector(".activity-indicator")).toBeNull();
 
     document.body.removeChild(pane);
   });
@@ -331,5 +368,47 @@ describe("createChatPane", () => {
     expect(messagesContainer.innerHTML).toBe("");
 
     document.body.removeChild(pane);
+  });
+
+  // ── Step summary rendering tests ──
+
+  it("renders step-summary message from state", () => {
+    const pane = createChatPane();
+    appState.update((s) => ({
+      ...s,
+      messages: [
+        makeMsg({
+          role: "step-summary",
+          content: "",
+          stepNumber: 2,
+          stepTokensIn: 5000,
+          stepTokensOut: 1500,
+          stepElapsed: 3200,
+          stepModelPreview: "Some model output text",
+          stepToolCalls: [
+            { name: "read_file", keyArg: "/src/app.ts", elapsed: 800 },
+            { name: "run_shell", keyArg: "npm test", elapsed: 2400 },
+          ],
+        }),
+      ],
+    }));
+
+    const summary = pane.querySelector(".message.step-summary");
+    expect(summary).not.toBeNull();
+
+    const header = summary!.querySelector(".step-header-line");
+    expect(header!.textContent).toContain("Step 2");
+    expect(header!.textContent).toContain("5.0k in");
+    expect(header!.textContent).toContain("1.5k out");
+
+    const toolLines = summary!.querySelectorAll(".step-tool-line");
+    expect(toolLines.length).toBe(2);
+    // First tool line uses ├─ connector
+    expect(toolLines[0].textContent).toContain("read_file");
+    expect(toolLines[0].textContent).toContain("/src/app.ts");
+    // Last tool line uses └─ connector and has .last class
+    expect(toolLines[1].classList.contains("last")).toBe(true);
+    expect(toolLines[1].textContent).toContain("run_shell");
+    expect(toolLines[1].textContent).toContain("npm test");
   });
 });
