@@ -3,7 +3,9 @@ import { createStatusBar } from "./StatusBar";
 import { createChatPane } from "./ChatPane";
 import { createGraphPane } from "./GraphPane";
 import { appState } from "../state/store";
-import { listSessions, openSession, deleteSession, getCredentialsStatus } from "../api/invoke";
+import { listSessions, openSession, deleteSession, getCredentialsStatus, getSessionHistory } from "../api/invoke";
+import type { ChatMessage } from "../state/store";
+import type { ReplayEntry } from "../api/types";
 
 export function createApp(root: HTMLElement): void {
   // Status bar
@@ -119,7 +121,29 @@ async function switchToNewSession(sessionList: HTMLElement): Promise<void> {
   }
 }
 
-/** Switch to an existing session, clearing chat state. */
+/** Convert a ReplayEntry to a ChatMessage for display. */
+function replayEntryToMessage(entry: ReplayEntry): ChatMessage {
+  return {
+    id: crypto.randomUUID(),
+    role: entry.role as ChatMessage["role"],
+    content: entry.content,
+    toolName: entry.tool_name ?? undefined,
+    timestamp: new Date(entry.timestamp).getTime() || Date.now(),
+    isRendered: entry.is_rendered ?? (entry.role === "assistant"),
+    stepNumber: entry.step_number ?? undefined,
+    stepTokensIn: entry.step_tokens_in ?? undefined,
+    stepTokensOut: entry.step_tokens_out ?? undefined,
+    stepElapsed: entry.step_elapsed ?? undefined,
+    stepModelPreview: entry.step_model_preview ?? undefined,
+    stepToolCalls: entry.step_tool_calls?.map((tc) => ({
+      name: tc.name,
+      keyArg: tc.key_arg,
+      elapsed: tc.elapsed,
+    })),
+  };
+}
+
+/** Switch to an existing session, loading message history. */
 async function switchToSession(sessionId: string, sessionList: HTMLElement): Promise<void> {
   try {
     const resumed = await openSession(sessionId, true);
@@ -135,7 +159,17 @@ async function switchToSession(sessionId: string, sessionList: HTMLElement): Pro
     }));
     // Dispatch event to clear ChatPane DOM
     window.dispatchEvent(new CustomEvent("session-changed"));
-    // Add info message
+
+    // Load message history from replay.jsonl
+    let messages: ChatMessage[] = [];
+    try {
+      const history = await getSessionHistory(resumed.id);
+      messages = history.map(replayEntryToMessage);
+    } catch (e) {
+      console.error("Failed to load session history:", e);
+    }
+
+    // Add info message, then history
     const info = resumed.last_objective
       ? `Resumed session ${resumed.id.slice(0, 8)} \u2014 ${resumed.last_objective}`
       : `Resumed session ${resumed.id.slice(0, 8)}`;
@@ -148,6 +182,7 @@ async function switchToSession(sessionId: string, sessionList: HTMLElement): Pro
           content: info,
           timestamp: Date.now(),
         },
+        ...messages,
       ],
     }));
     highlightActiveSession(sessionList);

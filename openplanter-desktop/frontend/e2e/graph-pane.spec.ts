@@ -36,6 +36,10 @@ async function injectTauriMocks(page: Page) {
               return [];
             case "save_settings":
               return;
+            case "solve":
+              return;
+            case "get_session_history":
+              return [];
             default:
               console.warn(`[E2E Mock] Unhandled invoke: ${cmd}`, args);
               return;

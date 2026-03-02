@@ -26,11 +26,12 @@ describe("invoke wrappers", () => {
     __clearHandlers();
   });
 
-  it("solve calls invoke with objective", async () => {
-    __setHandler("solve", ({ objective }: any) => {
+  it("solve calls invoke with objective and sessionId", async () => {
+    __setHandler("solve", ({ objective, sessionId }: any) => {
       expect(objective).toBe("test goal");
+      expect(sessionId).toBe("session-1");
     });
-    await solve("test goal");
+    await solve("test goal", "session-1");
   });
 
   it("cancel calls invoke with no args", async () => {
@@ -181,6 +182,16 @@ describe("invoke wrappers", () => {
   });
 
   it("unhandled command rejects", async () => {
-    await expect(solve("test")).rejects.toThrow("No mock for command: solve");
+    await expect(solve("test", "s1")).rejects.toThrow("No mock for command: solve");
+  });
+
+  it("getSessionHistory calls invoke with sessionId", async () => {
+    const { getSessionHistory } = await import("./invoke");
+    __setHandler("get_session_history", ({ sessionId }: any) => {
+      expect(sessionId).toBe("session-1");
+      return [];
+    });
+    const history = await getSessionHistory("session-1");
+    expect(history).toEqual([]);
   });
 });

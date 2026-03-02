@@ -23,6 +23,7 @@ fn main() {
             commands::session::list_sessions,
             commands::session::open_session,
             commands::session::delete_session,
+            commands::session::get_session_history,
             commands::wiki::get_graph_data,
         ])
         .run(tauri::generate_context!(

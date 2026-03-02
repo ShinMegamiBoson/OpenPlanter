@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 use tauri::State;
 use crate::state::AppState;
 use op_core::events::SessionInfo;
+use op_core::session::replay::{ReplayEntry, ReplayLogger};
 
 /// Get the sessions directory path from config.
-async fn sessions_dir(state: &State<'_, AppState>) -> PathBuf {
+pub async fn sessions_dir(state: &State<'_, AppState>) -> PathBuf {
     let cfg = state.config.lock().await;
     let ws = cfg.workspace.clone();
     let root = cfg.session_root_dir.clone();
@@ -146,6 +147,41 @@ pub async fn delete_session(
     }
 
     Ok(())
+}
+
+/// Get message history for a session from replay.jsonl.
+#[tauri::command]
+pub async fn get_session_history(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<ReplayEntry>, String> {
+    let dir = sessions_dir(&state).await.join(&session_id);
+    ReplayLogger::read_all(&dir).await.map_err(|e| e.to_string())
+}
+
+/// Update session metadata: increment turn_count, set last_objective.
+pub async fn update_session_metadata(
+    session_dir: &Path,
+    objective: &str,
+) -> Result<(), std::io::Error> {
+    let meta_path = session_dir.join("metadata.json");
+    if !meta_path.exists() {
+        return Ok(());
+    }
+    let content = tokio::fs::read_to_string(&meta_path).await?;
+    let mut info: SessionInfo = serde_json::from_str(&content)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    info.turn_count += 1;
+    info.last_objective = Some(
+        if objective.len() > 100 {
+            format!("{}...", &objective[..97])
+        } else {
+            objective.to_string()
+        },
+    );
+    let json = serde_json::to_string_pretty(&info)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    tokio::fs::write(&meta_path, json).await
 }
 
 /// Simple pseudo-random hex value using system time.

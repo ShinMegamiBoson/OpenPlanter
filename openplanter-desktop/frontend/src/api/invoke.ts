@@ -6,11 +6,16 @@ import type {
   ModelInfo,
   PartialConfig,
   PersistentSettings,
+  ReplayEntry,
   SessionInfo,
 } from "./types";
 
-export async function solve(objective: string): Promise<void> {
-  return invoke("solve", { objective });
+export async function solve(objective: string, sessionId: string): Promise<void> {
+  return invoke("solve", { objective, sessionId });
+}
+
+export async function getSessionHistory(sessionId: string): Promise<ReplayEntry[]> {
+  return invoke("get_session_history", { sessionId });
 }
 
 export async function cancel(): Promise<void> {

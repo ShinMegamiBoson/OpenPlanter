@@ -102,6 +102,27 @@ export interface SlashResult {
   success: boolean;
 }
 
+export interface StepToolCallEntry {
+  name: string;
+  key_arg: string;
+  elapsed: number;
+}
+
+export interface ReplayEntry {
+  seq: number;
+  timestamp: string;
+  role: string;
+  content: string;
+  tool_name?: string;
+  is_rendered?: boolean;
+  step_number?: number;
+  step_tokens_in?: number;
+  step_tokens_out?: number;
+  step_elapsed?: number;
+  step_model_preview?: string;
+  step_tool_calls?: StepToolCallEntry[];
+}
+
 export type AgentEvent =
   | { type: "trace"; message: string }
   | { type: "step"; depth: number; step: number; tool_name: string | null; tokens: TokenUsage; elapsed_ms: number; is_final: boolean }

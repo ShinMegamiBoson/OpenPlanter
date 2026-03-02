@@ -1,13 +1,16 @@
 use tauri::{AppHandle, Emitter, State};
 use tokio_util::sync::CancellationToken;
 
-use crate::bridge::TauriEmitter;
+use crate::bridge::{LoggingEmitter, TauriEmitter};
+use crate::commands::session::sessions_dir;
 use crate::state::AppState;
+use op_core::session::replay::{ReplayEntry, ReplayLogger};
 
 /// Start solving an objective. Result streamed via events.
 #[tauri::command]
 pub async fn solve(
     objective: String,
+    session_id: String,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
@@ -19,8 +22,39 @@ pub async fn solve(
     }
 
     let cfg = state.config.lock().await.clone();
-    let emitter = TauriEmitter::new(app.clone());
-    let error_handle = app;
+    let error_handle = app.clone();
+
+    // Set up replay logging for this session
+    let session_dir = sessions_dir(&state).await.join(&session_id);
+    let mut replay = ReplayLogger::new(&session_dir);
+
+    // Log the user message
+    let user_entry = ReplayEntry {
+        seq: 0,
+        timestamp: String::new(),
+        role: "user".into(),
+        content: objective.clone(),
+        tool_name: None,
+        is_rendered: None,
+        step_number: None,
+        step_tokens_in: None,
+        step_tokens_out: None,
+        step_elapsed: None,
+        step_model_preview: None,
+        step_tool_calls: None,
+    };
+    if let Err(e) = replay.append(user_entry).await {
+        eprintln!("[agent] failed to log user message: {e}");
+    }
+
+    // Update metadata: increment turn_count, set last_objective
+    if let Err(e) =
+        crate::commands::session::update_session_metadata(&session_dir, &objective).await
+    {
+        eprintln!("[agent] failed to update metadata: {e}");
+    }
+
+    let emitter = LoggingEmitter::new(TauriEmitter::new(app), replay);
 
     tokio::spawn(async move {
         let result = tokio::spawn(async move {

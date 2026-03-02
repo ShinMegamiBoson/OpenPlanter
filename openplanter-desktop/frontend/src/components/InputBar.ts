@@ -112,7 +112,7 @@ export function createInputBar(): HTMLElement {
     }
 
     try {
-      await solve(text);
+      await solve(text, appState.get().sessionId!);
     } catch (e) {
       appState.update((s) => ({
         ...s,
@@ -219,7 +219,7 @@ export function createInputBar(): HTMLElement {
       ],
     }));
 
-    solve(text).catch((err) => {
+    solve(text, appState.get().sessionId!).catch((err) => {
       appState.update((s) => ({
         ...s,
         isRunning: false,

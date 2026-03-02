@@ -57,6 +57,7 @@ describe("createApp", () => {
       last_objective: null,
     }));
     __setHandler("delete_session", () => {});
+    __setHandler("get_session_history", () => []);
   });
 
   afterEach(() => {
@@ -153,6 +154,7 @@ describe("session delete confirmation flow", () => {
       // After delete, list_sessions returns empty
       __setHandler("list_sessions", () => []);
     });
+    __setHandler("get_session_history", () => []);
   });
 
   afterEach(() => {
