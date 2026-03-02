@@ -2,6 +2,7 @@
 import { solve, cancel, openSession } from "../api/invoke";
 import { appState } from "../state/store";
 import { dispatchSlashCommand } from "../commands/slash";
+import { AutocompleteController } from "./Autocomplete";
 
 export function createInputBar(): HTMLElement {
   const bar = document.createElement("div");
@@ -26,6 +27,14 @@ export function createInputBar(): HTMLElement {
 
   let historyIndex = -1;
   let savedInput = "";
+
+  const autocomplete = new AutocompleteController(bar, {
+    onAccept: (text) => {
+      textarea.value = text;
+      autoResize();
+    },
+    onDismiss: () => {},
+  });
 
   function autoResize() {
     textarea.style.height = "auto";
@@ -156,9 +165,15 @@ export function createInputBar(): HTMLElement {
   submitBtn.addEventListener("click", handleSubmit);
   cancelBtn.addEventListener("click", handleCancel);
 
-  textarea.addEventListener("input", autoResize);
+  textarea.addEventListener("input", () => {
+    autoResize();
+    autocomplete.update(textarea.value);
+  });
 
   textarea.addEventListener("keydown", (e) => {
+    // Autocomplete consumes keys when popup is visible
+    if (autocomplete.handleKeydown(e)) return;
+
     // Enter submits (unless Shift+Enter for newline)
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();

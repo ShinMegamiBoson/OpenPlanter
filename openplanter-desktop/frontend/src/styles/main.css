@@ -898,12 +898,53 @@ html, body {
 
 /* Input bar */
 .input-bar {
+  position: relative;
   background: var(--bg-secondary);
   display: flex;
   align-items: flex-end;
   padding: 8px 12px;
   gap: 8px;
   flex-shrink: 0;
+}
+
+/* Autocomplete popup */
+.autocomplete-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.autocomplete-item {
+  display: flex;
+  gap: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.autocomplete-item.selected {
+  background: var(--bg-tertiary);
+  border-left: 2px solid var(--accent);
+  padding-left: 10px;
+}
+
+.autocomplete-value {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.autocomplete-desc {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .input-bar textarea {
