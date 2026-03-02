@@ -370,6 +370,145 @@ describe("createChatPane", () => {
     document.body.removeChild(pane);
   });
 
+  // ── Tool XML rendering in assistant messages ──
+
+  it("renders tool_call XML as styled block in rendered assistant message", () => {
+    const pane = createChatPane();
+    const content = `Some intro text.
+
+<tool_call>
+{"name": "run_shell", "arguments": {"command": "echo hello"}}
+</tool_call>
+
+Trailing text.`;
+    appState.update((s) => ({
+      ...s,
+      messages: [makeMsg({ role: "assistant", content, isRendered: true })],
+    }));
+    const msg = pane.querySelector(".message.assistant.rendered");
+    expect(msg).not.toBeNull();
+    // Should have a tool-call-block element
+    const toolBlock = msg!.querySelector(".tool-call-block");
+    expect(toolBlock).not.toBeNull();
+    expect(toolBlock!.querySelector(".tool-fn")!.textContent).toBe("run_shell");
+    expect(toolBlock!.querySelector(".tool-arg")!.textContent).toContain("echo hello");
+    // Should NOT contain raw XML tags as text
+    expect(msg!.textContent).not.toContain("<tool_call>");
+  });
+
+  it("renders tool_result XML as collapsible block in rendered assistant message", () => {
+    const pane = createChatPane();
+    const content = `<tool_result>
+{"stdout": "hello\\nworld", "stderr": "", "returncode": 0}
+</tool_result>`;
+    appState.update((s) => ({
+      ...s,
+      messages: [makeMsg({ role: "assistant", content, isRendered: true })],
+    }));
+    const msg = pane.querySelector(".message.assistant.rendered");
+    expect(msg).not.toBeNull();
+    const resultBlock = msg!.querySelector(".tool-result-block");
+    expect(resultBlock).not.toBeNull();
+    expect(resultBlock!.textContent).toContain("hello");
+    expect(resultBlock!.textContent).toContain("world");
+  });
+
+  it("renders tool_result with error styling when returncode != 0", () => {
+    const pane = createChatPane();
+    const content = `<tool_result>
+{"stdout": "", "stderr": "command not found", "returncode": 127}
+</tool_result>`;
+    appState.update((s) => ({
+      ...s,
+      messages: [makeMsg({ role: "assistant", content, isRendered: true })],
+    }));
+    const msg = pane.querySelector(".message.assistant.rendered");
+    const resultBlock = msg!.querySelector(".tool-result-block");
+    expect(resultBlock).not.toBeNull();
+    expect(resultBlock!.classList.contains("has-error")).toBe(true);
+  });
+
+  it("renders plain markdown for assistant message with no tool XML (fast path)", () => {
+    const pane = createChatPane();
+    appState.update((s) => ({
+      ...s,
+      messages: [makeMsg({ role: "assistant", content: "Just **markdown** text.", isRendered: true })],
+    }));
+    const msg = pane.querySelector(".message.assistant.rendered");
+    expect(msg).not.toBeNull();
+    expect(msg!.innerHTML).toContain("<strong>");
+    // No tool blocks
+    expect(msg!.querySelector(".tool-call-block")).toBeNull();
+    expect(msg!.querySelector(".tool-result-block")).toBeNull();
+  });
+
+  it("strips tool XML from step summary model preview", () => {
+    const pane = createChatPane();
+    const previewWithXml = `Checking workspace...\n\n<tool_call>\n{"name":"run_shell","arguments":{"command":"ls"}}\n</tool_call>\n\n<tool_result>\n{"stdout":"file.txt","stderr":"","returncode":0}\n</tool_result>\n\nAll good.`;
+    appState.update((s) => ({
+      ...s,
+      messages: [
+        makeMsg({
+          role: "step-summary",
+          content: "",
+          stepNumber: 1,
+          stepTokensIn: 1000,
+          stepTokensOut: 500,
+          stepElapsed: 1000,
+          stepModelPreview: previewWithXml,
+          stepToolCalls: [],
+        }),
+      ],
+    }));
+    const summary = pane.querySelector(".message.step-summary");
+    const modelText = summary!.querySelector(".step-model-text");
+    expect(modelText).not.toBeNull();
+    expect(modelText!.textContent).toContain("Checking workspace");
+    expect(modelText!.textContent).toContain("All good");
+    expect(modelText!.textContent).not.toContain("<tool_call>");
+    expect(modelText!.textContent).not.toContain("<tool_result>");
+  });
+
+  it("hides step model preview when only tool XML (no prose)", () => {
+    const pane = createChatPane();
+    const onlyXml = `<tool_call>\n{"name":"run_shell","arguments":{"command":"ls"}}\n</tool_call>\n\n<tool_result>\n{"stdout":"ok","stderr":"","returncode":0}\n</tool_result>`;
+    appState.update((s) => ({
+      ...s,
+      messages: [
+        makeMsg({
+          role: "step-summary",
+          content: "",
+          stepNumber: 1,
+          stepTokensIn: 1000,
+          stepTokensOut: 500,
+          stepElapsed: 1000,
+          stepModelPreview: onlyXml,
+          stepToolCalls: [],
+        }),
+      ],
+    }));
+    const summary = pane.querySelector(".message.step-summary");
+    // No model text preview since stripped content is empty
+    const modelText = summary!.querySelector(".step-model-text");
+    expect(modelText).toBeNull();
+  });
+
+  it("strips tool XML from streaming activity preview", () => {
+    const pane = createChatPane();
+    document.body.appendChild(pane);
+
+    window.dispatchEvent(
+      new CustomEvent("agent-delta", { detail: { kind: "text", text: "Starting...\n\n<tool_call>\n{\"name\":\"x\"}\n</tool_call>" } })
+    );
+
+    const preview = pane.querySelector(".activity-preview");
+    expect(preview).not.toBeNull();
+    expect(preview!.textContent).toContain("Starting...");
+    expect(preview!.textContent).not.toContain("<tool_call>");
+
+    document.body.removeChild(pane);
+  });
+
   // ── Step summary rendering tests ──
 
   it("renders step-summary message from state", () => {
