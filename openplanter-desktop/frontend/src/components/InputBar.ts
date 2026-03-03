@@ -115,6 +115,7 @@ export function createInputBar(): HTMLElement {
       try {
         const session = await openSession();
         appState.update((s) => ({ ...s, sessionId: session.id }));
+        window.dispatchEvent(new CustomEvent("session-changed", { detail: { isNew: true } }));
       } catch (e) {
         console.error("Failed to create session:", e);
       }
