@@ -779,4 +779,52 @@ test.describe("Graph Pane", () => {
 
     await page.screenshot({ path: "e2e/screenshots/27-refresh.png" });
   });
+
+  test("new session auto-activates session filter, resumed session does not", async ({ page }) => {
+    const toggle = page.locator(".graph-session-toggle");
+
+    // Initial load: filter should be OFF (no session-changed event fired)
+    await expect(toggle).not.toHaveClass(/active/);
+
+    // Simulate new session → dispatch session-changed with isNew: true
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("session-changed", { detail: { isNew: true } }));
+    });
+    await page.waitForTimeout(1500);
+
+    // Session filter should be auto-activated
+    await expect(toggle).toHaveClass(/active/);
+
+    // All baseline nodes should be hidden (filter active, no new nodes)
+    const visibleCount = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      return cy ? cy.nodes(":visible").length : 0;
+    });
+    expect(visibleCount).toBe(0);
+
+    // Click toggle to turn OFF
+    await toggle.click();
+    await page.waitForTimeout(300);
+    await expect(toggle).not.toHaveClass(/active/);
+
+    // All nodes should be visible again
+    const allVisible = await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)?._cyreg?.cy;
+      return cy ? cy.nodes(":visible").length : 0;
+    });
+    expect(allVisible).toBe(15);
+
+    // Simulate resumed session → dispatch session-changed with isNew: false
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("session-changed", { detail: { isNew: false } }));
+    });
+    await page.waitForTimeout(1500);
+
+    // Session filter should be OFF for resumed sessions
+    await expect(toggle).not.toHaveClass(/active/);
+
+    await page.screenshot({ path: "e2e/screenshots/28-session-filter-default.png" });
+  });
 });
