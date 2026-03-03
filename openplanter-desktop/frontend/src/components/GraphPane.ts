@@ -336,6 +336,11 @@ export function createGraphPane(): HTMLElement {
       baselineCaptured = true;
     }
 
+    // Apply session filter if active (e.g. auto-activated for new sessions)
+    if (sessionFilterActive) {
+      filterBySession(true, baselineNodeIds);
+    }
+
     buildLegend(getCategories());
   }
 
@@ -369,11 +374,19 @@ export function createGraphPane(): HTMLElement {
   }) as EventListener);
 
   // Listen for session changes — reset baseline
-  window.addEventListener("session-changed", () => {
+  window.addEventListener("session-changed", ((e: CustomEvent<{ isNew: boolean }>) => {
+    const isNew = e.detail?.isNew ?? false;
     baselineNodeIds = new Set<string>();
     baselineCaptured = false;
-    sessionFilterActive = false;
-    sessionToggle.classList.remove("active");
+
+    if (isNew) {
+      sessionFilterActive = true;
+      sessionToggle.classList.add("active");
+    } else {
+      sessionFilterActive = false;
+      sessionToggle.classList.remove("active");
+    }
+
     // Re-fetch graph for new session
     getGraphData().then((data) => {
       if (data.nodes.length > 0) {
@@ -382,7 +395,7 @@ export function createGraphPane(): HTMLElement {
     }).catch((e) => {
       console.error("Failed to load graph data on session change:", e);
     });
-  });
+  }) as EventListener);
 
   return pane;
 }
