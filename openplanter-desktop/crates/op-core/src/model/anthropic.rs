@@ -213,7 +213,16 @@ impl BaseModel for AnthropicModel {
                     es.close();
                     return Err(anyhow!("Cancelled"));
                 }
-                ev = es.next() => ev,
+                ev = tokio::time::timeout(
+                    std::time::Duration::from_secs(120),
+                    es.next(),
+                ) => match ev {
+                    Ok(inner) => inner,
+                    Err(_) => {
+                        es.close();
+                        return Err(anyhow!("SSE stream timed out (no data for 120s)"));
+                    }
+                },
             };
 
             let event = match event {
