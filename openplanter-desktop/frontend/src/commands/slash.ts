@@ -46,7 +46,7 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
           currentDepth: 0,
           inputQueue: [],
         }));
-        window.dispatchEvent(new CustomEvent("session-changed"));
+        window.dispatchEvent(new CustomEvent("session-changed", { detail: { isNew: true } }));
         return {
           action: "handled",
           lines: [`New session: ${session.id.slice(0, 8)}`],

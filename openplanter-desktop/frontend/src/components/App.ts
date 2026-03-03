@@ -101,7 +101,7 @@ async function switchToNewSession(sessionList: HTMLElement): Promise<void> {
       inputQueue: [],
     }));
     // Dispatch event to clear ChatPane DOM
-    window.dispatchEvent(new CustomEvent("session-changed"));
+    window.dispatchEvent(new CustomEvent("session-changed", { detail: { isNew: true } }));
     // Add welcome message
     appState.update((s) => ({
       ...s,
@@ -158,7 +158,7 @@ async function switchToSession(sessionId: string, sessionList: HTMLElement): Pro
       inputQueue: [],
     }));
     // Dispatch event to clear ChatPane DOM
-    window.dispatchEvent(new CustomEvent("session-changed"));
+    window.dispatchEvent(new CustomEvent("session-changed", { detail: { isNew: false } }));
 
     // Load message history from replay.jsonl
     let messages: ChatMessage[] = [];
