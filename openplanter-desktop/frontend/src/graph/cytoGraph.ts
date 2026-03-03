@@ -592,8 +592,9 @@ export function filterBySession(active: boolean, baselineNodeIds: Set<string>): 
     }
   });
 
-  // If no new nodes, don't hide anything
+  // If no new nodes, hide everything (all are "old")
   if (newIds.length === 0) {
+    cy.nodes().addClass("session-hidden");
     syncEdgeVisibility();
     return 0;
   }
