@@ -331,6 +331,9 @@ html, body {
   padding: 2px 0 2px 4px;
   font-size: 12px;
   color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tool-call-block .tool-fn {
@@ -504,6 +507,7 @@ html, body {
 
 .step-tool-tree {
   padding-left: 4px;
+  margin-top: 2px;
   font-size: 12px;
 }
 
@@ -512,6 +516,7 @@ html, body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.7;
 }
 
 .step-tool-line .tool-fn {
