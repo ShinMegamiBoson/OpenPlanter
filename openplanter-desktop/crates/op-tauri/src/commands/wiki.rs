@@ -693,6 +693,42 @@ pub async fn get_graph_data(
     Ok(GraphData { nodes: all_nodes, edges: all_edges })
 }
 
+/// Read a wiki markdown file's contents, given a relative path like "wiki/fec.md".
+#[tauri::command]
+pub async fn read_wiki_file(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    // Validate: must end in .md
+    if !path.ends_with(".md") {
+        return Err("Path must end in .md".into());
+    }
+    // Validate: no path traversal
+    if path.contains("..") {
+        return Err("Path must not contain '..'".into());
+    }
+    // Validate: not absolute
+    if path.starts_with('/') || path.starts_with('\\') {
+        return Err("Path must be relative".into());
+    }
+
+    let cfg = state.config.lock().await;
+    let wiki_dir = find_wiki_dir(&cfg.workspace)
+        .ok_or_else(|| "Wiki directory not found".to_string())?;
+
+    let project_root = wiki_dir.parent().unwrap_or(&cfg.workspace);
+    let resolved = project_root.join(&path);
+
+    // Canonicalize and verify it's under the wiki dir
+    let canonical = resolved.canonicalize().map_err(|e| format!("File not found: {e}"))?;
+    let canon_wiki = wiki_dir.canonicalize().map_err(|e| e.to_string())?;
+    if !canonical.starts_with(&canon_wiki) {
+        return Err("Path is outside wiki directory".into());
+    }
+
+    fs::read_to_string(&canonical).map_err(|e| format!("Failed to read file: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1521,6 +1557,27 @@ Links here.";
         };
         let edges = find_shared_field_edges(&vec![fact_a, fact_b]);
         assert_eq!(edges.len(), 1, "should normalize case and backticks");
+    }
+
+    // ── read_wiki_file validation (unit-testable parts) ──
+
+    #[test]
+    fn test_read_wiki_file_rejects_non_md() {
+        assert!(!".txt".ends_with(".md"));
+        assert!("file.md".ends_with(".md"));
+    }
+
+    #[test]
+    fn test_read_wiki_file_rejects_traversal() {
+        assert!("../etc/passwd".contains(".."));
+        assert!("wiki/../secret.md".contains(".."));
+        assert!(!"wiki/fec.md".contains(".."));
+    }
+
+    #[test]
+    fn test_read_wiki_file_rejects_absolute() {
+        assert!("/etc/passwd.md".starts_with('/'));
+        assert!(!"wiki/fec.md".starts_with('/'));
     }
 
     #[test]

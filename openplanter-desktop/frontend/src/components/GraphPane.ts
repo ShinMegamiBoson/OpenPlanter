@@ -1,6 +1,6 @@
 /** Graph pane: 2D investigative graph (Cytoscape.js). */
 import type { GraphData } from "../api/types";
-import { getGraphData } from "../api/invoke";
+import { getGraphData, readWikiFile } from "../api/invoke";
 import {
   initGraph,
   updateGraph,
@@ -19,6 +19,20 @@ import {
 } from "../graph/cytoGraph";
 import { bindInteractions } from "../graph/interaction";
 import { getCategoryColor } from "../graph/colors";
+import MarkdownIt from "markdown-it";
+import hljs from "highlight.js";
+
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  typographer: false,
+  highlight(str: string, lang: string) {
+    if (lang && hljs.getLanguage(lang)) {
+      try { return hljs.highlight(str, { language: lang }).value; } catch { /* fallback */ }
+    }
+    return "";
+  },
+});
 
 export function createGraphPane(): HTMLElement {
   const pane = document.createElement("div");
@@ -96,7 +110,33 @@ export function createGraphPane(): HTMLElement {
   detail.className = "graph-detail";
   detail.style.display = "none";
 
-  pane.append(toolbar, graphContainer, legend, detail);
+  // --- Source drawer (slide-out panel for wiki markdown) ---
+  const drawerBackdrop = document.createElement("div");
+  drawerBackdrop.className = "graph-source-drawer-backdrop";
+
+  const drawer = document.createElement("div");
+  drawer.className = "graph-source-drawer";
+
+  const drawerHeader = document.createElement("div");
+  drawerHeader.className = "graph-source-drawer-header";
+
+  const drawerTitle = document.createElement("span");
+  drawerTitle.className = "graph-source-drawer-title";
+
+  const drawerCloseBtn = document.createElement("button");
+  drawerCloseBtn.className = "graph-detail-close";
+  drawerCloseBtn.textContent = "\u00d7";
+  drawerCloseBtn.addEventListener("click", () => hideDrawer());
+
+  drawerHeader.append(drawerTitle, drawerCloseBtn);
+
+  const drawerBody = document.createElement("div");
+  drawerBody.className = "graph-source-drawer-body rendered";
+
+  drawer.append(drawerHeader, drawerBody);
+  drawerBackdrop.addEventListener("click", () => hideDrawer());
+
+  pane.append(toolbar, graphContainer, legend, detail, drawerBackdrop, drawer);
 
   // State
   const hiddenCategories = new Set<string>();
@@ -227,6 +267,48 @@ export function createGraphPane(): HTMLElement {
     }
   }
 
+  // --- Drawer open/close ---
+  function openDrawer(label: string, path: string): void {
+    drawerTitle.textContent = label;
+    drawerBody.innerHTML = '<span style="color:var(--text-muted)">Loading...</span>';
+    drawerBackdrop.classList.add("visible");
+    drawer.classList.add("visible");
+
+    readWikiFile(path).then((content) => {
+      drawerBody.innerHTML = md.render(content);
+      interceptDrawerLinks();
+    }).catch((err) => {
+      drawerBody.innerHTML = `<span style="color:var(--error)">Failed to load: ${err}</span>`;
+    });
+  }
+
+  function hideDrawer(): void {
+    drawerBackdrop.classList.remove("visible");
+    drawer.classList.remove("visible");
+  }
+
+  /** Intercept internal wiki links in the drawer to load them in-place. */
+  function interceptDrawerLinks(): void {
+    drawerBody.querySelectorAll("a").forEach((link) => {
+      const href = link.getAttribute("href");
+      if (!href || !href.endsWith(".md")) return;
+      // Skip external links
+      if (href.startsWith("http://") || href.startsWith("https://")) return;
+
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        // Resolve relative path: if drawer is showing wiki/fec.md and link is sec.md → wiki/sec.md
+        const currentDir = drawerTitle.textContent?.includes("/")
+          ? (drawerTitle.textContent || "").substring(0, (drawerTitle.textContent || "").lastIndexOf("/") + 1)
+          : "wiki/";
+        const resolvedPath = href.startsWith("wiki/") ? href : `wiki/${href}`;
+        const nodeId = href.replace(/\.md$/, "").replace(/^.*\//, "");
+        openDrawer(nodeId, resolvedPath);
+        focusNode(nodeId);
+      });
+    });
+  }
+
   // --- Detail overlay ---
   function showDetail(data: {
     id: string;
@@ -238,6 +320,15 @@ export function createGraphPane(): HTMLElement {
     content?: string;
     connectedNodes: { id: string; label: string }[];
   }): void {
+    // Source nodes: open the full-width drawer instead
+    if (data.node_type === "source") {
+      hideDetail();
+      openDrawer(data.label, data.path);
+      return;
+    }
+
+    // Non-source nodes: show the compact detail overlay
+    hideDrawer();
     detail.style.display = "block";
     detail.innerHTML = "";
 
@@ -287,6 +378,18 @@ export function createGraphPane(): HTMLElement {
       detail.appendChild(contentBlock);
     }
 
+    // "View source" button — opens the parent source document in the drawer
+    const viewSourceBtn = document.createElement("button");
+    viewSourceBtn.className = "graph-detail-view-source";
+    viewSourceBtn.textContent = "View source";
+    viewSourceBtn.addEventListener("click", () => {
+      hideDetail();
+      // path is the wiki file path (e.g. wiki/fec.md)
+      const sourceLabel = data.path.replace(/^wiki\//, "").replace(/\.md$/, "");
+      openDrawer(sourceLabel, data.path);
+    });
+    detail.appendChild(viewSourceBtn);
+
     if (data.connectedNodes.length > 0) {
       const connLabel = document.createElement("div");
       connLabel.className = "graph-detail-conn-label";
@@ -330,7 +433,7 @@ export function createGraphPane(): HTMLElement {
     if (!interactionsBound) {
       bindInteractions({
         onNodeSelect: (nodeData) => showDetail(nodeData),
-        onNodeDeselect: () => hideDetail(),
+        onNodeDeselect: () => { hideDetail(); hideDrawer(); },
       });
       interactionsBound = true;
     }

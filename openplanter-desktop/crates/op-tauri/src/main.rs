@@ -25,6 +25,7 @@ fn main() {
             commands::session::delete_session,
             commands::session::get_session_history,
             commands::wiki::get_graph_data,
+            commands::wiki::read_wiki_file,
         ])
         .run(tauri::generate_context!(
             "tauri.conf.json"

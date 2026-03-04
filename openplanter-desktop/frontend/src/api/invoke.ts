@@ -61,6 +61,10 @@ export async function getGraphData(): Promise<GraphData> {
   return invoke("get_graph_data");
 }
 
+export async function readWikiFile(path: string): Promise<string> {
+  return invoke("read_wiki_file", { path });
+}
+
 export async function debugLog(msg: string): Promise<void> {
   return invoke("debug_log", { msg });
 }
