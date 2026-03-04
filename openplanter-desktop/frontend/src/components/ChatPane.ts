@@ -265,7 +265,7 @@ export function createChatPane(): HTMLElement {
   let streamingBuf = "";
   let toolArgsBuf = "";
   let currentToolName = "";
-  let stepToolCalls: { name: string; keyArg: string; startTime: number }[] = [];
+  let stepToolCalls: { name: string; keyArg: string; startTime: number; elapsed?: number }[] = [];
   let stepStartTime = Date.now();
 
   function resetBuffers() {
@@ -532,7 +532,7 @@ export function createChatPane(): HTMLElement {
     // Finalize elapsed times for tool calls in this step
     for (const tc of stepToolCalls) {
       if (tc.elapsed === undefined || tc.elapsed === 0) {
-        (tc as any).elapsed = now - tc.startTime;
+        tc.elapsed = now - tc.startTime;
       }
     }
 
@@ -540,7 +540,7 @@ export function createChatPane(): HTMLElement {
     const summaryTools: StepToolCall[] = stepToolCalls.map((tc) => ({
       name: tc.name,
       keyArg: tc.keyArg,
-      elapsed: (tc as any).elapsed || now - tc.startTime,
+      elapsed: tc.elapsed || now - tc.startTime,
     }));
 
     // Remove activity indicator

@@ -616,7 +616,7 @@ export function filterBySession(active: boolean, baselineNodeIds: Set<string>): 
     const node = cy.getElementById(id);
     node.addClass("new-node");
     visible.add(id);
-    node.neighborhood().nodes().forEach((n) => visible.add(n.id()));
+    node.neighborhood().nodes().forEach((n) => { visible.add(n.id()); });
   }
 
   // Hide everything else
@@ -634,6 +634,6 @@ export function filterBySession(active: boolean, baselineNodeIds: Set<string>): 
 export function getNodeIds(): Set<string> {
   if (!cy) return new Set();
   const ids = new Set<string>();
-  cy.nodes().forEach((node) => ids.add(node.id()));
+  cy.nodes().forEach((node) => { ids.add(node.id()); });
   return ids;
 }

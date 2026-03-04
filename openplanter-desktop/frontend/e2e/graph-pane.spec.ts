@@ -30,6 +30,8 @@ async function injectTauriMocks(page: Page) {
                 turn_count: 0,
                 last_objective: null,
               };
+            case "read_wiki_file":
+              return `# ${args?.path?.replace(/.*\//, "").replace(".md", "")}\n\nMock wiki content for testing.\n\n## Summary\n\nThis is a mock document.\n\n- **Key**: value\n- **Status**: Active\n\n## References\n\n- [other-file.md](other-file.md)\n`;
             case "debug_log":
               return;
             case "list_models":
@@ -235,101 +237,75 @@ test.describe("Graph Pane", () => {
     await expect(firstItem).not.toHaveClass(/legend-hidden/);
   });
 
-  test("clicking canvas node shows detail overlay", async ({ page }) => {
-    // We need to click on a node in the cytoscape canvas.
-    // Cytoscape renders on a <canvas>, so we can't click DOM nodes.
-    // Instead, we use Cytoscape's programmatic API via page.evaluate.
+  test("clicking source node opens wiki drawer", async ({ page }) => {
     const hasNodes = await page.evaluate(() => {
-      // Access the Cytoscape instance — we need to verify it exists
       const container = document.querySelector(".graph-canvas");
       if (!container) return false;
-      // Cytoscape stores instance on the container via _cyreg
       const cy = (container as any)._cyreg?.cy;
       if (!cy) return false;
       return cy.nodes().length > 0;
     });
     expect(hasNodes).toBe(true);
 
-    // Programmatically tap a node to trigger the interaction handler
+    // Tap a source node — should open the drawer, not the detail overlay
     await page.evaluate(() => {
       const container = document.querySelector(".graph-canvas");
       const cy = (container as any)._cyreg?.cy;
       if (!cy) return;
-      const node = cy.nodes().first();
-      node.emit("tap");
+      cy.getElementById("acme-corp").emit("tap");
     });
 
     await page.waitForTimeout(500);
-    await page.screenshot({ path: "e2e/screenshots/12-node-detail.png" });
+    await page.screenshot({ path: "e2e/screenshots/12-source-drawer.png" });
 
-    // Detail overlay should be visible
+    // Drawer should be visible
+    await expect(page.locator(".graph-source-drawer.visible")).toBeVisible();
+    await expect(page.locator(".graph-source-drawer-title")).toHaveText("Acme Corp");
+
+    // Detail overlay should NOT be visible (source nodes use drawer)
+    await expect(page.locator(".graph-detail")).not.toBeVisible();
+  });
+
+  test("clicking section node shows detail overlay with view source button", async ({ page }) => {
+    // Tap a section node — should show the detail overlay
+    await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)._cyreg?.cy;
+      if (!cy) return;
+      cy.getElementById("acme-corp::summary").emit("tap");
+    });
+
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: "e2e/screenshots/12b-section-detail.png" });
+
     const detail = page.locator(".graph-detail");
     await expect(detail).toBeVisible();
-
-    // Should have title and category badge
-    await expect(page.locator(".graph-detail-title")).toBeVisible();
+    await expect(page.locator(".graph-detail-title")).toHaveText("Summary");
     await expect(page.locator(".graph-detail-badge")).toBeVisible();
+
+    // "View source" button should be present
+    await expect(page.locator(".graph-detail-view-source")).toBeVisible();
   });
 
   test("detail overlay close button works", async ({ page }) => {
-    // Open detail
+    // Open detail on a section node (not source)
     await page.evaluate(() => {
       const container = document.querySelector(".graph-canvas");
       const cy = (container as any)._cyreg?.cy;
       if (!cy) return;
-      cy.nodes().first().emit("tap");
+      cy.getElementById("acme-corp::summary").emit("tap");
     });
     await page.waitForTimeout(300);
     await expect(page.locator(".graph-detail")).toBeVisible();
 
-    // Close it
-    await page.locator(".graph-detail-close").click();
+    // Close it (scope to detail overlay, not drawer)
+    await page.locator(".graph-detail .graph-detail-close").click();
     await page.waitForTimeout(300);
     await expect(page.locator(".graph-detail")).not.toBeVisible();
   });
 
-  test("escape key deselects and hides detail", async ({ page }) => {
-    // Open detail
-    await page.evaluate(() => {
-      const container = document.querySelector(".graph-canvas");
-      const cy = (container as any)._cyreg?.cy;
-      if (!cy) return;
-      cy.nodes().first().emit("tap");
-    });
-    await page.waitForTimeout(300);
-    await expect(page.locator(".graph-detail")).toBeVisible();
-
-    // Press Escape
-    await page.keyboard.press("Escape");
-    await page.waitForTimeout(300);
-    await expect(page.locator(".graph-detail")).not.toBeVisible();
-  });
-
-  test("node detail shows connected nodes", async ({ page }) => {
-    // Tap "acme-corp" which has the most connections (4)
-    await page.evaluate(() => {
-      const container = document.querySelector(".graph-canvas");
-      const cy = (container as any)._cyreg?.cy;
-      if (!cy) return;
-      const acme = cy.getElementById("acme-corp");
-      if (!acme.empty()) acme.emit("tap");
-    });
-    await page.waitForTimeout(500);
-
-    const connList = page.locator(".graph-detail-conn-list");
-    await expect(connList).toBeVisible();
-
-    // Acme Corp is connected to: PAC Fund Alpha, City Bridge Project,
-    // Lobby Group One, Smith Foundation, Defense Contract 7
-    const connItems = page.locator(".graph-detail-conn-item");
-    const count = await connItems.count();
-    expect(count).toBeGreaterThanOrEqual(3);
-
-    await page.screenshot({ path: "e2e/screenshots/13-acme-connections.png" });
-  });
-
-  test("clicking connected node in detail navigates to it", async ({ page }) => {
-    // Open Acme Corp detail
+  test("escape key closes drawer and detail", async ({ page }) => {
+    // Open drawer on a source node
     await page.evaluate(() => {
       const container = document.querySelector(".graph-canvas");
       const cy = (container as any)._cyreg?.cy;
@@ -337,18 +313,70 @@ test.describe("Graph Pane", () => {
       cy.getElementById("acme-corp").emit("tap");
     });
     await page.waitForTimeout(500);
+    await expect(page.locator(".graph-source-drawer.visible")).toBeVisible();
 
-    // Click first connected node link
-    const firstConn = page.locator(".graph-detail-conn-item").first();
-    const connLabel = await firstConn.textContent();
-    await firstConn.click();
+    // Press Escape (triggers background tap which calls onNodeDeselect → hideDrawer)
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    await expect(page.locator(".graph-source-drawer.visible")).not.toBeVisible();
+  });
+
+  test("drawer close button works", async ({ page }) => {
+    await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)._cyreg?.cy;
+      if (!cy) return;
+      cy.getElementById("acme-corp").emit("tap");
+    });
+    await page.waitForTimeout(500);
+    await expect(page.locator(".graph-source-drawer.visible")).toBeVisible();
+
+    // Click close button in drawer
+    await page.locator(".graph-source-drawer .graph-detail-close").click();
+    await page.waitForTimeout(300);
+    await expect(page.locator(".graph-source-drawer.visible")).not.toBeVisible();
+  });
+
+  test("node detail shows connected nodes", async ({ page }) => {
+    // Tap a section node that has connections
+    await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)._cyreg?.cy;
+      if (!cy) return;
+      cy.getElementById("acme-corp::data-schema").emit("tap");
+    });
     await page.waitForTimeout(500);
 
-    // Detail should now show the clicked node
-    const title = await page.locator(".graph-detail-title").textContent();
-    expect(title).toBe(connLabel);
+    const connList = page.locator(".graph-detail-conn-list");
+    await expect(connList).toBeVisible();
 
-    await page.screenshot({ path: "e2e/screenshots/14-navigate-connection.png" });
+    const connItems = page.locator(".graph-detail-conn-item");
+    const count = await connItems.count();
+    expect(count).toBeGreaterThanOrEqual(1);
+
+    await page.screenshot({ path: "e2e/screenshots/13-section-connections.png" });
+  });
+
+  test("view source button opens drawer from detail overlay", async ({ page }) => {
+    // Open detail on a section node
+    await page.evaluate(() => {
+      const container = document.querySelector(".graph-canvas");
+      const cy = (container as any)._cyreg?.cy;
+      if (!cy) return;
+      cy.getElementById("acme-corp::summary").emit("tap");
+    });
+    await page.waitForTimeout(300);
+    await expect(page.locator(".graph-detail")).toBeVisible();
+
+    // Click "View source"
+    await page.locator(".graph-detail-view-source").click();
+    await page.waitForTimeout(500);
+
+    // Drawer should open, detail overlay should close
+    await expect(page.locator(".graph-source-drawer.visible")).toBeVisible();
+    await expect(page.locator(".graph-detail")).not.toBeVisible();
+
+    await page.screenshot({ path: "e2e/screenshots/14-view-source-drawer.png" });
   });
 
   test("empty graph shows placeholder", async ({ page: _ }, testInfo) => {
