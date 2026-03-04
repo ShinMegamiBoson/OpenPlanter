@@ -417,6 +417,8 @@ describe("createChatPane", () => {
     }));
     expect(pane.querySelectorAll(".message").length).toBe(1);
 
+    // Real session-switch clears messages before dispatching session-changed
+    appState.update((s) => ({ ...s, messages: [] }));
     window.dispatchEvent(new CustomEvent("session-changed"));
     const messagesContainer = pane.querySelector(".chat-messages")!;
     expect(messagesContainer.innerHTML).toBe("");

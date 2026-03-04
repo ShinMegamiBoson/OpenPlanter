@@ -587,6 +587,7 @@ export function createChatPane(): HTMLElement {
     renderedCount = 0;
     removeActivity();
     resetBuffers();
+    render(); // re-render current messages (e.g. splash + user msg on lazy session create)
   });
 
   return pane;
