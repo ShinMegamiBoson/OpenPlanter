@@ -8,10 +8,11 @@ fn clip(text: &str, max_chars: usize) -> String {
     if text.len() <= max_chars {
         return text.to_string();
     }
-    let omitted = text.len() - max_chars;
+    let end = text.floor_char_boundary(max_chars);
+    let omitted = text.len() - end;
     format!(
         "{}\n\n...[truncated {omitted} chars]...",
-        &text[..max_chars]
+        &text[..end]
     )
 }
 

@@ -247,10 +247,10 @@ export function createChatPane(): HTMLElement {
 
   // ── Auto-scroll with proximity check ──
   function autoScroll() {
-    // Don't scroll when only the splash message exists — prevents the
-    // activity indicator from pushing the splash text out of view.
+    // Don't scroll until the first step completes — prevents the activity
+    // indicator from pushing the splash text out of view during the first step.
     const msgs = appState.get().messages;
-    if (msgs.length > 0 && msgs.every((m) => m.role === "splash")) return;
+    if (!msgs.some((m) => m.role === "step-summary")) return;
 
     const isNearBottom =
       messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 40;
