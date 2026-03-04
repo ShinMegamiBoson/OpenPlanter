@@ -10,6 +10,8 @@ export const CATEGORY_COLORS: Record<string, string> = {
   "nonprofits": "#a5d6ff",
   "regulatory": "#7ee787",
   "sanctions": "#f778ba",
+  "media": "#c9d1d9",
+  "legal": "#b392f0",
 };
 
 export function getCategoryColor(category: string): string {

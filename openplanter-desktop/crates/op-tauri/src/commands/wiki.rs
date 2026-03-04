@@ -1,15 +1,28 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 use regex::Regex;
 use tauri::State;
 use crate::state::AppState;
 use op_core::events::{GraphData, GraphEdge, GraphNode, NodeType};
 
+static LINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[([^\]]+)\]\(([^)]+\.md)\)").unwrap());
+static CATEGORY_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^#{2,3}\s+(.+)").unwrap());
+
 /// Walk up from `start` to find a directory containing `wiki/index.md`.
+/// Checks both `.openplanter/wiki/` (preferred) and `wiki/` at each level.
 fn find_wiki_dir(start: &Path) -> Option<PathBuf> {
     let mut dir = start.canonicalize().ok();
     while let Some(d) = dir {
+        // Prefer .openplanter/wiki/ (standard location used by the agent)
+        let dot_wiki = d.join(".openplanter").join("wiki");
+        if dot_wiki.join("index.md").exists() {
+            return Some(dot_wiki);
+        }
+        // Fallback to bare wiki/
         let wiki = d.join("wiki");
         if wiki.join("index.md").exists() {
             return Some(wiki);
@@ -19,26 +32,46 @@ fn find_wiki_dir(start: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Normalize a wiki section heading into a category slug.
+/// Handles compound headings like "Financial / Corporate Sources" → "financial".
+fn normalize_category(heading: &str) -> String {
+    let raw = heading.trim().to_lowercase();
+    let raw = raw.strip_suffix("sources").unwrap_or(&raw).trim();
+
+    // Split once on "/" — use second term if first is "government"
+    let mut parts = raw.split('/');
+    let first = parts.next().unwrap_or(raw).trim().replace(' ', "-");
+    let second = parts.next().map(|s| s.trim().replace(' ', "-"));
+
+    let mut cat = first;
+    if cat.starts_with("government-") {
+        cat = cat.strip_prefix("government-").unwrap_or(&cat).to_string();
+    }
+    if cat == "government" {
+        if let Some(ref s) = second {
+            if !s.is_empty() {
+                cat = s.clone();
+            }
+        }
+    }
+
+    // Collapse known aliases
+    match cat.as_str() {
+        s if s.contains("regulatory") => "regulatory".to_string(),
+        "media" | "public-record" => "media".to_string(),
+        "legal" | "court" => "legal".to_string(),
+        _ => cat,
+    }
+}
+
 /// Parse wiki/index.md content into graph nodes.
 pub fn parse_index_nodes(content: &str) -> Vec<GraphNode> {
     let mut nodes = Vec::new();
     let mut current_category = String::new();
 
-    let link_re = Regex::new(r"\[([^\]]+)\]\(([^)]+\.md)\)").unwrap();
-    let category_re = Regex::new(r"^###\s+(.+)").unwrap();
-
     for line in content.lines() {
-        if let Some(caps) = category_re.captures(line) {
-            current_category = caps[1].trim().to_lowercase().replace(' ', "-");
-            if current_category.starts_with("government-") {
-                current_category = current_category
-                    .strip_prefix("government-")
-                    .unwrap_or(&current_category)
-                    .to_string();
-            }
-            if current_category.contains("regulatory") {
-                current_category = "regulatory".to_string();
-            }
+        if let Some(caps) = CATEGORY_RE.captures(line) {
+            current_category = normalize_category(&caps[1]);
             continue;
         }
 
@@ -49,7 +82,7 @@ pub fn parse_index_nodes(content: &str) -> Vec<GraphNode> {
             continue;
         }
 
-        if let Some(caps) = link_re.captures(line) {
+        if let Some(caps) = LINK_RE.captures(line) {
             let path = caps[2].to_string();
 
             let label = line
@@ -127,7 +160,6 @@ fn search_terms_for_node(node: &GraphNode) -> Vec<String> {
 /// Find cross-references between nodes by reading wiki files from `wiki_dir`.
 /// Uses both markdown link detection and text-based mention matching.
 pub fn find_cross_references(nodes: &[GraphNode], wiki_dir: &Path) -> Vec<GraphEdge> {
-    let link_re = Regex::new(r"\[([^\]]+)\]\(([^)]+\.md)\)").unwrap();
     let node_ids: HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
     let mut edges = Vec::new();
     let mut seen: HashSet<(String, String)> = HashSet::new();
@@ -152,7 +184,7 @@ pub fn find_cross_references(nodes: &[GraphNode], wiki_dir: &Path) -> Vec<GraphE
         };
 
         // 1. Markdown link-based edges (existing logic)
-        for caps in link_re.captures_iter(file_content) {
+        for caps in LINK_RE.captures_iter(file_content) {
             let ref_path = &caps[2];
             let ref_id = ref_path
                 .rsplit('/')
@@ -683,6 +715,39 @@ mod tests {
     }
 
     #[test]
+    fn test_category_heading_h2() {
+        // Real wiki uses ## headings (not ###)
+        let content = "## Financial / Corporate Sources\n| FEC | US | [link](fec.md) |";
+        let nodes = parse_index_nodes(content);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].category, "financial");
+    }
+
+    #[test]
+    fn test_category_heading_government_regulatory() {
+        let content = "## Government / Regulatory Sources\n| OIG | US | [link](oig.md) |";
+        let nodes = parse_index_nodes(content);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].category, "regulatory");
+    }
+
+    #[test]
+    fn test_category_heading_media() {
+        let content = "## Media / Public Record Sources\n| NBC | US | [link](nbc.md) |";
+        let nodes = parse_index_nodes(content);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].category, "media");
+    }
+
+    #[test]
+    fn test_category_heading_legal() {
+        let content = "## Legal / Court Sources\n| DOJ | US | [link](doj.md) |";
+        let nodes = parse_index_nodes(content);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].category, "legal");
+    }
+
+    #[test]
     fn test_table_row_with_link() {
         let content = "### Data\n| MA OCPF | MA | [link](ocpf.md) |";
         let nodes = parse_index_nodes(content);
@@ -830,6 +895,113 @@ mod tests {
 
         let found = find_wiki_dir(&child).unwrap();
         assert_eq!(found, wiki.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn test_find_wiki_dir_dot_openplanter() {
+        let tmp = tempdir().unwrap();
+        let wiki = tmp.path().join(".openplanter").join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join("index.md"), "# Index").unwrap();
+
+        let found = find_wiki_dir(tmp.path()).unwrap();
+        assert_eq!(found, wiki.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn test_find_wiki_dir_dot_openplanter_preferred_over_bare() {
+        let tmp = tempdir().unwrap();
+        // Create both wiki/ and .openplanter/wiki/
+        let bare = tmp.path().join("wiki");
+        fs::create_dir_all(&bare).unwrap();
+        fs::write(bare.join("index.md"), "# Bare").unwrap();
+
+        let dot = tmp.path().join(".openplanter").join("wiki");
+        fs::create_dir_all(&dot).unwrap();
+        fs::write(dot.join("index.md"), "# Dot").unwrap();
+
+        let found = find_wiki_dir(tmp.path()).unwrap();
+        assert_eq!(found, dot.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn test_find_wiki_dir_dot_openplanter_from_child() {
+        let tmp = tempdir().unwrap();
+        let wiki = tmp.path().join(".openplanter").join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+        fs::write(wiki.join("index.md"), "# Index").unwrap();
+
+        // Start from a subdirectory — should still walk up and find .openplanter/wiki/
+        let child = tmp.path().join("subdir");
+        fs::create_dir_all(&child).unwrap();
+        let found = find_wiki_dir(&child).unwrap();
+        assert_eq!(found, wiki.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn test_dot_openplanter_wiki_end_to_end() {
+        let tmp = tempdir().unwrap();
+        let wiki = tmp.path().join(".openplanter").join("wiki");
+        fs::create_dir_all(&wiki).unwrap();
+
+        let index_content = "### Campaign Finance\n| FEC | US | [link](fec.md) |";
+        fs::write(wiki.join("index.md"), index_content).unwrap();
+        fs::write(wiki.join("fec.md"), "# FEC Data\n## Key Fields\n- Donors\n").unwrap();
+
+        // find_wiki_dir should find it
+        let found = find_wiki_dir(tmp.path()).unwrap();
+        assert_eq!(found, wiki.canonicalize().unwrap());
+
+        // parse_index_nodes should produce a node with path wiki/fec.md
+        let nodes = parse_index_nodes(index_content);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].path, "wiki/fec.md");
+
+        // project_root should be .openplanter/ so joining with wiki/fec.md works
+        let project_root = found.parent().unwrap();
+        let file_path = project_root.join(&nodes[0].path);
+        assert!(file_path.exists(), "should resolve to .openplanter/wiki/fec.md");
+    }
+
+    #[test]
+    fn test_real_wiki_format_integration() {
+        // Mirrors the actual wiki index.md format produced by the curator
+        let content = "\
+# Investigation Wiki — Index
+
+## Government / Regulatory Sources
+| Source | Entry | Status |
+|--------|-------|--------|
+| Senate Judiciary Committee | [Entry](senate.md) | Active |
+| DHS OIG | [Entry](dhs-oig.md) | Active |
+
+## Financial / Corporate Sources
+| Source | Entry | Status |
+|--------|-------|--------|
+| USAspending.gov | [usaspending.md](usaspending.md) | Confirmed |
+
+## Media / Public Record Sources
+| Source | Entry | Status |
+|--------|-------|--------|
+| NBC News | [Entry](nbc.md) | Confirmed |
+
+## Legal / Court Sources
+| Source | Entry | Status |
+|--------|-------|--------|
+| Impeachment Resolution | [Entry](impeach.md) | Active |
+
+## Other Sources
+| Source | Entry | Status |
+|--------|-------|--------|
+| *(none yet)* | — | — |
+";
+        let nodes = parse_index_nodes(content);
+        assert_eq!(nodes.len(), 5);
+        assert_eq!(nodes[0].category, "regulatory");
+        assert_eq!(nodes[1].category, "regulatory");
+        assert_eq!(nodes[2].category, "financial");
+        assert_eq!(nodes[3].category, "media");
+        assert_eq!(nodes[4].category, "legal");
     }
 
     #[test]
