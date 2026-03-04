@@ -146,9 +146,7 @@ impl<E: SolveEmitter> SolveEmitter for LoggingEmitter<E> {
                 if let Some(key_arg) = extract_key_arg(&tool_name, &buf) {
                     let mut calls = self.step_tool_calls.lock().unwrap();
                     if let Some(last) = calls.last_mut() {
-                        if last.key_arg.is_empty() {
-                            last.key_arg = key_arg;
-                        }
+                        last.key_arg = key_arg;
                     }
                 }
             }
