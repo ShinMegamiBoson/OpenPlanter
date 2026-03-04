@@ -200,20 +200,6 @@ pub async fn solve(
             return;
         }
 
-        // Emit step (non-final) with first tool name
-        let first_tool = turn.tool_calls.first().map(|tc| tc.name.clone());
-        emitter.emit_step(StepEvent {
-            depth: 0,
-            step: step as u32,
-            tool_name: first_tool,
-            tokens: TokenUsage {
-                input_tokens: turn.input_tokens,
-                output_tokens: turn.output_tokens,
-            },
-            elapsed_ms: step_start.elapsed().as_millis() as u64,
-            is_final: false,
-        });
-
         // Execute each tool call and collect results
         for tc in &turn.tool_calls {
             if cancel.is_cancelled() {
@@ -234,6 +220,21 @@ pub async fn solve(
                 content: result.content,
             });
         }
+
+        // Emit step (non-final) AFTER tools execute so the frontend
+        // can refresh the wiki graph with newly written files.
+        let first_tool = turn.tool_calls.first().map(|tc| tc.name.clone());
+        emitter.emit_step(StepEvent {
+            depth: 0,
+            step: step as u32,
+            tool_name: first_tool,
+            tokens: TokenUsage {
+                input_tokens: turn.input_tokens,
+                output_tokens: turn.output_tokens,
+            },
+            elapsed_ms: step_start.elapsed().as_millis() as u64,
+            is_final: false,
+        });
 
         // Budget warnings
         let remaining = max_steps - step;
