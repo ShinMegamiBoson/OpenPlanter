@@ -773,3 +773,206 @@ async fn test_solve_missing_key_emits_error() {
         recorded
     );
 }
+
+// ─── Multi-step agentic loop integration test ───
+//
+// Uses a stateful mock server that returns a tool call on the first request,
+// then a final text answer on the second. This validates the full loop:
+// model → tool call → tool execution → model → final answer.
+
+/// SSE body for an Anthropic response that requests `list_files`.
+const ANTHROPIC_SSE_TOOL_LIST: &str = "\
+event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_loop1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":50}}}\n\n\
+event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Let me list the files.\"}}\n\n\
+event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
+event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_loop1\",\"name\":\"list_files\",\"input\":{}}}\n\n\
+event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{}\"}}\n\n\
+event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n\
+event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":12}}\n\n\
+event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+
+/// SSE body for the follow-up Anthropic response (final text answer after tool result).
+const ANTHROPIC_SSE_FINAL_ANSWER: &str = "\
+event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_loop2\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":80}}}\n\n\
+event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"I found the files. Here is the answer.\"}}\n\n\
+event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
+event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":10}}\n\n\
+event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+
+/// Start a stateful mock server that returns different SSE bodies on successive calls.
+async fn start_stateful_mock_server(responses: Vec<&'static str>) -> SocketAddr {
+    let counter = Arc::new(Mutex::new(0usize));
+    let responses = Arc::new(responses);
+
+    let app = Router::new().route(
+        "/{*path}",
+        post(move || {
+            let counter = counter.clone();
+            let responses = responses.clone();
+            async move {
+                let mut idx = counter.lock().unwrap();
+                let body = if *idx < responses.len() {
+                    responses[*idx]
+                } else {
+                    // Fallback: return the last response
+                    responses.last().unwrap()
+                };
+                *idx += 1;
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "text/event-stream")
+                    .header("cache-control", "no-cache")
+                    .body(Body::from(body))
+                    .unwrap()
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    addr
+}
+
+#[tokio::test]
+async fn test_solve_multi_step_agentic_loop() {
+    use op_core::config::AgentConfig;
+    use op_core::engine::{solve, SolveEmitter};
+    use op_core::events::StepEvent;
+
+    // Mock server: first call → tool call, second call → final answer
+    let addr = start_stateful_mock_server(vec![
+        ANTHROPIC_SSE_TOOL_LIST,
+        ANTHROPIC_SSE_FINAL_ANSWER,
+    ]).await;
+
+    #[derive(Debug, Clone)]
+    #[allow(dead_code)]
+    enum Ev3 {
+        Trace(String),
+        Delta(DeltaEvent),
+        Step(StepEvent),
+        Complete(String),
+        Error(String),
+    }
+
+    struct TestEmitter3 {
+        events: Arc<Mutex<Vec<Ev3>>>,
+    }
+    impl SolveEmitter for TestEmitter3 {
+        fn emit_trace(&self, message: &str) {
+            self.events.lock().unwrap().push(Ev3::Trace(message.to_string()));
+        }
+        fn emit_delta(&self, event: DeltaEvent) {
+            self.events.lock().unwrap().push(Ev3::Delta(event));
+        }
+        fn emit_step(&self, event: StepEvent) {
+            self.events.lock().unwrap().push(Ev3::Step(event));
+        }
+        fn emit_complete(&self, result: &str) {
+            self.events.lock().unwrap().push(Ev3::Complete(result.to_string()));
+        }
+        fn emit_error(&self, message: &str) {
+            self.events.lock().unwrap().push(Ev3::Error(message.to_string()));
+        }
+    }
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let emitter = TestEmitter3 { events: events.clone() };
+
+    // Use a temp dir as workspace so list_files has something to work with
+    let tmp = tempfile::TempDir::new().unwrap();
+    // Create a test file so list_files finds something
+    std::fs::write(tmp.path().join("hello.txt"), "world").unwrap();
+
+    let cfg = AgentConfig {
+        provider: "anthropic".into(),
+        model: "claude-sonnet-4-5".into(),
+        anthropic_api_key: Some("test-key".into()),
+        anthropic_base_url: format!("http://{addr}"),
+        demo: false,
+        workspace: tmp.path().to_path_buf(),
+        ..Default::default()
+    };
+
+    let cancel = CancellationToken::new();
+    solve("List the files in this directory", &cfg, &emitter, cancel).await;
+
+    let recorded = events.lock().unwrap().clone();
+
+    // Verify we got TWO step events (one non-final for tool call, one final for answer)
+    let steps: Vec<&StepEvent> = recorded
+        .iter()
+        .filter_map(|e| match e {
+            Ev3::Step(s) => Some(s),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        steps.len() >= 2,
+        "expected at least 2 steps (tool call + final answer), got {}: {:?}",
+        steps.len(),
+        steps
+    );
+
+    // First step should be non-final (has tool call)
+    assert!(
+        !steps[0].is_final,
+        "first step should be non-final (tool call)"
+    );
+    assert_eq!(
+        steps[0].tool_name.as_deref(),
+        Some("list_files"),
+        "first step should show list_files tool"
+    );
+
+    // Last step should be final
+    assert!(
+        steps.last().unwrap().is_final,
+        "last step should be final"
+    );
+
+    // Should have tool execution trace
+    let has_tool_trace = recorded.iter().any(|e| matches!(e, Ev3::Trace(m) if m.contains("list_files")));
+    assert!(has_tool_trace, "should have a trace mentioning list_files tool execution");
+
+    // Should have text deltas from both steps
+    let text_content: String = recorded
+        .iter()
+        .filter_map(|e| match e {
+            Ev3::Delta(d) if matches!(d.kind, DeltaKind::Text) => Some(d.text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        text_content.contains("Let me list the files"),
+        "should have text from step 1, got: {text_content}"
+    );
+    assert!(
+        text_content.contains("Here is the answer"),
+        "should have text from step 2, got: {text_content}"
+    );
+
+    // Should complete with the final answer text
+    assert!(
+        recorded.iter().any(|e| matches!(e, Ev3::Complete(t) if t.contains("Here is the answer"))),
+        "should complete with the final answer"
+    );
+
+    // Should NOT have errors
+    let errors: Vec<&String> = recorded
+        .iter()
+        .filter_map(|e| match e {
+            Ev3::Error(m) => Some(m),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "should not have any errors, got: {:?}",
+        errors
+    );
+}
