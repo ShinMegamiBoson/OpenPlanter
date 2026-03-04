@@ -2,6 +2,14 @@
 
 A recursive-language-model investigation agent with a terminal UI. OpenPlanter ingests heterogeneous datasets — corporate registries, campaign finance records, lobbying disclosures, government contracts, and more — resolves entities across them, and surfaces non-obvious connections through evidence-backed analysis. It operates autonomously with file I/O, shell execution, web search, and recursive sub-agent delegation.
 
+## Download
+
+Pre-built binaries are available on the [Releases page](https://github.com/ShinMegamiBoson/OpenPlanter/releases/latest):
+
+- **macOS** — `.dmg`
+- **Windows** — `.msi`
+- **Linux** — `.AppImage`
+
 ## Quickstart
 
 ```bash
