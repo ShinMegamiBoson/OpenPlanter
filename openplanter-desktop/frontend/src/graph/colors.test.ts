@@ -14,6 +14,8 @@ describe("CATEGORY_COLORS", () => {
       "nonprofits",
       "regulatory",
       "sanctions",
+      "media",
+      "legal",
     ];
     for (const cat of expected) {
       expect(CATEGORY_COLORS[cat]).toBeDefined();
