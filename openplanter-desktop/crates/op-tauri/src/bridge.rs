@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
 use op_core::engine::SolveEmitter;
-use op_core::events::{CompleteEvent, DeltaEvent, DeltaKind, ErrorEvent, StepEvent, TraceEvent};
+use op_core::events::{CompleteEvent, CuratorUpdateEvent, DeltaEvent, DeltaKind, ErrorEvent, StepEvent, TraceEvent};
 use op_core::session::replay::{ReplayEntry, ReplayLogger, StepToolCallEntry};
 
 pub struct TauriEmitter {
@@ -60,6 +60,17 @@ impl SolveEmitter for TauriEmitter {
             "agent:error",
             ErrorEvent {
                 message: message.to_string(),
+            },
+        );
+    }
+
+    fn emit_curator_update(&self, summary: &str, files_changed: u32) {
+        eprintln!("[bridge] curator update: {summary} ({files_changed} files)");
+        let _ = self.handle.emit(
+            "agent:curator-update",
+            CuratorUpdateEvent {
+                summary: summary.to_string(),
+                files_changed,
             },
         );
     }
@@ -243,6 +254,35 @@ impl<E: SolveEmitter> SolveEmitter for LoggingEmitter<E> {
 
     fn emit_error(&self, message: &str) {
         self.inner.emit_error(message);
+    }
+
+    fn emit_curator_update(&self, summary: &str, files_changed: u32) {
+        // Log curator update to replay
+        let entry = ReplayEntry {
+            seq: 0,
+            timestamp: String::new(),
+            role: "curator".into(),
+            content: summary.to_string(),
+            tool_name: None,
+            is_rendered: None,
+            step_number: None,
+            step_tokens_in: None,
+            step_tokens_out: None,
+            step_elapsed: None,
+            step_model_preview: None,
+            step_tool_calls: None,
+        };
+
+        let replay = self.replay.clone();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                if let Err(e) = replay.lock().await.append(entry).await {
+                    eprintln!("[bridge] failed to log curator update: {e}");
+                }
+            });
+        });
+
+        self.inner.emit_curator_update(summary, files_changed);
     }
 }
 

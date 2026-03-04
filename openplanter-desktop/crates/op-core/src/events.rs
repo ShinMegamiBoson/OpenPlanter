@@ -56,6 +56,13 @@ pub struct ErrorEvent {
     pub message: String,
 }
 
+/// Background wiki curator completed an update.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CuratorUpdateEvent {
+    pub summary: String,
+    pub files_changed: u32,
+}
+
 /// Wiki knowledge graph data for the frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GraphData {

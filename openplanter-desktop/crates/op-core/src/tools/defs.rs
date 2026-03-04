@@ -412,6 +412,47 @@ pub fn tool_names() -> Vec<&'static str> {
     mvp_tool_defs().iter().map(|d| d.name).collect()
 }
 
+/// Build curator-restricted tool definitions for the given provider.
+///
+/// Returns only filesystem + meta tools — no web, shell, or background job tools.
+pub fn build_curator_tool_defs(provider: &str) -> Vec<Value> {
+    use crate::engine::curator::CURATOR_TOOL_NAMES;
+
+    let filtered: Vec<ToolDef> = mvp_tool_defs()
+        .into_iter()
+        .filter(|d| CURATOR_TOOL_NAMES.contains(&d.name))
+        .collect();
+
+    match provider {
+        "anthropic" => filtered
+            .into_iter()
+            .map(|def| {
+                json!({
+                    "name": def.name,
+                    "description": def.description,
+                    "input_schema": def.parameters
+                })
+            })
+            .collect(),
+        _ => filtered
+            .into_iter()
+            .map(|def| {
+                let mut params = def.parameters;
+                strict_fixup(&mut params);
+                json!({
+                    "type": "function",
+                    "function": {
+                        "name": def.name,
+                        "description": def.description,
+                        "parameters": params,
+                        "strict": true
+                    }
+                })
+            })
+            .collect(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -486,5 +527,41 @@ mod tests {
         let list_files = tools.iter().find(|t| t["function"]["name"] == "list_files").unwrap();
         let glob_prop = &list_files["function"]["parameters"]["properties"]["glob"];
         assert!(glob_prop.get("anyOf").is_some(), "Optional 'glob' should be wrapped with anyOf");
+    }
+
+    #[test]
+    fn test_curator_tool_defs_openai() {
+        let tools = build_curator_tool_defs("openai");
+        assert_eq!(tools.len(), 8, "curator should have exactly 8 tools");
+
+        let names: Vec<String> = tools.iter()
+            .map(|t| t["function"]["name"].as_str().unwrap().to_string())
+            .collect();
+
+        // Should include filesystem + meta tools
+        assert!(names.contains(&"read_file".to_string()));
+        assert!(names.contains(&"write_file".to_string()));
+        assert!(names.contains(&"edit_file".to_string()));
+        assert!(names.contains(&"list_files".to_string()));
+        assert!(names.contains(&"search_files".to_string()));
+        assert!(names.contains(&"think".to_string()));
+
+        // Should NOT include web, shell, or bg job tools
+        assert!(!names.contains(&"web_search".to_string()));
+        assert!(!names.contains(&"fetch_url".to_string()));
+        assert!(!names.contains(&"run_shell".to_string()));
+        assert!(!names.contains(&"run_shell_bg".to_string()));
+        assert!(!names.contains(&"check_shell_bg".to_string()));
+        assert!(!names.contains(&"kill_shell_bg".to_string()));
+    }
+
+    #[test]
+    fn test_curator_tool_defs_anthropic() {
+        let tools = build_curator_tool_defs("anthropic");
+        assert_eq!(tools.len(), 8);
+
+        // Anthropic format: flat with input_schema
+        assert!(tools[0].get("input_schema").is_some());
+        assert!(tools[0].get("type").is_none());
     }
 }

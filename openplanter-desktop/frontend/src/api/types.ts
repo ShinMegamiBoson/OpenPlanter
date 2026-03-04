@@ -33,6 +33,11 @@ export interface ErrorEvent {
   message: string;
 }
 
+export interface CuratorUpdateEvent {
+  summary: string;
+  files_changed: number;
+}
+
 export type NodeType = "source" | "section" | "fact";
 
 export interface GraphNode {

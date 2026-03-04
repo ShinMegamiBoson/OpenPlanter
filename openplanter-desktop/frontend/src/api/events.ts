@@ -1,6 +1,6 @@
 /** Tauri event subscriptions. */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AgentEvent, GraphData } from "./types";
+import type { AgentEvent, CuratorUpdateEvent, GraphData } from "./types";
 
 export function onAgentTrace(
   callback: (message: string) => void
@@ -42,4 +42,12 @@ export function onWikiUpdated(
   callback: (data: GraphData) => void
 ): Promise<UnlistenFn> {
   return listen<GraphData>("wiki:updated", (e) => callback(e.payload));
+}
+
+export function onCuratorUpdate(
+  callback: (event: CuratorUpdateEvent) => void
+): Promise<UnlistenFn> {
+  return listen<CuratorUpdateEvent>("agent:curator-update", (e) =>
+    callback(e.payload)
+  );
 }

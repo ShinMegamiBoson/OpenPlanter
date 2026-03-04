@@ -7,6 +7,7 @@ import {
   onAgentError,
   onAgentStep,
   onWikiUpdated,
+  onCuratorUpdate,
 } from "./api/events";
 import { appState } from "./state/store";
 
@@ -151,6 +152,24 @@ async function init() {
   await onWikiUpdated((data) => {
     const detail = new CustomEvent("wiki-updated", { detail: data });
     window.dispatchEvent(detail);
+  });
+
+  await onCuratorUpdate((event) => {
+    appState.update((s) => ({
+      ...s,
+      messages: [
+        ...s.messages,
+        {
+          id: crypto.randomUUID(),
+          role: "system" as const,
+          content: `[Wiki Curator] ${event.summary}`,
+          timestamp: Date.now(),
+        },
+      ],
+    }));
+
+    // Notify graph pane to refresh with curator's wiki changes
+    window.dispatchEvent(new CustomEvent("curator-done"));
   });
 }
 

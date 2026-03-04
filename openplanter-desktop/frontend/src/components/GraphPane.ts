@@ -383,6 +383,11 @@ export function createGraphPane(): HTMLElement {
     autoRefreshGraph();
   });
 
+  // Auto-refresh graph when background curator updates wiki files
+  window.addEventListener("curator-done", () => {
+    autoRefreshGraph();
+  });
+
   // Listen for session changes — reset baseline
   window.addEventListener("session-changed", ((e: CustomEvent<{ isNew: boolean }>) => {
     const isNew = e.detail?.isNew ?? false;

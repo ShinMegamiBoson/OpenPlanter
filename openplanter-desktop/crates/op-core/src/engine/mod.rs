@@ -4,8 +4,11 @@
 // with a multi-step agentic loop that executes tool calls.
 
 pub mod context;
+pub mod curator;
 pub mod judge;
 
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::builder::build_model;
@@ -15,6 +18,15 @@ use crate::model::Message;
 use crate::prompts::build_system_prompt;
 use crate::tools::defs::build_tool_defs;
 use crate::tools::WorkspaceTools;
+
+use self::curator::{extract_step_context, run_curator, CuratorResult};
+
+/// Abort all in-flight curator tasks.
+fn abort_curators(handles: &mut Vec<JoinHandle<()>>) {
+    for h in handles.drain(..) {
+        h.abort();
+    }
+}
 
 // Abstraction for emitting solve events.
 //
@@ -26,6 +38,9 @@ pub trait SolveEmitter: Send + Sync {
     fn emit_step(&self, event: StepEvent);
     fn emit_complete(&self, result: &str);
     fn emit_error(&self, message: &str);
+    /// Called when a background curator finishes updating wiki files.
+    /// Default no-op — override in TauriEmitter/LoggingEmitter.
+    fn emit_curator_update(&self, _summary: &str, _files_changed: u32) {}
 }
 
 // Demo solve flow that echoes the objective with simulated streaming.
@@ -185,12 +200,27 @@ pub async fn solve(
 
     let max_steps = config.max_steps_per_call as usize;
 
-    // 3. Agentic loop
+    // 3. Background curator channel
+    let (curator_tx, mut curator_rx) = mpsc::unbounded_channel::<CuratorResult>();
+    let mut curator_handles: Vec<JoinHandle<()>> = Vec::new();
+
+    // 4. Agentic loop
     for step in 1..=max_steps {
         if cancel.is_cancelled() {
             emitter.emit_error("Cancelled");
             tools.cleanup();
+            abort_curators(&mut curator_handles);
             return;
+        }
+
+        // Drain completed curator results and inject as system messages
+        while let Ok(result) = curator_rx.try_recv() {
+            if result.files_changed > 0 {
+                messages.push(Message::System {
+                    content: format!("[Wiki Curator] {}", result.summary),
+                });
+                emitter.emit_curator_update(&result.summary, result.files_changed);
+            }
         }
 
         let step_start = std::time::Instant::now();
@@ -207,6 +237,7 @@ pub async fn solve(
             Err(e) => {
                 let msg = e.to_string();
                 tools.cleanup();
+                abort_curators(&mut curator_handles);
                 if msg == "Cancelled" {
                     emitter.emit_error("Cancelled");
                 } else {
@@ -243,6 +274,7 @@ pub async fn solve(
             });
             emitter.emit_complete(&turn.text);
             tools.cleanup();
+            abort_curators(&mut curator_handles);
             return;
         }
 
@@ -251,6 +283,7 @@ pub async fn solve(
             if cancel.is_cancelled() {
                 emitter.emit_error("Cancelled");
                 tools.cleanup();
+                abort_curators(&mut curator_handles);
                 return;
             }
 
@@ -282,6 +315,22 @@ pub async fn solve(
             is_final: false,
         });
 
+        // Spawn background curator after each non-final step
+        let context = extract_step_context(&messages);
+        if !context.is_empty() {
+            let tx = curator_tx.clone();
+            let curator_cfg = config.clone();
+            let curator_cancel = cancel.clone();
+            curator_handles.push(tokio::spawn(async move {
+                match run_curator(&context, &curator_cfg, curator_cancel).await {
+                    Ok(result) => {
+                        let _ = tx.send(result);
+                    }
+                    Err(e) => eprintln!("[curator] error: {e}"),
+                }
+            }));
+        }
+
         // Budget warnings
         let remaining = max_steps - step;
         if remaining == max_steps / 2 {
@@ -297,6 +346,7 @@ pub async fn solve(
 
     // Budget exhausted
     tools.cleanup();
+    abort_curators(&mut curator_handles);
     emitter.emit_error(&format!(
         "Step budget exhausted after {max_steps} steps. \
          The model did not produce a final answer within the allowed steps."
