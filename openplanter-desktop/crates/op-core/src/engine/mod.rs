@@ -21,11 +21,77 @@ use crate::tools::WorkspaceTools;
 
 use self::curator::{extract_step_context, run_curator, CuratorResult};
 
+/// Outcome from a background curator task (success or error).
+enum CuratorOutcome {
+    Done(CuratorResult),
+    Error(String),
+}
+
 /// Abort all in-flight curator tasks.
 fn abort_curators(handles: &mut Vec<JoinHandle<()>>) {
     for h in handles.drain(..) {
         h.abort();
     }
+}
+
+/// Drain completed curator results from the channel, inject system messages
+/// and emit events for any that changed files.
+fn drain_curator_results(
+    rx: &mut mpsc::UnboundedReceiver<CuratorOutcome>,
+    messages: &mut Vec<Message>,
+    emitter: &dyn SolveEmitter,
+) {
+    while let Ok(outcome) = rx.try_recv() {
+        match outcome {
+            CuratorOutcome::Done(result) => {
+                if result.files_changed > 0 {
+                    emitter.emit_trace(&format!(
+                        "[curator] wiki updated: {} ({} files)",
+                        result.summary, result.files_changed
+                    ));
+                    messages.push(Message::System {
+                        content: format!("[Wiki Curator] {}", result.summary),
+                    });
+                    emitter.emit_curator_update(&result.summary, result.files_changed);
+                }
+            }
+            CuratorOutcome::Error(e) => {
+                emitter.emit_trace(&format!("[curator] error: {e}"));
+            }
+        }
+    }
+}
+
+/// Wait for in-flight curators (up to timeout), drain final results, abort rest.
+async fn finish_curators(
+    handles: &mut Vec<JoinHandle<()>>,
+    rx: &mut mpsc::UnboundedReceiver<CuratorOutcome>,
+    messages: &mut Vec<Message>,
+    emitter: &dyn SolveEmitter,
+) {
+    if handles.is_empty() {
+        return;
+    }
+    emitter.emit_trace(&format!(
+        "[curator] waiting for {} in-flight curator(s)...",
+        handles.len()
+    ));
+
+    // Wait up to 30 seconds total for all curators to finish
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+    for h in handles.iter_mut() {
+        let remaining = deadline - tokio::time::Instant::now();
+        if remaining.is_zero() {
+            break;
+        }
+        let _ = tokio::time::timeout(remaining, h).await;
+    }
+
+    // Final drain
+    drain_curator_results(rx, messages, emitter);
+
+    // Abort any still running
+    abort_curators(handles);
 }
 
 // Abstraction for emitting solve events.
@@ -201,7 +267,7 @@ pub async fn solve(
     let max_steps = config.max_steps_per_call as usize;
 
     // 3. Background curator channel
-    let (curator_tx, mut curator_rx) = mpsc::unbounded_channel::<CuratorResult>();
+    let (curator_tx, mut curator_rx) = mpsc::unbounded_channel::<CuratorOutcome>();
     let mut curator_handles: Vec<JoinHandle<()>> = Vec::new();
 
     // 4. Agentic loop
@@ -214,14 +280,7 @@ pub async fn solve(
         }
 
         // Drain completed curator results and inject as system messages
-        while let Ok(result) = curator_rx.try_recv() {
-            if result.files_changed > 0 {
-                messages.push(Message::System {
-                    content: format!("[Wiki Curator] {}", result.summary),
-                });
-                emitter.emit_curator_update(&result.summary, result.files_changed);
-            }
-        }
+        drain_curator_results(&mut curator_rx, &mut messages, emitter);
 
         let step_start = std::time::Instant::now();
 
@@ -274,7 +333,8 @@ pub async fn solve(
             });
             emitter.emit_complete(&turn.text);
             tools.cleanup();
-            abort_curators(&mut curator_handles);
+            // Wait for in-flight curators before exiting
+            finish_curators(&mut curator_handles, &mut curator_rx, &mut messages, emitter).await;
             return;
         }
 
@@ -321,13 +381,13 @@ pub async fn solve(
             let tx = curator_tx.clone();
             let curator_cfg = config.clone();
             let curator_cancel = cancel.clone();
+            emitter.emit_trace(&format!("[curator] spawning for step {step}"));
             curator_handles.push(tokio::spawn(async move {
-                match run_curator(&context, &curator_cfg, curator_cancel).await {
-                    Ok(result) => {
-                        let _ = tx.send(result);
-                    }
-                    Err(e) => eprintln!("[curator] error: {e}"),
-                }
+                let outcome = match run_curator(&context, &curator_cfg, curator_cancel).await {
+                    Ok(result) => CuratorOutcome::Done(result),
+                    Err(e) => CuratorOutcome::Error(e),
+                };
+                let _ = tx.send(outcome);
             }));
         }
 
@@ -346,7 +406,7 @@ pub async fn solve(
 
     // Budget exhausted
     tools.cleanup();
-    abort_curators(&mut curator_handles);
+    finish_curators(&mut curator_handles, &mut curator_rx, &mut messages, emitter).await;
     emitter.emit_error(&format!(
         "Step budget exhausted after {max_steps} steps. \
          The model did not produce a final answer within the allowed steps."
