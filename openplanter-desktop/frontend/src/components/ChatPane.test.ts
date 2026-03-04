@@ -335,6 +335,60 @@ describe("createChatPane", () => {
     document.body.removeChild(pane);
   });
 
+  it("updates key arg as more chunks arrive (no early lock-in)", () => {
+    const pane = createChatPane();
+    document.body.appendChild(pane);
+
+    // Start a web_search tool call
+    window.dispatchEvent(
+      new CustomEvent("agent-delta", { detail: { kind: "tool_call_start", text: "web_search" } })
+    );
+
+    // Send args in chunks — first chunk has partial query value
+    window.dispatchEvent(
+      new CustomEvent("agent-delta", { detail: { kind: "tool_call_args", text: '{"query": "Z' } })
+    );
+
+    // At this point, the partial extraction should show "Z"
+    expect(pane.querySelector(".activity-preview")!.textContent).toBe("Z");
+
+    // More chunks arrive with the rest of the query
+    window.dispatchEvent(
+      new CustomEvent("agent-delta", { detail: { kind: "tool_call_args", text: 'orro Ranch' } })
+    );
+
+    // Should now show "Zorro Ranch" (updated, not locked at "Z")
+    expect(pane.querySelector(".activity-preview")!.textContent).toBe("Zorro Ranch");
+
+    // Final closing chunk
+    window.dispatchEvent(
+      new CustomEvent("agent-delta", { detail: { kind: "tool_call_args", text: '"}' } })
+    );
+
+    // Should still show the complete value
+    expect(pane.querySelector(".activity-preview")!.textContent).toBe("Zorro Ranch");
+
+    // Fire step event and verify the step summary has the full value
+    window.dispatchEvent(
+      new CustomEvent("agent-step", {
+        detail: {
+          step: 1,
+          depth: 0,
+          tokens: { input_tokens: 5000, output_tokens: 200 },
+          elapsed_ms: 2000,
+          is_final: false,
+          tool_name: null,
+        },
+      })
+    );
+
+    const summary = pane.querySelector(".message.step-summary");
+    const toolArg = summary!.querySelector(".tool-arg");
+    expect(toolArg!.textContent).toContain("Zorro Ranch");
+
+    document.body.removeChild(pane);
+  });
+
   it("removes activity indicator on complete (isRunning false)", () => {
     const pane = createChatPane();
     document.body.appendChild(pane);

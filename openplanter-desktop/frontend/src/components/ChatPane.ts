@@ -262,7 +262,6 @@ export function createChatPane(): HTMLElement {
   let currentToolName = "";
   let stepToolCalls: { name: string; keyArg: string; startTime: number }[] = [];
   let stepStartTime = Date.now();
-  let keyArgExtracted = false;
 
   function resetBuffers() {
     thinkingBuf = "";
@@ -271,7 +270,6 @@ export function createChatPane(): HTMLElement {
     currentToolName = "";
     stepToolCalls = [];
     stepStartTime = Date.now();
-    keyArgExtracted = false;
   }
 
   function ensureActivity(): ActivityIndicator {
@@ -490,16 +488,8 @@ export function createChatPane(): HTMLElement {
       ai.setPreview(stripToolXml(streamingBuf));
       autoScroll();
     } else if (kind === "tool_call_start") {
-      // Finalize any previous tool's timing
-      if (stepToolCalls.length > 0 && !keyArgExtracted) {
-        // Previous tool never got a key arg
-        const prev = stepToolCalls[stepToolCalls.length - 1];
-        prev.keyArg = "";
-      }
-
       currentToolName = text;
       toolArgsBuf = "";
-      keyArgExtracted = false;
       stepToolCalls.push({
         name: text,
         keyArg: "",
@@ -514,17 +504,15 @@ export function createChatPane(): HTMLElement {
       toolArgsBuf += text;
       const ai = ensureActivity();
 
-      // Try to extract key arg
-      if (!keyArgExtracted) {
-        const keyArg = extractKeyArg(currentToolName, toolArgsBuf);
-        if (keyArg) {
-          keyArgExtracted = true;
-          const current = stepToolCalls[stepToolCalls.length - 1];
-          if (current) current.keyArg = keyArg;
-          ai.setToolRunning(currentToolName, keyArg);
-        } else {
-          ai.setPreview(toolArgsBuf.slice(-120));
-        }
+      // Always re-extract key arg as more chunks arrive — partial JSON
+      // grows with each chunk so the extracted value gets more complete.
+      const keyArg = extractKeyArg(currentToolName, toolArgsBuf);
+      if (keyArg) {
+        const current = stepToolCalls[stepToolCalls.length - 1];
+        if (current) current.keyArg = keyArg;
+        ai.setToolRunning(currentToolName, keyArg);
+      } else {
+        ai.setPreview(toolArgsBuf.slice(-120));
       }
       autoScroll();
     }
