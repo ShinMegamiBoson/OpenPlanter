@@ -551,13 +551,10 @@ export function filterBySearch(query: string): string[] {
     return [];
   }
 
-  // Collect match + 1-hop neighbors
-  const visible = new Set<string>();
+  // Only matched nodes stay visible
+  const visible = new Set<string>(matchIds);
   for (const id of matchIds) {
-    const node = cy.getElementById(id);
-    node.addClass("search-match");
-    visible.add(id);
-    node.neighborhood().nodes().forEach((n) => visible.add(n.id()));
+    cy.getElementById(id).addClass("search-match");
   }
 
   // Hide everything else

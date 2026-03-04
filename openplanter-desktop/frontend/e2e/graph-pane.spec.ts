@@ -159,7 +159,7 @@ test.describe("Graph Pane", () => {
       const cy = (container as any)?._cyreg?.cy;
       return cy ? cy.nodes(":visible").length : 0;
     });
-    // Acme Corp + its neighbors should be visible, others hidden
+    // Only exact matches should be visible, others hidden
     expect(visibleCount).toBeLessThan(15);
     expect(visibleCount).toBeGreaterThan(0);
 
@@ -618,7 +618,7 @@ test.describe("Graph Pane", () => {
       const cy = (container as any)?._cyreg?.cy;
       return cy ? cy.nodes(":visible").length : 0;
     });
-    // Only source-tier nodes that match or are neighbors of Acme should be visible
+    // Only source-tier nodes that match "Acme" should be visible
     expect(visibleCount).toBeLessThan(10);
     expect(visibleCount).toBeGreaterThan(0);
 
