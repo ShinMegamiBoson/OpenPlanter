@@ -89,6 +89,49 @@ pub async fn demo_solve(
     emitter.emit_complete(&response);
 }
 
+/// Rough token estimate: ~4 chars per token.
+fn estimate_tokens(messages: &[Message]) -> usize {
+    messages
+        .iter()
+        .map(|m| match m {
+            Message::System { content } | Message::User { content } => content.len(),
+            Message::Assistant { content, tool_calls } => {
+                content.len()
+                    + tool_calls
+                        .as_ref()
+                        .map(|tcs| tcs.iter().map(|tc| tc.arguments.len() + tc.name.len()).sum())
+                        .unwrap_or(0)
+            }
+            Message::Tool { content, .. } => content.len(),
+        })
+        .sum::<usize>()
+        / 4
+}
+
+/// Compact conversation context when it grows too large.
+///
+/// Keeps the system prompt, user objective, and the most recent messages
+/// intact. Truncates older Tool result content to a short placeholder.
+fn compact_messages(messages: &mut Vec<Message>, max_tokens: usize) {
+    if estimate_tokens(messages) <= max_tokens {
+        return;
+    }
+
+    // Keep the first 2 messages (System + User) and the last `keep_recent`
+    // messages intact. Truncate Tool content in between.
+    let keep_recent = 10; // Keep last ~10 messages (a few steps worth)
+    let protected_tail = messages.len().saturating_sub(keep_recent);
+
+    for i in 2..protected_tail {
+        if let Message::Tool { content, .. } = &mut messages[i] {
+            if content.len() > 200 {
+                let preview = &content[..content.len().min(150)];
+                *content = format!("{preview}\n...[truncated — older tool result]");
+            }
+        }
+    }
+}
+
 /// Real solve flow with a multi-step agentic loop.
 ///
 /// Calls the model with tool definitions. If the model returns tool calls,
@@ -151,6 +194,9 @@ pub async fn solve(
         }
 
         let step_start = std::time::Instant::now();
+
+        // Compact context if it's grown too large (~100k token budget)
+        compact_messages(&mut messages, 100_000);
 
         // Call model with streaming
         let turn = match model
@@ -500,5 +546,62 @@ mod tests {
             })
             .unwrap();
         assert!(complete_text.contains("Spawned test"));
+    }
+
+    #[test]
+    fn test_estimate_tokens() {
+        let messages = vec![
+            Message::System { content: "System prompt".into() }, // 13 chars
+            Message::User { content: "Hello".into() },          // 5 chars
+            Message::Tool { tool_call_id: "t1".into(), content: "x".repeat(4000) },
+        ];
+        let tokens = estimate_tokens(&messages);
+        // (13 + 5 + 4000) / 4 = 1004
+        assert_eq!(tokens, 1004);
+    }
+
+    #[test]
+    fn test_compact_messages_no_op_when_under_limit() {
+        let mut messages = vec![
+            Message::System { content: "System".into() },
+            Message::User { content: "Hello".into() },
+            Message::Tool { tool_call_id: "t1".into(), content: "Short result".into() },
+        ];
+        compact_messages(&mut messages, 100_000);
+        // Should be unchanged
+        if let Message::Tool { content, .. } = &messages[2] {
+            assert_eq!(content, "Short result");
+        }
+    }
+
+    #[test]
+    fn test_compact_messages_truncates_old_tool_results() {
+        let big_result = "x".repeat(8000);
+        let mut messages = vec![
+            Message::System { content: "System".into() },
+            Message::User { content: "Hello".into() },
+        ];
+
+        // Add 15 old steps (assistant + tool pairs) to exceed keep_recent
+        for i in 0..15 {
+            messages.push(Message::Assistant { content: format!("step{i}"), tool_calls: None });
+            messages.push(Message::Tool { tool_call_id: format!("t{i}"), content: big_result.clone() });
+        }
+
+        // Total: ~(6 + 5 + 15*(5+8000)) / 4 ≈ 30_000 tokens
+        // Set limit below that to trigger compaction
+        compact_messages(&mut messages, 10_000);
+
+        // Old tool result (index 3, early in the list) should be truncated
+        if let Message::Tool { content, .. } = &messages[3] {
+            assert!(content.len() < 300, "old tool result should be truncated, got {} chars", content.len());
+            assert!(content.contains("truncated"));
+        }
+
+        // Recent tool result (last one) should be intact
+        let last_tool = messages.iter().rev().find(|m| matches!(m, Message::Tool { .. })).unwrap();
+        if let Message::Tool { content, .. } = last_tool {
+            assert_eq!(content.len(), 8000, "recent tool result should be intact");
+        }
     }
 }
