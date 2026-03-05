@@ -1,0 +1,152 @@
+{
+  "Joni Ernst": {
+    "office": "U.S. Senator (R-IA)",
+    "committees": [
+      "Senate Armed Services Committee",
+      "Senate Homeland Security and Governmental Affairs Committee",
+      "Senate Committee on Small Business and Entrepreneurship",
+      "Senate Committee on Agriculture, Nutrition, and Forestry"
+    ],
+    "committees_relevant_to_agencies": {
+      "DoD": ["Senate Armed Services Committee"],
+      "DHS": ["Senate Homeland Security and Governmental Affairs Committee"],
+      "GSA": ["Senate Homeland Security and Governmental Affairs Committee"],
+      "VA": []
+    },
+    "sources": [
+      "https://www.ernst.senate.gov/news/press-releases/ernst-announces-committee-assignments-for-119th-congress"
+    ],
+    "uncertainty_notes": []
+  },
+  "Roger Wicker": {
+    "office": "U.S. Senator (R-MS)",
+    "committees": [
+      "Senate Committee on Armed Services",
+      "Senate Committee on Commerce, Science, and Transportation",
+      "Senate Committee on Environment and Public Works",
+      "Senate Committee on Rules and Administration",
+      "Commission on Security and Cooperation in Europe"
+    ],
+    "committees_relevant_to_agencies": {
+      "DoD": ["Senate Committee on Armed Services"],
+      "DHS": [],
+      "GSA": [],
+      "VA": []
+    },
+    "sources": [
+      "https://www.wicker.senate.gov/committee-assignments"
+    ],
+    "uncertainty_notes": []
+  },
+  "Mike Rogers (AL-03)": {
+    "office": "U.S. Representative (R-AL-03)",
+    "committees": [
+      "House Committee on Armed Services (Chairman)"
+    ],
+    "committees_relevant_to_agencies": {
+      "DoD": ["House Committee on Armed Services"],
+      "DHS": [],
+      "GSA": [],
+      "VA": []
+    },
+    "sources": [
+      "https://armedservices.house.gov/about/chairman-mike-rogers.htm",
+      "https://armedservices.house.gov/about/members.htm"
+    ],
+    "uncertainty_notes": [
+      "Same-name ambiguity: not Mike Rogers (Michigan). Sources used explicitly identify AL-03 / Alabama."
+    ]
+  },
+  "Mike Gallagher": {
+    "office": "Former U.S. Representative (R-WI-08; resigned effective 2024-04-25)",
+    "committees": [],
+    "committees_relevant_to_agencies": {
+      "DoD": [],
+      "DHS": [],
+      "GSA": [],
+      "VA": []
+    },
+    "sources": [
+      "https://clerk.house.gov/members/WI08/vacancy",
+      "https://clerk.house.gov/member_info/vacancies/vacant-office-press-release-WI08.pdf"
+    ],
+    "uncertainty_notes": [
+      "Not currently seated in Congress; therefore no current committee assignments.",
+      "Same-name ambiguity: 'Mike Gallagher' is a common name; sources above specifically reference the former Representative for WI-08."
+    ]
+  },
+  "Jerry Connolly": {
+    "office": "U.S. Representative (D-VA-11)",
+    "committees": [
+      "House Committee on Oversight and Government Reform (Ranking Member)",
+      "House Committee on Foreign Affairs"
+    ],
+    "committees_relevant_to_agencies": {
+      "DoD": [],
+      "DHS": [],
+      "GSA": ["House Committee on Oversight and Government Reform"],
+      "VA": []
+    },
+    "sources": [
+      "https://connolly.house.gov/legislation/committee-assignments.htm"
+    ],
+    "uncertainty_notes": [
+      "House committee name has been renamed across Congresses (e.g., Oversight and Accountability); Connolly page uses 'Oversight and Government Reform'."
+    ]
+  },
+  "James Comer": {
+    "office": "U.S. Representative (R-KY-01)",
+    "committees": [
+      "House Committee on Oversight and Accountability (Chairman)",
+      "House Committee on Education and Workforce"
+    ],
+    "committees_relevant_to_agencies": {
+      "DoD": [],
+      "DHS": [],
+      "GSA": ["House Committee on Oversight and Accountability"],
+      "VA": []
+    },
+    "sources": [
+      "https://comer.house.gov/committees"
+    ],
+    "uncertainty_notes": []
+  },
+  "Thom Tillis": {
+    "office": "U.S. Senator (R-NC)",
+    "committees": [
+      "Senate Committee on Finance",
+      "Senate Committee on Veterans’ Affairs",
+      "Senate Committee on Banking, Housing, and Urban Affairs",
+      "Senate Committee on the Judiciary"
+    ],
+    "committees_relevant_to_agencies": {
+      "DoD": [],
+      "DHS": [],
+      "GSA": [],
+      "VA": ["Senate Committee on Veterans’ Affairs"]
+    },
+    "sources": [
+      "https://www.tillis.senate.gov/about-thom"
+    ],
+    "uncertainty_notes": []
+  },
+  "Eric Schmitt": {
+    "office": "U.S. Senator (R-MO)",
+    "committees": [
+      "Senate Committee on Commerce, Science and Transportation",
+      "Senate Armed Services Committee",
+      "Joint Economic Committee",
+      "Senate Judiciary Committee"
+    ],
+    "committees_relevant_to_agencies": {
+      "DoD": ["Senate Armed Services Committee"],
+      "DHS": [],
+      "GSA": [],
+      "VA": []
+    },
+    "sources": [
+      "https://www.schmitt.senate.gov/media/press-releases/senator-schmitt-adds-judiciary-committee-in-new-congress-retains-commerce-armed-services-and-joint-economic-committees/"
+    ],
+    "uncertainty_notes": []
+  }
+}

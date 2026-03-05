@@ -1,19 +1,48 @@
 {
-  "attribution": {
-    "commit": "",
-    "pr": ""
-  },
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-rules-reminder.sh\"",
-            "timeout": 10
-          }
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Read",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash .claude/hooks/track-reads.sh",
+                        "timeout": 1000
+                    }
+                ]
+            },
+            {
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash .claude/hooks/post-edit-quiz.sh",
+                        "timeout": 5000
+                    }
+                ]
+            }
+        ],
+        "PreToolUse": [
+            {
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash .claude/hooks/gate-edit.sh",
+                        "timeout": 5000
+                    }
+                ]
+            },
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash .claude/hooks/worktree-coordination/block-cd-worktree.sh",
+                        "timeout": 3000
+                    }
+                ]
+            }
         ]
-      }
-    ]
-  }
+    }
 }

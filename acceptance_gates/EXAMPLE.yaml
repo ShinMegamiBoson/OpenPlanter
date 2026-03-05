@@ -1,0 +1,77 @@
+# Acceptance Gate Definition
+#
+# An acceptance gate defines an E2E-verifiable capability.
+# COMPLETE when acceptance criteria pass with real (non-mocked) integration.
+
+feature: example_feature
+planning_mode: guided  # autonomous | guided | detailed | iterative
+
+# === PROBLEM (What/Why) ===
+problem: |
+  Users need to do X but currently can't because Y.
+  This causes Z problems.
+
+# === DESIGN (How - Optional) ===
+# Use for medium+ features, skip for obvious implementations
+design:
+  approach: |
+    We will implement X by doing Y, using pattern Z.
+  key_decisions:
+    - "Decision 1 and brief rationale"
+    - "Decision 2 and brief rationale"
+  risks:
+    - "Known risk and mitigation"
+
+# === ACCEPTANCE CRITERIA ===
+# These MUST pass with real E2E tests (no mocks)
+acceptance_criteria:
+  - id: AC-1
+    scenario: "Happy path - basic usage"
+    category: happy_path
+    given:
+      - "User has valid credentials"
+      - "System is in normal state"
+    when: "User performs the action"
+    then:
+      - "Expected result occurs"
+      - "State is updated correctly"
+    locked: false  # Set to true after human review
+
+  - id: AC-2
+    scenario: "Error case - invalid input"
+    category: error_case
+    given:
+      - "User provides invalid input"
+    when: "User attempts the action"
+    then:
+      - "Appropriate error is returned"
+      - "State is unchanged"
+    locked: false
+
+  - id: AC-3
+    scenario: "Edge case - boundary condition"
+    category: edge_case
+    given:
+      - "System is at capacity limit"
+    when: "User attempts the action"
+    then:
+      - "Graceful handling occurs"
+    locked: false
+
+# === OUT OF SCOPE ===
+out_of_scope:
+  - "Feature X (will be separate gate)"
+  - "Edge case Y (accepted limitation)"
+
+# === IMPLEMENTATION MAPPING ===
+adrs: []  # e.g., [1, 3] for ADR-0001, ADR-0003
+
+code:
+  - src/example.py
+  - src/example_utils.py
+
+tests:
+  - tests/e2e/test_example_e2e.py
+
+docs:
+  - docs/architecture/current/example.md

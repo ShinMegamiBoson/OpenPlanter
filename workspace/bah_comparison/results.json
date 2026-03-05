@@ -1,0 +1,4860 @@
+{
+  "generated_at": "2026-02-23T01:31:52Z",
+  "subject": {
+    "name": "Booz Allen Hamilton Holding Corporation",
+    "ticker": "BAH",
+    "cik": "0001443646"
+  },
+  "sources": [
+    {
+      "name": "USAspending API",
+      "cache_paths": [
+        "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json"
+      ],
+      "notes": "Queries limited to FY2024 time_period (2023-10-01 to 2024-09-30) and award_type_codes A-D."
+    },
+    {
+      "name": "FEC OpenFEC API",
+      "cache_paths": [
+        "data/raw/fec/committee_C00709816.json",
+        "data/raw/fec/schedule_b_C00709816_2024_top100.json",
+        "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      ],
+      "notes": "Schedule A data filtered by exact employer string BOOZ ALLEN HAMILTON and is_individual=true for 2024 two-year transaction period."
+    },
+    {
+      "name": "SEC EDGAR submissions JSON",
+      "cache_paths": [
+        "data/raw/sec/submissions_CIK0001443646.json"
+      ]
+    },
+    {
+      "name": "Politician committee assignments",
+      "cache_paths": [
+        "politician_committee_relevance.json"
+      ]
+    },
+    {
+      "name": "SEC contract payment justifications PDF",
+      "cache_paths": [
+        "data/raw/web/sec_contract_payment_justifications_202507.pdf"
+      ],
+      "derived_paths": [
+        "data/derived/sec_contract_payment_justifications_202507_booz_allen.json"
+      ]
+    }
+  ],
+  "entity_map": [
+    {
+      "canonical": "BOOZ ALLEN HAMILTON",
+      "variant": "BOOZ ALLEN HAMILTON INC",
+      "context": "USAspending recipient name",
+      "recipient_uei": "JCBMLGPE6Z71",
+      "confidence": "confirmed"
+    },
+    {
+      "canonical": "BOOZ ALLEN HAMILTON INC. PAC",
+      "variant": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+      "context": "FEC committee",
+      "committee_id": "C00709816",
+      "confidence": "confirmed"
+    }
+  ],
+  "top_contracts": [
+    {
+      "rank": 1,
+      "award_id": "47QFCA21F0018",
+      "award_amount": 1379603153.12,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "JCBMLGPE6Z71",
+      "start_date": "2021-03-09",
+      "end_date": "2025-02-15",
+      "awarding_agency": "General Services Administration",
+      "funding_agency": "Department of Defense",
+      "description": "TASK ORDER (TO) 47QFCA21F0018 IS HEREBY AWARDED TO BOOZ ALLEN HAMILTON, INC. (BAH) TO PROVIDE ENTERPRISE LEVEL DATA TO THE OUSD(C), AND ITS STRATEGIC PARTNERS (I.E., DOD FOURTH ESTATE, DOD DEPARTMENTS, AND IC COMMUNITY).",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 0
+      }
+    },
+    {
+      "rank": 2,
+      "award_id": "36C10B21N10070021",
+      "award_amount": 1336349299.17,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "KHK6E1JW9C15",
+      "start_date": "2021-05-17",
+      "end_date": "2026-05-18",
+      "awarding_agency": "Department of Veterans Affairs",
+      "funding_agency": "Department of Veterans Affairs",
+      "description": "TRANSFORMATION TWENTY-ONE TOTAL TECHNOLOGY NEXT GENERATION (T4NG) TASK ORDER - BENEFITS INTEGRATED DELIVERY",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 1
+      }
+    },
+    {
+      "rank": 3,
+      "award_id": "36C10B21N10150056",
+      "award_amount": 1139008033.13,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "KHK6E1JW9C15",
+      "start_date": "2021-01-08",
+      "end_date": "2025-04-15",
+      "awarding_agency": "Department of Veterans Affairs",
+      "funding_agency": "Department of Veterans Affairs",
+      "description": "PRODUCT AND TECHNOLOGY ECOSYSTEM MANAGEMENT SERVICES (PTEMS)WHICH INCLUDES PRODUCT DELIVERY AND LIFECYCLE MANAGEMENT TO TRANSFORM VA BY TAPPING INTO EMERGING TECHNOLOGIES, CONNECTING DEVELOPERS WITH VA DATA, AND MAKING HUMAN CENTERED DESIGN (HCD).",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 2
+      }
+    },
+    {
+      "rank": 4,
+      "award_id": "47QFCA20F0014",
+      "award_amount": 1070585831.99,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "JCBMLGPE6Z71",
+      "start_date": "2020-06-26",
+      "end_date": "2025-06-25",
+      "awarding_agency": "General Services Administration",
+      "funding_agency": "Department of Defense",
+      "description": "THE PURPOSE OF THIS EFFORT IS TO ACQUIRE CONTRACTOR SERVICES TO PROVIDE REAL-TIME, COMPREHENSIVE THREAT ANALYSIS AND ASSESSMENT, TRAINING DEVELOPMENT AND DELIVERY, READINESS AND MODERNIZATION SUPPORT, AND LOGISTICS AND EQUIPMENT SERVICES.",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 3
+      }
+    },
+    {
+      "rank": 5,
+      "award_id": "47QFCA22F0047",
+      "award_amount": 1000052170.69,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "JCBMLGPE6Z71",
+      "start_date": "2022-09-06",
+      "end_date": "2026-09-05",
+      "awarding_agency": "General Services Administration",
+      "funding_agency": "Department of Defense",
+      "description": "TASK ORDER AWARD",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 4
+      }
+    },
+    {
+      "rank": 6,
+      "award_id": "36C10B22N10070023",
+      "award_amount": 859686306.3,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "KHK6E1JW9C15",
+      "start_date": "2022-09-28",
+      "end_date": "2026-01-15",
+      "awarding_agency": "Department of Veterans Affairs",
+      "funding_agency": "Department of Veterans Affairs",
+      "description": "NEW TO - EHRM PMO IO SUPPORT",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 5
+      }
+    },
+    {
+      "rank": 7,
+      "award_id": "36C10B19N10070015",
+      "award_amount": 826583511.86,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "KHK6E1JW9C15",
+      "start_date": "2019-05-17",
+      "end_date": "2025-01-22",
+      "awarding_agency": "Department of Veterans Affairs",
+      "funding_agency": "Department of Veterans Affairs",
+      "description": "IGF::OT::IGF  INFORMATION TECHNOLOGY OPERATIONS AND SERVICES TRANSFORMATION SUPPORT SERVICES",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 6
+      }
+    },
+    {
+      "rank": 8,
+      "award_id": "47QFRA20F0016",
+      "award_amount": 746401206.1,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "JCBMLGPE6Z71",
+      "start_date": "2020-03-01",
+      "end_date": "2024-04-30",
+      "awarding_agency": "General Services Administration",
+      "funding_agency": "Department of Homeland Security",
+      "description": "THE PURPOSE OF THIS MODIFICATION IS TO ACCEPT TRANSFER OF TASK ORDER (47QFCA18F0100) FROM FEDSIM TO GSA AAS REGION 8. THE NEW PIID IS 47QFRA20F0016.",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 7
+      }
+    },
+    {
+      "rank": 9,
+      "award_id": "VA11817F10070007",
+      "award_amount": 724839422.94,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "KHK6E1JW9C15",
+      "start_date": "2017-09-28",
+      "end_date": "2023-01-15",
+      "awarding_agency": "Department of Veterans Affairs",
+      "funding_agency": "Department of Veterans Affairs",
+      "description": "IGF::OT::IGF  TRANSFORMATION TWENTY-ONE TOTAL TECHNOLOGY NEXT GENERATION (T4NG) TASK ORDER FOR ELECTRONIC HEALTH RECORD MODERNIZATION PROGRAM MANAGEMENT OFFICE SUPPORT.",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 8
+      }
+    },
+    {
+      "rank": 10,
+      "award_id": "47QFNA21F0001",
+      "award_amount": 646439398.93,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "JCBMLGPE6Z71",
+      "start_date": "2020-11-01",
+      "end_date": "2025-12-03",
+      "awarding_agency": "General Services Administration",
+      "funding_agency": "Department of Defense",
+      "description": "THIS REPRESENTS AN ADMINISTRATIVE CONTINUANCE OF GSA FEDSIM TASK ORDER 47QFCA20F0009.  THIS EFFORT WILL BE ADMINISTERED BY GSA FAS REGION 1 UNDER TO NUMBER 47QFNA21F0001 BEGINNING ON THE EFFECTIVE AWARD DATE OF 1 NOVEMBER 2020.",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 9
+      }
+    },
+    {
+      "rank": 11,
+      "award_id": "36C10B21N10150057",
+      "award_amount": 637327009.01,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "KHK6E1JW9C15",
+      "start_date": "2021-09-30",
+      "end_date": "2027-01-23",
+      "awarding_agency": "Department of Veterans Affairs",
+      "funding_agency": "Department of Veterans Affairs",
+      "description": "THE CONTRACTOR SHALL PROVIDE SHIPPABLE PRODUCTS, OPERATIONS SUPPORT, AND SECURITY COMPLIANCE FOR THE HEALTH SERVICES PORTFOLIO.",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 10
+      }
+    },
+    {
+      "rank": 12,
+      "award_id": "47QFCA18F0114",
+      "award_amount": 598763970.52,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "JCBMLGPE6Z71",
+      "start_date": "2018-08-28",
+      "end_date": "2023-09-09",
+      "awarding_agency": "General Services Administration",
+      "funding_agency": "Department of Defense",
+      "description": "IGF::OT::IGF AWARDED ORDER.",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 11
+      }
+    },
+    {
+      "rank": 13,
+      "award_id": "47QFRA24F0006",
+      "award_amount": 581636600.79,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "JCBMLGPE6Z71",
+      "start_date": "2024-05-01",
+      "end_date": "2026-04-30",
+      "awarding_agency": "General Services Administration",
+      "funding_agency": "Department of Homeland Security",
+      "description": "CDM DEFEND GROUP BD  BRIDGE TASK ORDER",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 12
+      }
+    },
+    {
+      "rank": 14,
+      "award_id": "47QFCA20F0032",
+      "award_amount": 557551246.68,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "JCBMLGPE6Z71",
+      "start_date": "2020-05-08",
+      "end_date": "2025-11-07",
+      "awarding_agency": "General Services Administration",
+      "funding_agency": "Department of Defense",
+      "description": "THE JAIC REQUIRES OPEN ARCHITECTURE TECHNICAL SERVICES AND PRODUCTS (SOFTWARE AND/OR HARDWARE) ACROSS THE FULL SPECTRUM OF AI-ENABLED CAPABILITIES TO SUPPORT THE JWNMI.",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 13
+      }
+    },
+    {
+      "rank": 15,
+      "award_id": "47QFCA19F0029",
+      "award_amount": 497059053.01,
+      "recipient_name": "BOOZ ALLEN HAMILTON INC",
+      "recipient_uei": "JCBMLGPE6Z71",
+      "start_date": "2019-07-22",
+      "end_date": "2025-04-30",
+      "awarding_agency": "General Services Administration",
+      "funding_agency": "Department of Defense",
+      "description": "AWARD TASK ORDER.",
+      "source": {
+        "dataset": "usaspending_api_spending_by_award",
+        "path": "data/raw/usaspending/spending_by_award_BAH_FY2024_top100.json",
+        "result_index": 14
+      }
+    }
+  ],
+  "contract_agency_totals": [
+    {
+      "rank": 1,
+      "agency_name": "General Services Administration",
+      "amount": 2903055466.76,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 0
+      }
+    },
+    {
+      "rank": 2,
+      "agency_name": "Department of Defense",
+      "amount": 2675967636.44,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 1
+      }
+    },
+    {
+      "rank": 3,
+      "agency_name": "Department of Veterans Affairs",
+      "amount": 1392741371.82,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 2
+      }
+    },
+    {
+      "rank": 4,
+      "agency_name": "Department of Health and Human Services",
+      "amount": 472685532.31,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 3
+      }
+    },
+    {
+      "rank": 5,
+      "agency_name": "Department of the Treasury",
+      "amount": 189040047.43,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 4
+      }
+    },
+    {
+      "rank": 6,
+      "agency_name": "Department of Justice",
+      "amount": 120194123.5,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 5
+      }
+    },
+    {
+      "rank": 7,
+      "agency_name": "Department of Homeland Security",
+      "amount": 101788792.39,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 6
+      }
+    },
+    {
+      "rank": 8,
+      "agency_name": "Department of Labor",
+      "amount": 75345673.39,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 7
+      }
+    },
+    {
+      "rank": 9,
+      "agency_name": "National Aeronautics and Space Administration",
+      "amount": 72739701.89,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 8
+      }
+    },
+    {
+      "rank": 10,
+      "agency_name": "National Science Foundation",
+      "amount": 60768249.96,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 9
+      }
+    },
+    {
+      "rank": 11,
+      "agency_name": "Department of the Interior",
+      "amount": 60633623.06,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 10
+      }
+    },
+    {
+      "rank": 12,
+      "agency_name": "Department of Energy",
+      "amount": 59875429.69,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 11
+      }
+    },
+    {
+      "rank": 13,
+      "agency_name": "Department of Commerce",
+      "amount": 48759964.16,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 12
+      }
+    },
+    {
+      "rank": 14,
+      "agency_name": "Department of Transportation",
+      "amount": 45192317.0,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 13
+      }
+    },
+    {
+      "rank": 15,
+      "agency_name": "Securities and Exchange Commission",
+      "amount": 28363293.27,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 14
+      }
+    },
+    {
+      "rank": 16,
+      "agency_name": "Environmental Protection Agency",
+      "amount": 19836042.61,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 15
+      }
+    },
+    {
+      "rank": 17,
+      "agency_name": "Office of Personnel Management",
+      "amount": 2477952.0,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 16
+      }
+    },
+    {
+      "rank": 18,
+      "agency_name": "Social Security Administration",
+      "amount": 1336729.24,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 17
+      }
+    },
+    {
+      "rank": 19,
+      "agency_name": "Department of Agriculture",
+      "amount": 1215819.22,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 18
+      }
+    },
+    {
+      "rank": 20,
+      "agency_name": "Commodity Futures Trading Commission",
+      "amount": 403478.4,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 19
+      }
+    },
+    {
+      "rank": 21,
+      "agency_name": "Smithsonian Institution",
+      "amount": -799.93,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 20
+      }
+    },
+    {
+      "rank": 22,
+      "agency_name": "Agency for International Development",
+      "amount": -82178.54,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 21
+      }
+    },
+    {
+      "rank": 23,
+      "agency_name": "Pension Benefit Guaranty Corporation",
+      "amount": -765720.92,
+      "source": {
+        "dataset": "usaspending_api_spending_by_category_awarding_agency",
+        "path": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "result_index": 22
+      }
+    }
+  ],
+  "contributions": [
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-08-13",
+      "amount": 5000.0,
+      "recipient_name": "TESTER VICTORY FUND",
+      "recipient_committee_id": "C00547679",
+      "candidate_name": null,
+      "candidate_id": null,
+      "sub_id": "4100820242069283717",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410089684821581",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-06-05",
+      "amount": 5000.0,
+      "recipient_name": "SCHMITT FOR SENATE",
+      "recipient_committee_id": "C00775015",
+      "candidate_name": "SCHMITT, ERIC S. SEN.",
+      "candidate_id": "S2MO00544",
+      "sub_id": "4081320242011922649",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202407199661315136",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2023-02-23",
+      "amount": 5000.0,
+      "recipient_name": "JONI FOR IOWA",
+      "recipient_committee_id": "C00546788",
+      "candidate_name": "ERNST, JONI SEN.",
+      "candidate_id": "S4IA00129",
+      "sub_id": "4080320231762806112",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202307319584211811",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2023-03-14",
+      "amount": 5000.0,
+      "recipient_name": "MCHENRY FOR CONGRESS",
+      "recipient_committee_id": "C00393629",
+      "candidate_name": "MCHENRY, PATRICK REP.",
+      "candidate_id": "H4NC10047",
+      "sub_id": "4080320231762806111",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202307319584211810",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2023-03-14",
+      "amount": 5000.0,
+      "recipient_name": "NANCY MACE FOR CONGRESS",
+      "recipient_committee_id": "C00710103",
+      "candidate_name": "MACE, NANCY REP.",
+      "candidate_id": "H0SC01394",
+      "sub_id": "4080320231762806106",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202307319584211809",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2023-03-22",
+      "amount": 5000.0,
+      "recipient_name": "MIKE GALLAGHER FOR WISCONSIN",
+      "recipient_committee_id": "C00610212",
+      "candidate_name": "GALLAGHER, MIKE REP.",
+      "candidate_id": "H6WI08155",
+      "sub_id": "4080320231762806095",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202307319584211805",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2023-02-23",
+      "amount": 5000.0,
+      "recipient_name": "CITIZENS FOR TURNER",
+      "recipient_committee_id": "C00373001",
+      "candidate_name": "TURNER, MIKE REP.",
+      "candidate_id": "H2OH03067",
+      "sub_id": "4080320231762806080",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202307319584211800",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2023-03-22",
+      "amount": 5000.0,
+      "recipient_name": "DUTCH RUPPERSBERGER FOR CONGRESS COMMITTEE",
+      "recipient_committee_id": "C00376673",
+      "candidate_name": "RUPPERSBERGER, DUTCH REP. III",
+      "candidate_id": "H2MD02160",
+      "sub_id": "4080320231762806072",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202307319584211797",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2023-03-14",
+      "amount": 5000.0,
+      "recipient_name": "BERGMANFORCONGRESS",
+      "recipient_committee_id": "C00614214",
+      "candidate_name": "BERGMAN, JACK REP.",
+      "candidate_id": "H6MI01226",
+      "sub_id": "4080320231762806067",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202307319584211796",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-04-16",
+      "amount": 5000.0,
+      "recipient_name": "CONGRESSIONAL BLACK CAUCUS PAC",
+      "recipient_committee_id": "C00147512",
+      "candidate_name": null,
+      "candidate_id": null,
+      "sub_id": "4052120241950074195",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202405209648567284",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-04-16",
+      "amount": 5000.0,
+      "recipient_name": "REPUBLICAN MAINSTREET PARTNERSHIP PAC",
+      "recipient_committee_id": "C00165159",
+      "candidate_name": null,
+      "candidate_id": null,
+      "sub_id": "4052120241950074194",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202405209648567284",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-03-04",
+      "amount": 5000.0,
+      "recipient_name": "JONI FOR IOWA",
+      "recipient_committee_id": "C00546788",
+      "candidate_name": "ERNST, JONI SEN.",
+      "candidate_id": "S4IA00129",
+      "sub_id": "4051520241923682604",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202404199633498711",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2023-12-11",
+      "amount": 5000.0,
+      "recipient_name": "SCHATZ FOR SENATE",
+      "recipient_committee_id": "C00540732",
+      "candidate_name": "SCHATZ, BRIAN SEN.",
+      "candidate_id": "S4HI00136",
+      "sub_id": "4021420241824893883",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202401319619373640",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-09-13",
+      "amount": 4000.0,
+      "recipient_name": "COMMON GROUND PAC",
+      "recipient_committee_id": "C00538835",
+      "candidate_name": null,
+      "candidate_id": null,
+      "sub_id": "4112920241074003134",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410189698653818",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-09-13",
+      "amount": 4000.0,
+      "recipient_name": "FORWARD TOGETHER PAC",
+      "recipient_committee_id": "C00412791",
+      "candidate_name": null,
+      "candidate_id": null,
+      "sub_id": "4112920241074003133",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410189698653818",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-06-21",
+      "amount": 4000.0,
+      "recipient_name": "PETERS FOR MICHIGAN",
+      "recipient_committee_id": "C00437889",
+      "candidate_name": "PETERS, GARY SEN. SR.",
+      "candidate_id": "S4MI00355",
+      "sub_id": "4081320242011922650",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202407199661315136",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-06-27",
+      "amount": 4000.0,
+      "recipient_name": "NIKKI FOR CONGRESS",
+      "recipient_committee_id": "C00787812",
+      "candidate_name": "BUDZINSKI, NIKKI REP.",
+      "candidate_id": "H2IL13153",
+      "sub_id": "4081320242011922637",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202407199661315132",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2023-03-14",
+      "amount": 4000.0,
+      "recipient_name": "WICKER FOR SENATE",
+      "recipient_committee_id": "C00443218",
+      "candidate_name": "WICKER, ROGER SEN.",
+      "candidate_id": "S8MS00196",
+      "sub_id": "4080320231762806076",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202307319584211799",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-03-04",
+      "amount": 4000.0,
+      "recipient_name": "KEN CALVERT FOR CONGRESS COMMITTEE",
+      "recipient_committee_id": "C00257337",
+      "candidate_name": "CALVERT, KEN REP.",
+      "candidate_id": "H2CA37023",
+      "sub_id": "4051520241923682590",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202404199633498706",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2023-12-12",
+      "amount": 4000.0,
+      "recipient_name": "FORWARD TOGETHER PAC",
+      "recipient_committee_id": "C00412791",
+      "candidate_name": null,
+      "candidate_id": null,
+      "sub_id": "4021420241824893933",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202401319619373657",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2023-12-11",
+      "amount": 4000.0,
+      "recipient_name": "ALEX PADILLA FOR SENATE",
+      "recipient_committee_id": "C00765164",
+      "candidate_name": "PADILLA, ALEX SEN.",
+      "candidate_id": "S2CA00955",
+      "sub_id": "4021420241824893916",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202401319619373651",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2023-12-11",
+      "amount": 4000.0,
+      "recipient_name": "PEOPLE FOR PATTY MURRAY",
+      "recipient_committee_id": "C00257642",
+      "candidate_name": "MURRAY, PATTY SEN.",
+      "candidate_id": "S2WA00189",
+      "sub_id": "4021420241824893884",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202401319619373640",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-10-07",
+      "amount": 3000.0,
+      "recipient_name": "CONNOLLY FOR CONGRESS",
+      "recipient_committee_id": "C00445452",
+      "candidate_name": "CONNOLLY, GERRY REP.",
+      "candidate_id": "H8VA11062",
+      "sub_id": "4120520241074892759",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410249710387572",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-09-05",
+      "amount": 3000.0,
+      "recipient_name": "MIKE ROGERS FOR CONGRESS",
+      "recipient_committee_id": "C00367862",
+      "candidate_name": "ROGERS, MIKE REP.",
+      "candidate_id": "H2AL03032",
+      "sub_id": "4112920241074003128",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410189698653816",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-07-31",
+      "amount": 3000.0,
+      "recipient_name": "COMER FOR CONGRESS",
+      "recipient_committee_id": "C00588764",
+      "candidate_name": "COMER, JAMES REP. JR.",
+      "candidate_id": "H6KY01110",
+      "sub_id": "4082120242014613985",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202408209666653625",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-05-07",
+      "amount": 3000.0,
+      "recipient_name": "COMMITTEE TO RE-ELECT HENRY HANK JOHNSON",
+      "recipient_committee_id": "C00418293",
+      "candidate_name": "JOHNSON, HANK REP. JR.",
+      "candidate_id": "H6GA04129",
+      "sub_id": "4062420241962088218",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202406209649361166",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-03-04",
+      "amount": 3000.0,
+      "recipient_name": "ROB WITTMAN FOR CONGRESS",
+      "recipient_committee_id": "C00441014",
+      "candidate_name": "WITTMAN, ROB REP.",
+      "candidate_id": "H8VA01147",
+      "sub_id": "4051520241923682628",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202404199633498719",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-03-04",
+      "amount": 3000.0,
+      "recipient_name": "THOM TILLIS COMMITTEE",
+      "recipient_committee_id": "C00545772",
+      "candidate_name": "TILLIS, THOM SEN.",
+      "candidate_id": "S4NC00162",
+      "sub_id": "4051520241923682619",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202404199633498716",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-03-04",
+      "amount": 3000.0,
+      "recipient_name": "CASTOR FOR CONGRESS",
+      "recipient_committee_id": "C00410761",
+      "candidate_name": "CASTOR, KATHY REP.",
+      "candidate_id": "H6FL11126",
+      "sub_id": "4051520241923682612",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202404199633498713",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-03-04",
+      "amount": 3000.0,
+      "recipient_name": "FRIENDS OF JOHN THUNE",
+      "recipient_committee_id": "C00409581",
+      "candidate_name": "THUNE, JOHN SEN.",
+      "candidate_id": "S2SD00068",
+      "sub_id": "4051520241923682610",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202404199633498713",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-03-04",
+      "amount": 3000.0,
+      "recipient_name": "CITIZENS FOR TURNER",
+      "recipient_committee_id": "C00373001",
+      "candidate_name": "TURNER, MIKE REP.",
+      "candidate_id": "H2OH03067",
+      "sub_id": "4051520241923682605",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202404199633498711",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-03-19",
+      "amount": 3000.0,
+      "recipient_name": "NANCY MACE FOR CONGRESS",
+      "recipient_committee_id": "C00710103",
+      "candidate_name": "MACE, NANCY REP.",
+      "candidate_id": "H0SC01394",
+      "sub_id": "4051520241923682603",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202404199633498710",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-09-13",
+      "amount": 2500.0,
+      "recipient_name": "MIKE BOST FOR CONGRESS COMMITTEE",
+      "recipient_committee_id": "C00546499",
+      "candidate_name": "BOST, MIKE REP.",
+      "candidate_id": "H4IL12060",
+      "sub_id": "4112920241074003131",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410189698653817",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-08-13",
+      "amount": 2500.0,
+      "recipient_name": "LOBO PAC",
+      "recipient_committee_id": "C00497073",
+      "candidate_name": null,
+      "candidate_id": null,
+      "sub_id": "4100820242069283718",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410089684821581",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-07-31",
+      "amount": 2500.0,
+      "recipient_name": "BERGMANFORCONGRESS",
+      "recipient_committee_id": "C00614214",
+      "candidate_name": "BERGMAN, JACK REP.",
+      "candidate_id": "H6MI01226",
+      "sub_id": "4082120242014613981",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202408209666653623",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-07-31",
+      "amount": 2500.0,
+      "recipient_name": "ALEX PADILLA FOR SENATE",
+      "recipient_committee_id": "C00765164",
+      "candidate_name": "PADILLA, ALEX SEN.",
+      "candidate_id": "S2CA00955",
+      "sub_id": "4082120242014613978",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202408209666653622",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-07-31",
+      "amount": 2500.0,
+      "recipient_name": "PEOPLE FOR PATTY MURRAY",
+      "recipient_committee_id": "C00257642",
+      "candidate_name": "MURRAY, PATTY SEN.",
+      "candidate_id": "S2WA00189",
+      "sub_id": "4082120242014613976",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202408209666653622",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-06-05",
+      "amount": 2500.0,
+      "recipient_name": "KIGGANS FOR CONGRESS",
+      "recipient_committee_id": "C00776120",
+      "candidate_name": "KIGGANS, JEN REP.",
+      "candidate_id": "H2VA02064",
+      "sub_id": "4081320242011922647",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202407199661315135",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-06-21",
+      "amount": 2500.0,
+      "recipient_name": "SCHATZ FOR SENATE",
+      "recipient_committee_id": "C00540732",
+      "candidate_name": "SCHATZ, BRIAN SEN.",
+      "candidate_id": "S4HI00136",
+      "sub_id": "4081320242011922640",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202407199661315133",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "PAC_disbursement_contribution",
+      "committee_id": "C00709816",
+      "committee_name": {
+        "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+        "candidate_ids": [],
+        "city": "WASHINGTON",
+        "committee_id": "C00709816",
+        "committee_type": "Q",
+        "committee_type_full": "PAC - Qualified",
+        "cycle": 2024,
+        "cycles": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_activity": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "cycles_has_financial": [
+          2020,
+          2022,
+          2024,
+          2026
+        ],
+        "designation": "B",
+        "designation_full": "Lobbyist/Registrant PAC",
+        "filing_frequency": "M",
+        "first_f1_date": "2019-06-21",
+        "first_file_date": "2019-06-21",
+        "is_active": true,
+        "last_cycle_has_activity": 2026,
+        "last_cycle_has_financial": 2026,
+        "last_f1_date": "2021-09-02",
+        "last_file_date": "2026-02-20",
+        "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+        "organization_type": "C",
+        "organization_type_full": "Corporation",
+        "party": null,
+        "party_full": null,
+        "state": "DC",
+        "state_full": "District Of Columbia",
+        "street_1": "901 15TH STREET, N.W.",
+        "street_2": "SUITE 400",
+        "treasurer_name": "WRIGHT, JENNIFER M.",
+        "zip": "20005"
+      },
+      "disbursement_date": "2024-06-21",
+      "amount": 2500.0,
+      "recipient_name": "MIKE BOST FOR CONGRESS COMMITTEE",
+      "recipient_committee_id": "C00546499",
+      "candidate_name": "BOST, MIKE REP.",
+      "candidate_id": "H4IL12060",
+      "sub_id": "4081320242011922638",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202407199661315132",
+      "source": {
+        "dataset": "fec_schedule_b",
+        "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-10-31",
+      "amount": 15000.0,
+      "contributor_name": "ROZANSKI, HORATIO",
+      "contributor_occupation": "CEO",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00042366",
+      "candidate_id": null,
+      "sub_id": "4121620241076631165",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202412059731359058",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-10-31",
+      "amount": 15000.0,
+      "contributor_name": "ROZANSKI, HORACIO",
+      "contributor_occupation": "CEO",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00000935",
+      "candidate_id": null,
+      "sub_id": "4010720251127187577",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202412209739967772",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-11-01",
+      "amount": 15000.0,
+      "contributor_name": "ROZANSKI, HORACIO D.",
+      "contributor_occupation": "CEO",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00027466",
+      "candidate_id": null,
+      "sub_id": "4010620251126694046",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202412059721000198",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-09-12",
+      "amount": 5900.0,
+      "contributor_name": "ADOLPH, GERALD",
+      "contributor_occupation": "VICE PRESIDENT",
+      "contributor_employer": "BOOZ-ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00010603",
+      "candidate_id": null,
+      "sub_id": "4010220241813704066",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202312209599731958",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-08-01",
+      "amount": 5000.0,
+      "contributor_name": "HALE, ROBERT",
+      "contributor_occupation": "SENIOR EXECUTIVE ADVISOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00000935",
+      "candidate_id": null,
+      "sub_id": "4120520241074734277",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410319719870380",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-09-19",
+      "amount": 5000.0,
+      "contributor_name": "ROSSOTTI, CHARLES",
+      "contributor_occupation": "BOARD MEMBER",
+      "contributor_employer": "BOOZ ALLEN HAMILTON INC.",
+      "recipient_name": null,
+      "committee_id": "C00709816",
+      "candidate_id": null,
+      "sub_id": "4112920241073960220",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410189698653782",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-08-08",
+      "amount": 5000.0,
+      "contributor_name": "OWENS, BROOKE",
+      "contributor_occupation": "NATIONAL SECURITY ANALYST",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00845784",
+      "candidate_id": null,
+      "sub_id": "4111320241068118040",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410159686109713",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-09-11",
+      "amount": 5000.0,
+      "contributor_name": "HALE, ROBERT",
+      "contributor_occupation": "SENIOR EXECUTIVE ADVISOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00000935",
+      "candidate_id": null,
+      "sub_id": "4103120241015161596",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410259719638461",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-07-31",
+      "amount": 5000.0,
+      "contributor_name": "READ, RORY",
+      "contributor_occupation": "DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00709816",
+      "candidate_id": null,
+      "sub_id": "4082120242014597357",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202408209666653619",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-06-30",
+      "amount": 5000.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00492025",
+      "candidate_id": null,
+      "sub_id": "4071020241972705243",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202407109652757323",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-03-03",
+      "amount": 5000.0,
+      "contributor_name": "HALE, ROBERT",
+      "contributor_occupation": "SENIOR EXECUTIVE ADVISOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00000935",
+      "candidate_id": null,
+      "sub_id": "4070120241963119826",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202406279652517181",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-05-31",
+      "amount": 5000.0,
+      "contributor_name": "HALE, ROBERT",
+      "contributor_occupation": "SENIOR EXECUTIVE ADVISOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00000935",
+      "candidate_id": null,
+      "sub_id": "4062720241962961842",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202406279652532870",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-01-30",
+      "amount": 5000.0,
+      "contributor_name": "HALE, ROBERT",
+      "contributor_occupation": "SENIOR EXECUTIVE ADVISOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00000935",
+      "candidate_id": null,
+      "sub_id": "4062720241962935937",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202406279652507776",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-02-09",
+      "amount": 5000.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00404392",
+      "candidate_id": null,
+      "sub_id": "4042320241897521828",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202404159627658355",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-03-31",
+      "amount": 5000.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00634774",
+      "candidate_id": null,
+      "sub_id": "4041320231738891103",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202304139580377846",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-03-24",
+      "amount": 5000.0,
+      "contributor_name": "ROZANSKI, HORACIO D",
+      "contributor_occupation": "PRESIDENT",
+      "contributor_employer": "BOOZ ALLEN HAMILTON INC",
+      "recipient_name": null,
+      "committee_id": "C00833350",
+      "candidate_id": null,
+      "sub_id": "4041120251183644175",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202504119755212538",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-02-09",
+      "amount": 5000.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00390161",
+      "candidate_id": null,
+      "sub_id": "4032520241885653032",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202403209626998739",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-01-21",
+      "amount": 5000.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00705368",
+      "candidate_id": null,
+      "sub_id": "4022620241826694233",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202402209619818698",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-08-01",
+      "amount": 5000.0,
+      "contributor_name": "READ, RORY",
+      "contributor_occupation": "DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00709816",
+      "candidate_id": null,
+      "sub_id": "4021420241824793504",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202401319619373490",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-12-15",
+      "amount": 5000.0,
+      "contributor_name": "OWENS, BROOKE",
+      "contributor_occupation": "NATIONAL SECURITY ANALYST",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00845784",
+      "candidate_id": null,
+      "sub_id": "4021220241824548766",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202401319607708308",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-02-24",
+      "amount": 3400.0,
+      "contributor_name": "SILBEY, NEELY M.",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00567693",
+      "candidate_id": null,
+      "sub_id": "4080320231762752119",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202307319584249177",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-07-10",
+      "amount": 3306.33,
+      "contributor_name": "MINDE, GEORGE",
+      "contributor_occupation": "ASSOCIATE",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00264697",
+      "candidate_id": null,
+      "sub_id": "4022620251178957002",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202502259753908277",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-10-29",
+      "amount": 3300.0,
+      "contributor_name": "MINDE, GEORGE",
+      "contributor_occupation": "ASSOCIATE",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00862912",
+      "candidate_id": null,
+      "sub_id": "4123120241125250366",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202412059739506360",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-10-14",
+      "amount": 3300.0,
+      "contributor_name": "MINDE, GEORGE",
+      "contributor_occupation": "ASSOCIATE",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00864207",
+      "candidate_id": null,
+      "sub_id": "4121020241075370055",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410249713465345",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-10-16",
+      "amount": 3300.0,
+      "contributor_name": "MINDE, GEORGE",
+      "contributor_occupation": "ASSOCIATE",
+      "contributor_employer": "BOOZ, ALLEN, HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00850677",
+      "candidate_id": null,
+      "sub_id": "4112220241072357817",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410249710406081",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-08-17",
+      "amount": 3300.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00787812",
+      "candidate_id": null,
+      "sub_id": "4111420241068855683",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410159686533652",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-01-30",
+      "amount": 3300.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00376087",
+      "candidate_id": null,
+      "sub_id": "4111420241068557690",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410159685953599",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-01-30",
+      "amount": 3300.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00376087",
+      "candidate_id": null,
+      "sub_id": "4111420241068557637",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410159685953581",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-07-25",
+      "amount": 3300.0,
+      "contributor_name": "MINDE, GEORGE",
+      "contributor_occupation": "ASSOCIATE",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00412304",
+      "candidate_id": null,
+      "sub_id": "4103120241039313117",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410159686269870",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-09-15",
+      "amount": 3300.0,
+      "contributor_name": "MILLER, ANDREW",
+      "contributor_occupation": "SR.SOFTWARE SECURITY ENG",
+      "contributor_employer": "BOOZE ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00784249",
+      "candidate_id": null,
+      "sub_id": "4102620231807430873",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202310139597646686",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-08-29",
+      "amount": 3300.0,
+      "contributor_name": "CAPLES, MATTHEW",
+      "contributor_occupation": "CONSULTANT",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00703975",
+      "candidate_id": null,
+      "sub_id": "4102320242080361070",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410209700452549",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-07-11",
+      "amount": 3300.0,
+      "contributor_name": "ROY, KENNETH BRIDGER",
+      "contributor_occupation": "MANAGER",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00873893",
+      "candidate_id": null,
+      "sub_id": "4101820242073631590",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202410159688310120",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-02-17",
+      "amount": 3300.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00257337",
+      "candidate_id": null,
+      "sub_id": "4092120231802696221",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202309209597244728",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-02-17",
+      "amount": 3300.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00257337",
+      "candidate_id": null,
+      "sub_id": "4092120231802696219",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202309209597244728",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-10-28",
+      "amount": 3300.0,
+      "contributor_name": "MINDE, GEORGE",
+      "contributor_occupation": "ASSOCIATE",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00848648",
+      "candidate_id": null,
+      "sub_id": "4082020251219089014",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202508199789552943",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2024-06-26",
+      "amount": 3300.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00304709",
+      "candidate_id": null,
+      "sub_id": "4072420241978914774",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202407159653443568",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-06-21",
+      "amount": 3300.0,
+      "contributor_name": "SILBEY, ALEX",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00412304",
+      "candidate_id": null,
+      "sub_id": "4072120231756354435",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202307149582846575",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-04-20",
+      "amount": 3300.0,
+      "contributor_name": "MAUER, NATE",
+      "contributor_occupation": "MANAGEMENT CONSULTANT",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00838060",
+      "candidate_id": null,
+      "sub_id": "4071820231753773389",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202307149582641198",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-04-24",
+      "amount": 3300.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00639146",
+      "candidate_id": null,
+      "sub_id": "4062820241963046668",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202406289652541512",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    },
+    {
+      "type": "individual_contribution_employer_match",
+      "contribution_receipt_date": "2023-05-22",
+      "amount": 3300.0,
+      "contributor_name": "SILBEY, NEELY",
+      "contributor_occupation": "POLICY DIRECTOR",
+      "contributor_employer": "BOOZ ALLEN HAMILTON",
+      "recipient_name": null,
+      "committee_id": "C00639146",
+      "candidate_id": null,
+      "sub_id": "4062820241963046549",
+      "pdf_url": "https://docquery.fec.gov/cgi-bin/fecimg/?202406289652541472",
+      "source": {
+        "dataset": "fec_schedule_a",
+        "path": "data/raw/fec/schedule_a_employer_BOOZ_ALLEN_HAMILTON_2024_top100.json"
+      }
+    }
+  ],
+  "sec_items": [
+    {
+      "type": "edgar_filing",
+      "form": "8-K",
+      "filing_date": "2026-02-06",
+      "accession_number": "0001443646-26-000003",
+      "primary_document": "bah-20260206.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000144364626000003/bah-20260206.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "10-Q",
+      "filing_date": "2026-01-23",
+      "accession_number": "0001628280-26-003187",
+      "primary_document": "bah-20251231.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000162828026003187/bah-20251231.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "8-K",
+      "filing_date": "2026-01-23",
+      "accession_number": "0001628280-26-003186",
+      "primary_document": "bah-20260123.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000162828026003186/bah-20260123.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "8-K",
+      "filing_date": "2025-12-15",
+      "accession_number": "0001443646-25-000148",
+      "primary_document": "bah-20251211.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000144364625000148/bah-20251211.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "10-Q",
+      "filing_date": "2025-10-24",
+      "accession_number": "0001628280-25-046176",
+      "primary_document": "bah-20250930.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000162828025046176/bah-20250930.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "8-K",
+      "filing_date": "2025-10-24",
+      "accession_number": "0001628280-25-046175",
+      "primary_document": "bah-20251024.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000162828025046175/bah-20251024.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "8-K",
+      "filing_date": "2025-07-29",
+      "accession_number": "0001443646-25-000143",
+      "primary_document": "bah-20250723.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000144364625000143/bah-20250723.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "10-Q",
+      "filing_date": "2025-07-25",
+      "accession_number": "0001443646-25-000137",
+      "primary_document": "bah-20250630.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000144364625000137/bah-20250630.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "8-K",
+      "filing_date": "2025-07-25",
+      "accession_number": "0001443646-25-000136",
+      "primary_document": "bah-20250725.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000144364625000136/bah-20250725.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "DEF 14A",
+      "filing_date": "2025-06-12",
+      "accession_number": "0001443646-25-000112",
+      "primary_document": "bah-20250611.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000144364625000112/bah-20250611.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "8-K",
+      "filing_date": "2025-06-04",
+      "accession_number": "0001443646-25-000100",
+      "primary_document": "bah-20250602.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000144364625000100/bah-20250602.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "8-K",
+      "filing_date": "2025-05-28",
+      "accession_number": "0001443646-25-000080",
+      "primary_document": "bah-20250527.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000144364625000080/bah-20250527.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "10-K",
+      "filing_date": "2025-05-23",
+      "accession_number": "0001443646-25-000076",
+      "primary_document": "bah-20250331.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000144364625000076/bah-20250331.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "8-K",
+      "filing_date": "2025-05-23",
+      "accession_number": "0001443646-25-000075",
+      "primary_document": "bah-20250523.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000144364625000075/bah-20250523.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "edgar_filing",
+      "form": "8-K",
+      "filing_date": "2025-03-14",
+      "accession_number": "0001104659-25-023949",
+      "primary_document": "tm258057d5_8k.htm",
+      "url": "https://www.sec.gov/Archives/edgar/data/1443646/000110465925023949/tm258057d5_8k.htm",
+      "source": {
+        "dataset": "sec_submissions_json",
+        "path": "data/raw/sec/submissions_CIK0001443646.json"
+      }
+    },
+    {
+      "type": "keyword_scan_10q_html",
+      "file": "data/raw/sec/bah-20251231_10q.html",
+      "notes": "Keyword scan on cached 10-Q HTML did not find 'wells notice' or the phrase 'sec investigation'; occurrences of 'investigation' appear in general risk-factor context about government audits/investigations.",
+      "source": {
+        "path": "data/raw/sec/bah-20251231_10q.html"
+      }
+    },
+    {
+      "type": "sec_contract_payment_justifications_excerpt",
+      "pdf_url": "https://www.sec.gov/files/07012025-07312025-contract-payment-justifications.pdf",
+      "pdf_cached_path": "data/raw/web/sec_contract_payment_justifications_202507.pdf",
+      "derived_path": "data/derived/sec_contract_payment_justifications_202507_booz_allen.json",
+      "booz_allen_rows_count": 12,
+      "example_row": {
+        "vendor": "BOOZ ALLEN HAMILTON INC",
+        "contract_number": "50310220F0017",
+        "invoice_number": "517465_V153F",
+        "dates_tokens": [
+          "27-Jun-2025",
+          "01-JUL-2025",
+          "03-Jul-2025"
+        ],
+        "amount_paid": "51,177.84",
+        "comment_snippet": "This contract provides the SEC with comprehensive information security program support services, including support  for security operations, cyber threat analysis, compliance, governance, risk",
+        "raw_line": "BOOZ ALLEN HAMILTON INC 50310220F0017 517465_V153F SEC Baseline OP2 27-Jun-2025 01-JUL-2025 03-Jul-2025 $51,177.84This contract provides the SEC with comprehensive information security program support services, including support  for security operations, cyber threat analysis, compliance, governance, risk "
+      },
+      "source": {
+        "dataset": "sec_pdf",
+        "path": "data/raw/web/sec_contract_payment_justifications_202507.pdf"
+      }
+    }
+  ],
+  "cross_links": [
+    {
+      "link_type": "political_giving_to_agency_contextual",
+      "confidence": "possible",
+      "rationale": "PAC recipient name contains politician surname; politician committee assignments indicate oversight/jurisdiction relevance to listed agencies. This is not evidence of influence.",
+      "political_giving": {
+        "fec_committee_id": "C00709816",
+        "fec_committee_name": {
+          "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+          "candidate_ids": [],
+          "city": "WASHINGTON",
+          "committee_id": "C00709816",
+          "committee_type": "Q",
+          "committee_type_full": "PAC - Qualified",
+          "cycle": 2024,
+          "cycles": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_activity": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_financial": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "designation": "B",
+          "designation_full": "Lobbyist/Registrant PAC",
+          "filing_frequency": "M",
+          "first_f1_date": "2019-06-21",
+          "first_file_date": "2019-06-21",
+          "is_active": true,
+          "last_cycle_has_activity": 2026,
+          "last_cycle_has_financial": 2026,
+          "last_f1_date": "2021-09-02",
+          "last_file_date": "2026-02-20",
+          "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+          "organization_type": "C",
+          "organization_type_full": "Corporation",
+          "party": null,
+          "party_full": null,
+          "state": "DC",
+          "state_full": "District Of Columbia",
+          "street_1": "901 15TH STREET, N.W.",
+          "street_2": "SUITE 400",
+          "treasurer_name": "WRIGHT, JENNIFER M.",
+          "zip": "20005"
+        },
+        "recipient_name": "SCHMITT FOR SENATE",
+        "recipient_committee_id": "C00775015",
+        "candidate_name": "SCHMITT, ERIC S. SEN.",
+        "candidate_id": "S2MO00544",
+        "disbursement_amount": 5000.0,
+        "disbursement_date": "2024-06-05",
+        "fec_sub_id": "4081320242011922649",
+        "source": {
+          "dataset": "fec_schedule_b",
+          "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+        }
+      },
+      "politician_committee_evidence": {
+        "politician": "Eric Schmitt",
+        "office": "U.S. Senator (R-MO)",
+        "committees": [
+          "Senate Committee on Commerce, Science and Transportation",
+          "Senate Armed Services Committee",
+          "Joint Economic Committee",
+          "Senate Judiciary Committee"
+        ],
+        "committees_relevant_to_agencies": {
+          "DoD": [
+            "Senate Armed Services Committee"
+          ],
+          "DHS": [],
+          "GSA": [],
+          "VA": []
+        },
+        "sources": [
+          "https://www.schmitt.senate.gov/media/press-releases/senator-schmitt-adds-judiciary-committee-in-new-congress-retains-commerce-armed-services-and-joint-economic-committees/"
+        ]
+      },
+      "contracting_context": {
+        "top_awarding_agencies_source": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "agencies_context": [
+          "DoD"
+        ]
+      }
+    },
+    {
+      "link_type": "political_giving_to_agency_contextual",
+      "confidence": "possible",
+      "rationale": "PAC recipient name contains politician surname; politician committee assignments indicate oversight/jurisdiction relevance to listed agencies. This is not evidence of influence.",
+      "political_giving": {
+        "fec_committee_id": "C00709816",
+        "fec_committee_name": {
+          "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+          "candidate_ids": [],
+          "city": "WASHINGTON",
+          "committee_id": "C00709816",
+          "committee_type": "Q",
+          "committee_type_full": "PAC - Qualified",
+          "cycle": 2024,
+          "cycles": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_activity": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_financial": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "designation": "B",
+          "designation_full": "Lobbyist/Registrant PAC",
+          "filing_frequency": "M",
+          "first_f1_date": "2019-06-21",
+          "first_file_date": "2019-06-21",
+          "is_active": true,
+          "last_cycle_has_activity": 2026,
+          "last_cycle_has_financial": 2026,
+          "last_f1_date": "2021-09-02",
+          "last_file_date": "2026-02-20",
+          "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+          "organization_type": "C",
+          "organization_type_full": "Corporation",
+          "party": null,
+          "party_full": null,
+          "state": "DC",
+          "state_full": "District Of Columbia",
+          "street_1": "901 15TH STREET, N.W.",
+          "street_2": "SUITE 400",
+          "treasurer_name": "WRIGHT, JENNIFER M.",
+          "zip": "20005"
+        },
+        "recipient_name": "WICKER FOR SENATE",
+        "recipient_committee_id": "C00443218",
+        "candidate_name": "WICKER, ROGER SEN.",
+        "candidate_id": "S8MS00196",
+        "disbursement_amount": 4000.0,
+        "disbursement_date": "2023-03-14",
+        "fec_sub_id": "4080320231762806076",
+        "source": {
+          "dataset": "fec_schedule_b",
+          "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+        }
+      },
+      "politician_committee_evidence": {
+        "politician": "Roger Wicker",
+        "office": "U.S. Senator (R-MS)",
+        "committees": [
+          "Senate Committee on Armed Services",
+          "Senate Committee on Commerce, Science, and Transportation",
+          "Senate Committee on Environment and Public Works",
+          "Senate Committee on Rules and Administration",
+          "Commission on Security and Cooperation in Europe"
+        ],
+        "committees_relevant_to_agencies": {
+          "DoD": [
+            "Senate Committee on Armed Services"
+          ],
+          "DHS": [],
+          "GSA": [],
+          "VA": []
+        },
+        "sources": [
+          "https://www.wicker.senate.gov/committee-assignments"
+        ]
+      },
+      "contracting_context": {
+        "top_awarding_agencies_source": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "agencies_context": [
+          "DoD"
+        ]
+      }
+    },
+    {
+      "link_type": "political_giving_to_agency_contextual",
+      "confidence": "possible",
+      "rationale": "PAC recipient name contains politician surname; politician committee assignments indicate oversight/jurisdiction relevance to listed agencies. This is not evidence of influence.",
+      "political_giving": {
+        "fec_committee_id": "C00709816",
+        "fec_committee_name": {
+          "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+          "candidate_ids": [],
+          "city": "WASHINGTON",
+          "committee_id": "C00709816",
+          "committee_type": "Q",
+          "committee_type_full": "PAC - Qualified",
+          "cycle": 2024,
+          "cycles": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_activity": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_financial": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "designation": "B",
+          "designation_full": "Lobbyist/Registrant PAC",
+          "filing_frequency": "M",
+          "first_f1_date": "2019-06-21",
+          "first_file_date": "2019-06-21",
+          "is_active": true,
+          "last_cycle_has_activity": 2026,
+          "last_cycle_has_financial": 2026,
+          "last_f1_date": "2021-09-02",
+          "last_file_date": "2026-02-20",
+          "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+          "organization_type": "C",
+          "organization_type_full": "Corporation",
+          "party": null,
+          "party_full": null,
+          "state": "DC",
+          "state_full": "District Of Columbia",
+          "street_1": "901 15TH STREET, N.W.",
+          "street_2": "SUITE 400",
+          "treasurer_name": "WRIGHT, JENNIFER M.",
+          "zip": "20005"
+        },
+        "recipient_name": "CONNOLLY FOR CONGRESS",
+        "recipient_committee_id": "C00445452",
+        "candidate_name": "CONNOLLY, GERRY REP.",
+        "candidate_id": "H8VA11062",
+        "disbursement_amount": 3000.0,
+        "disbursement_date": "2024-10-07",
+        "fec_sub_id": "4120520241074892759",
+        "source": {
+          "dataset": "fec_schedule_b",
+          "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+        }
+      },
+      "politician_committee_evidence": {
+        "politician": "Jerry Connolly",
+        "office": "U.S. Representative (D-VA-11)",
+        "committees": [
+          "House Committee on Oversight and Government Reform (Ranking Member)",
+          "House Committee on Foreign Affairs"
+        ],
+        "committees_relevant_to_agencies": {
+          "DoD": [],
+          "DHS": [],
+          "GSA": [
+            "House Committee on Oversight and Government Reform"
+          ],
+          "VA": []
+        },
+        "sources": [
+          "https://connolly.house.gov/legislation/committee-assignments.htm"
+        ]
+      },
+      "contracting_context": {
+        "top_awarding_agencies_source": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "agencies_context": [
+          "GSA"
+        ]
+      }
+    },
+    {
+      "link_type": "political_giving_to_agency_contextual",
+      "confidence": "possible",
+      "rationale": "PAC recipient name contains politician surname; politician committee assignments indicate oversight/jurisdiction relevance to listed agencies. This is not evidence of influence.",
+      "political_giving": {
+        "fec_committee_id": "C00709816",
+        "fec_committee_name": {
+          "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+          "candidate_ids": [],
+          "city": "WASHINGTON",
+          "committee_id": "C00709816",
+          "committee_type": "Q",
+          "committee_type_full": "PAC - Qualified",
+          "cycle": 2024,
+          "cycles": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_activity": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_financial": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "designation": "B",
+          "designation_full": "Lobbyist/Registrant PAC",
+          "filing_frequency": "M",
+          "first_f1_date": "2019-06-21",
+          "first_file_date": "2019-06-21",
+          "is_active": true,
+          "last_cycle_has_activity": 2026,
+          "last_cycle_has_financial": 2026,
+          "last_f1_date": "2021-09-02",
+          "last_file_date": "2026-02-20",
+          "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+          "organization_type": "C",
+          "organization_type_full": "Corporation",
+          "party": null,
+          "party_full": null,
+          "state": "DC",
+          "state_full": "District Of Columbia",
+          "street_1": "901 15TH STREET, N.W.",
+          "street_2": "SUITE 400",
+          "treasurer_name": "WRIGHT, JENNIFER M.",
+          "zip": "20005"
+        },
+        "recipient_name": "COMER FOR CONGRESS",
+        "recipient_committee_id": "C00588764",
+        "candidate_name": "COMER, JAMES REP. JR.",
+        "candidate_id": "H6KY01110",
+        "disbursement_amount": 3000.0,
+        "disbursement_date": "2024-07-31",
+        "fec_sub_id": "4082120242014613985",
+        "source": {
+          "dataset": "fec_schedule_b",
+          "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+        }
+      },
+      "politician_committee_evidence": {
+        "politician": "James Comer",
+        "office": "U.S. Representative (R-KY-01)",
+        "committees": [
+          "House Committee on Oversight and Accountability (Chairman)",
+          "House Committee on Education and Workforce"
+        ],
+        "committees_relevant_to_agencies": {
+          "DoD": [],
+          "DHS": [],
+          "GSA": [
+            "House Committee on Oversight and Accountability"
+          ],
+          "VA": []
+        },
+        "sources": [
+          "https://comer.house.gov/committees"
+        ]
+      },
+      "contracting_context": {
+        "top_awarding_agencies_source": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "agencies_context": [
+          "GSA"
+        ]
+      }
+    },
+    {
+      "link_type": "political_giving_to_agency_contextual",
+      "confidence": "possible",
+      "rationale": "PAC recipient name contains politician surname; politician committee assignments indicate oversight/jurisdiction relevance to listed agencies. This is not evidence of influence.",
+      "political_giving": {
+        "fec_committee_id": "C00709816",
+        "fec_committee_name": {
+          "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+          "candidate_ids": [],
+          "city": "WASHINGTON",
+          "committee_id": "C00709816",
+          "committee_type": "Q",
+          "committee_type_full": "PAC - Qualified",
+          "cycle": 2024,
+          "cycles": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_activity": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_financial": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "designation": "B",
+          "designation_full": "Lobbyist/Registrant PAC",
+          "filing_frequency": "M",
+          "first_f1_date": "2019-06-21",
+          "first_file_date": "2019-06-21",
+          "is_active": true,
+          "last_cycle_has_activity": 2026,
+          "last_cycle_has_financial": 2026,
+          "last_f1_date": "2021-09-02",
+          "last_file_date": "2026-02-20",
+          "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+          "organization_type": "C",
+          "organization_type_full": "Corporation",
+          "party": null,
+          "party_full": null,
+          "state": "DC",
+          "state_full": "District Of Columbia",
+          "street_1": "901 15TH STREET, N.W.",
+          "street_2": "SUITE 400",
+          "treasurer_name": "WRIGHT, JENNIFER M.",
+          "zip": "20005"
+        },
+        "recipient_name": "THOM TILLIS COMMITTEE",
+        "recipient_committee_id": "C00545772",
+        "candidate_name": "TILLIS, THOM SEN.",
+        "candidate_id": "S4NC00162",
+        "disbursement_amount": 3000.0,
+        "disbursement_date": "2024-03-04",
+        "fec_sub_id": "4051520241923682619",
+        "source": {
+          "dataset": "fec_schedule_b",
+          "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+        }
+      },
+      "politician_committee_evidence": {
+        "politician": "Thom Tillis",
+        "office": "U.S. Senator (R-NC)",
+        "committees": [
+          "Senate Committee on Finance",
+          "Senate Committee on Veterans\u2019 Affairs",
+          "Senate Committee on Banking, Housing, and Urban Affairs",
+          "Senate Committee on the Judiciary"
+        ],
+        "committees_relevant_to_agencies": {
+          "DoD": [],
+          "DHS": [],
+          "GSA": [],
+          "VA": [
+            "Senate Committee on Veterans\u2019 Affairs"
+          ]
+        },
+        "sources": [
+          "https://www.tillis.senate.gov/about-thom"
+        ]
+      },
+      "contracting_context": {
+        "top_awarding_agencies_source": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "agencies_context": [
+          "VA"
+        ]
+      }
+    },
+    {
+      "link_type": "political_giving_to_agency_contextual",
+      "confidence": "possible",
+      "rationale": "PAC recipient name contains politician surname; politician committee assignments indicate oversight/jurisdiction relevance to listed agencies. This is not evidence of influence.",
+      "political_giving": {
+        "fec_committee_id": "C00709816",
+        "fec_committee_name": {
+          "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+          "candidate_ids": [],
+          "city": "WASHINGTON",
+          "committee_id": "C00709816",
+          "committee_type": "Q",
+          "committee_type_full": "PAC - Qualified",
+          "cycle": 2024,
+          "cycles": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_activity": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_financial": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "designation": "B",
+          "designation_full": "Lobbyist/Registrant PAC",
+          "filing_frequency": "M",
+          "first_f1_date": "2019-06-21",
+          "first_file_date": "2019-06-21",
+          "is_active": true,
+          "last_cycle_has_activity": 2026,
+          "last_cycle_has_financial": 2026,
+          "last_f1_date": "2021-09-02",
+          "last_file_date": "2026-02-20",
+          "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+          "organization_type": "C",
+          "organization_type_full": "Corporation",
+          "party": null,
+          "party_full": null,
+          "state": "DC",
+          "state_full": "District Of Columbia",
+          "street_1": "901 15TH STREET, N.W.",
+          "street_2": "SUITE 400",
+          "treasurer_name": "WRIGHT, JENNIFER M.",
+          "zip": "20005"
+        },
+        "recipient_name": "WICKER FOR SENATE",
+        "recipient_committee_id": "C00443218",
+        "candidate_name": "WICKER, ROGER SEN.",
+        "candidate_id": "S8MS00196",
+        "disbursement_amount": 2500.0,
+        "disbursement_date": "2024-03-04",
+        "fec_sub_id": "4051520241923682592",
+        "source": {
+          "dataset": "fec_schedule_b",
+          "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+        }
+      },
+      "politician_committee_evidence": {
+        "politician": "Roger Wicker",
+        "office": "U.S. Senator (R-MS)",
+        "committees": [
+          "Senate Committee on Armed Services",
+          "Senate Committee on Commerce, Science, and Transportation",
+          "Senate Committee on Environment and Public Works",
+          "Senate Committee on Rules and Administration",
+          "Commission on Security and Cooperation in Europe"
+        ],
+        "committees_relevant_to_agencies": {
+          "DoD": [
+            "Senate Committee on Armed Services"
+          ],
+          "DHS": [],
+          "GSA": [],
+          "VA": []
+        },
+        "sources": [
+          "https://www.wicker.senate.gov/committee-assignments"
+        ]
+      },
+      "contracting_context": {
+        "top_awarding_agencies_source": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "agencies_context": [
+          "DoD"
+        ]
+      }
+    },
+    {
+      "link_type": "political_giving_to_agency_contextual",
+      "confidence": "possible",
+      "rationale": "PAC recipient name contains politician surname; politician committee assignments indicate oversight/jurisdiction relevance to listed agencies. This is not evidence of influence.",
+      "political_giving": {
+        "fec_committee_id": "C00709816",
+        "fec_committee_name": {
+          "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+          "candidate_ids": [],
+          "city": "WASHINGTON",
+          "committee_id": "C00709816",
+          "committee_type": "Q",
+          "committee_type_full": "PAC - Qualified",
+          "cycle": 2024,
+          "cycles": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_activity": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_financial": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "designation": "B",
+          "designation_full": "Lobbyist/Registrant PAC",
+          "filing_frequency": "M",
+          "first_f1_date": "2019-06-21",
+          "first_file_date": "2019-06-21",
+          "is_active": true,
+          "last_cycle_has_activity": 2026,
+          "last_cycle_has_financial": 2026,
+          "last_f1_date": "2021-09-02",
+          "last_file_date": "2026-02-20",
+          "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+          "organization_type": "C",
+          "organization_type_full": "Corporation",
+          "party": null,
+          "party_full": null,
+          "state": "DC",
+          "state_full": "District Of Columbia",
+          "street_1": "901 15TH STREET, N.W.",
+          "street_2": "SUITE 400",
+          "treasurer_name": "WRIGHT, JENNIFER M.",
+          "zip": "20005"
+        },
+        "recipient_name": "THOM TILLIS COMMITTEE",
+        "recipient_committee_id": "C00545772",
+        "candidate_name": "TILLIS, THOM SEN.",
+        "candidate_id": "S4NC00162",
+        "disbursement_amount": 2000.0,
+        "disbursement_date": "2024-03-04",
+        "fec_sub_id": "4051520241923682620",
+        "source": {
+          "dataset": "fec_schedule_b",
+          "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+        }
+      },
+      "politician_committee_evidence": {
+        "politician": "Thom Tillis",
+        "office": "U.S. Senator (R-NC)",
+        "committees": [
+          "Senate Committee on Finance",
+          "Senate Committee on Veterans\u2019 Affairs",
+          "Senate Committee on Banking, Housing, and Urban Affairs",
+          "Senate Committee on the Judiciary"
+        ],
+        "committees_relevant_to_agencies": {
+          "DoD": [],
+          "DHS": [],
+          "GSA": [],
+          "VA": [
+            "Senate Committee on Veterans\u2019 Affairs"
+          ]
+        },
+        "sources": [
+          "https://www.tillis.senate.gov/about-thom"
+        ]
+      },
+      "contracting_context": {
+        "top_awarding_agencies_source": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "agencies_context": [
+          "VA"
+        ]
+      }
+    },
+    {
+      "link_type": "political_giving_to_agency_contextual",
+      "confidence": "possible",
+      "rationale": "PAC recipient name contains politician surname; politician committee assignments indicate oversight/jurisdiction relevance to listed agencies. This is not evidence of influence.",
+      "political_giving": {
+        "fec_committee_id": "C00709816",
+        "fec_committee_name": {
+          "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+          "candidate_ids": [],
+          "city": "WASHINGTON",
+          "committee_id": "C00709816",
+          "committee_type": "Q",
+          "committee_type_full": "PAC - Qualified",
+          "cycle": 2024,
+          "cycles": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_activity": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_financial": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "designation": "B",
+          "designation_full": "Lobbyist/Registrant PAC",
+          "filing_frequency": "M",
+          "first_f1_date": "2019-06-21",
+          "first_file_date": "2019-06-21",
+          "is_active": true,
+          "last_cycle_has_activity": 2026,
+          "last_cycle_has_financial": 2026,
+          "last_f1_date": "2021-09-02",
+          "last_file_date": "2026-02-20",
+          "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+          "organization_type": "C",
+          "organization_type_full": "Corporation",
+          "party": null,
+          "party_full": null,
+          "state": "DC",
+          "state_full": "District Of Columbia",
+          "street_1": "901 15TH STREET, N.W.",
+          "street_2": "SUITE 400",
+          "treasurer_name": "WRIGHT, JENNIFER M.",
+          "zip": "20005"
+        },
+        "recipient_name": "THOM TILLIS COMMITTEE",
+        "recipient_committee_id": "C00545772",
+        "candidate_name": "TILLIS, THOM SEN.",
+        "candidate_id": "S4NC00162",
+        "disbursement_amount": 1500.0,
+        "disbursement_date": "2023-03-14",
+        "fec_sub_id": "4080320231762806091",
+        "source": {
+          "dataset": "fec_schedule_b",
+          "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+        }
+      },
+      "politician_committee_evidence": {
+        "politician": "Thom Tillis",
+        "office": "U.S. Senator (R-NC)",
+        "committees": [
+          "Senate Committee on Finance",
+          "Senate Committee on Veterans\u2019 Affairs",
+          "Senate Committee on Banking, Housing, and Urban Affairs",
+          "Senate Committee on the Judiciary"
+        ],
+        "committees_relevant_to_agencies": {
+          "DoD": [],
+          "DHS": [],
+          "GSA": [],
+          "VA": [
+            "Senate Committee on Veterans\u2019 Affairs"
+          ]
+        },
+        "sources": [
+          "https://www.tillis.senate.gov/about-thom"
+        ]
+      },
+      "contracting_context": {
+        "top_awarding_agencies_source": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "agencies_context": [
+          "VA"
+        ]
+      }
+    },
+    {
+      "link_type": "political_giving_to_agency_contextual",
+      "confidence": "possible",
+      "rationale": "PAC recipient name contains politician surname; politician committee assignments indicate oversight/jurisdiction relevance to listed agencies. This is not evidence of influence.",
+      "political_giving": {
+        "fec_committee_id": "C00709816",
+        "fec_committee_name": {
+          "affiliated_committee_name": "BOOZ ALLEN HAMILTON INC.",
+          "candidate_ids": [],
+          "city": "WASHINGTON",
+          "committee_id": "C00709816",
+          "committee_type": "Q",
+          "committee_type_full": "PAC - Qualified",
+          "cycle": 2024,
+          "cycles": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_activity": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "cycles_has_financial": [
+            2020,
+            2022,
+            2024,
+            2026
+          ],
+          "designation": "B",
+          "designation_full": "Lobbyist/Registrant PAC",
+          "filing_frequency": "M",
+          "first_f1_date": "2019-06-21",
+          "first_file_date": "2019-06-21",
+          "is_active": true,
+          "last_cycle_has_activity": 2026,
+          "last_cycle_has_financial": 2026,
+          "last_f1_date": "2021-09-02",
+          "last_file_date": "2026-02-20",
+          "name": "BOOZ ALLEN HAMILTON INC. PAC (BOOZ ALLEN PAC)",
+          "organization_type": "C",
+          "organization_type_full": "Corporation",
+          "party": null,
+          "party_full": null,
+          "state": "DC",
+          "state_full": "District Of Columbia",
+          "street_1": "901 15TH STREET, N.W.",
+          "street_2": "SUITE 400",
+          "treasurer_name": "WRIGHT, JENNIFER M.",
+          "zip": "20005"
+        },
+        "recipient_name": "THOM TILLIS COMMITTEE",
+        "recipient_committee_id": "C00545772",
+        "candidate_name": "TILLIS, THOM SEN.",
+        "candidate_id": "S4NC00162",
+        "disbursement_amount": 1500.0,
+        "disbursement_date": "2023-09-18",
+        "fec_sub_id": "4021420241824893925",
+        "source": {
+          "dataset": "fec_schedule_b",
+          "path": "data/raw/fec/schedule_b_C00709816_2024_top100.json"
+        }
+      },
+      "politician_committee_evidence": {
+        "politician": "Thom Tillis",
+        "office": "U.S. Senator (R-NC)",
+        "committees": [
+          "Senate Committee on Finance",
+          "Senate Committee on Veterans\u2019 Affairs",
+          "Senate Committee on Banking, Housing, and Urban Affairs",
+          "Senate Committee on the Judiciary"
+        ],
+        "committees_relevant_to_agencies": {
+          "DoD": [],
+          "DHS": [],
+          "GSA": [],
+          "VA": [
+            "Senate Committee on Veterans\u2019 Affairs"
+          ]
+        },
+        "sources": [
+          "https://www.tillis.senate.gov/about-thom"
+        ]
+      },
+      "contracting_context": {
+        "top_awarding_agencies_source": "data/raw/usaspending/spending_by_category_awarding_agency_BAH_FY2024.json",
+        "agencies_context": [
+          "VA"
+        ]
+      }
+    }
+  ],
+  "limitations": [
+    "USAspending amounts from spending_by_award are award totals as returned by the endpoint and may not equal obligations within FY2024.",
+    "FEC individual contributions are filtered by exact employer string and will omit other Booz Allen variants (e.g., BOOZ-ALLEN, BOOZ ALLEN HAMILTON INC.).",
+    "Cross-links between contributions and agencies are contextual and based on committee oversight relevance; they do not demonstrate causality or improper influence."
+  ]
+}

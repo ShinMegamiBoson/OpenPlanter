@@ -1,0 +1,19 @@
+#!/bin/bash
+# Post-commit hook (portable meta-process template)
+# Reminds about unpushed commits.
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || exit 0
+REMOTE="origin/$BRANCH"
+
+if git rev-parse --verify "$REMOTE" >/dev/null 2>&1; then
+    UNPUSHED=$(git rev-list "$REMOTE..HEAD" --count 2>/dev/null || echo "0")
+    if [ "$UNPUSHED" -gt 0 ]; then
+        echo ""
+        echo "📤 $UNPUSHED unpushed commit(s) on $BRANCH"
+        echo "   Run: git push origin $BRANCH"
+    fi
+else
+    echo ""
+    echo "📤 Branch $BRANCH not yet on remote"
+    echo "   Run: git push -u origin $BRANCH"
+fi
