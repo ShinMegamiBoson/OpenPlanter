@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -231,8 +232,11 @@ impl CredentialStore {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         fs::write(&self.credentials_path, json)?;
         // Set permissions to owner-only (0o600)
-        let perms = fs::Permissions::from_mode(0o600);
-        let _ = fs::set_permissions(&self.credentials_path, perms);
+        #[cfg(unix)]
+        {
+            let perms = fs::Permissions::from_mode(0o600);
+            let _ = fs::set_permissions(&self.credentials_path, perms);
+        }
         Ok(())
     }
 }
@@ -274,8 +278,11 @@ impl UserCredentialStore {
         let json = serde_json::to_string_pretty(&payload)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         fs::write(&self.credentials_path, json)?;
-        let perms = fs::Permissions::from_mode(0o600);
-        let _ = fs::set_permissions(&self.credentials_path, perms);
+        #[cfg(unix)]
+        {
+            let perms = fs::Permissions::from_mode(0o600);
+            let _ = fs::set_permissions(&self.credentials_path, perms);
+        }
         Ok(())
     }
 }
