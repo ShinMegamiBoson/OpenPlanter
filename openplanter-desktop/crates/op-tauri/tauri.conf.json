@@ -26,7 +26,8 @@
     "active": true,
     "targets": ["dmg", "msi", "appimage"],
     "icon": [
-      "icons/icon.png"
+      "icons/icon.png",
+      "icons/icon.ico"
     ]
   },
   "plugins": {
