@@ -5,8 +5,8 @@ Spawns the full OpenPlanter recursive language model agent as a subprocess
 for complex investigations that exceed what the skill scripts can handle.
 The RLM agent uses tiered model delegation to minimize cost while maintaining
 investigation quality. Provider-agnostic: works with any LLM provider the
-agent supports (Anthropic, OpenAI, OpenRouter, Cerebras) — auto-inferred
-from the model name or set explicitly.
+agent supports (Anthropic, OpenAI, OpenRouter, Cerebras, Ollama) — auto-
+inferred from the model name or set explicitly.
 
 Use skill scripts when: 2 datasets, entity resolution + cross-referencing,
 no web research needed. Delegate to RLM when: 3+ datasets, web search
@@ -21,10 +21,18 @@ Provider auto-detection examples:
     gpt-*, o1-*, o3-* → openai
     */model-name      → openrouter (slash = OpenRouter routing)
     llama*cerebras    → cerebras
+    llama3*, qwen*    → ollama (local inference)
 
 API keys pass through environment variables (checked by the agent):
     ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, CEREBRAS_API_KEY
     (or OPENPLANTER_-prefixed variants)
+    Ollama requires no API key (local).
+
+Supports session management:
+    --resume SESSION_ID     Resume a saved investigation session
+    --list-sessions         List all saved sessions in workspace
+    --list-models           Show available models for the current provider
+    --reasoning-effort      Control reasoning depth (low/medium/high)
 
 Usage:
     python3 delegate_to_rlm.py --objective "Cross-reference campaign finance
@@ -33,6 +41,11 @@ Usage:
     python3 delegate_to_rlm.py --objective "..." --workspace DIR --model gpt-4o --provider openai
     python3 delegate_to_rlm.py --objective "..." --workspace DIR --model anthropic/claude-sonnet-4-5
     python3 delegate_to_rlm.py --objective "..." --workspace DIR --max-steps 30 --timeout 300
+    python3 delegate_to_rlm.py --resume abc123 --workspace DIR
+    python3 delegate_to_rlm.py --list-sessions --workspace DIR
+    python3 delegate_to_rlm.py --list-models --provider ollama
+    python3 delegate_to_rlm.py --objective "..." --workspace DIR --provider ollama --model llama3
+    python3 delegate_to_rlm.py --objective "..." --workspace DIR --reasoning-effort high
 """
 from __future__ import annotations
 
@@ -53,25 +66,35 @@ def find_agent_command() -> list[str] | None:
     """Locate the openplanter-agent command.
 
     Checks in order:
-    1. openplanter-agent on PATH (pip install -e)
-    2. python -m agent from known repo locations
+    1. openplanter-agent on PATH (pip install -e or cargo install)
+    2. python -m agent from known repo locations (local clone)
 
     When using ``-m agent``, sets ``_AGENT_REPO`` so subprocess.run
     can pass the correct ``cwd``.
+
+    Local clone paths include Tom's dev layout and common conventions.
     """
     global _AGENT_REPO
 
-    # Check PATH
+    # Check PATH first (pip install -e, cargo install, or npm global)
     if shutil.which("openplanter-agent"):
         _AGENT_REPO = None
         return ["openplanter-agent"]
 
-    # Check common repo locations
+    # Check common repo locations — local clone discovery
     candidates = [
         Path.home() / "Desktop" / "Programming" / "OpenPlanter",
         Path.home() / "OpenPlanter",
+        Path.home() / "src" / "OpenPlanter",
+        Path.home() / "projects" / "OpenPlanter",
         Path.cwd().parent,
+        Path.cwd().parent.parent,
     ]
+    # Also check OPENPLANTER_REPO env var for explicit override
+    env_repo = os.environ.get("OPENPLANTER_REPO")
+    if env_repo:
+        candidates.insert(0, Path(env_repo))
+
     for repo in candidates:
         if (repo / "agent" / "__main__.py").exists():
             _AGENT_REPO = repo
@@ -95,6 +118,9 @@ def _infer_provider(model: str) -> str:
         return "openai"
     if "cerebras" in lower:
         return "cerebras"
+    # Local models typically served via Ollama
+    if any(lower.startswith(p) for p in ("llama", "qwen", "mistral", "gemma", "phi", "deepseek")):
+        return "ollama"
     # Fall back to auto — let the agent figure it out
     return "auto"
 
@@ -108,22 +134,37 @@ def build_command(
     max_depth: int = 3,
     recursive: bool = True,
     acceptance_criteria: bool = True,
+    reasoning_effort: str | None = None,
+    resume_session: str | None = None,
 ) -> list[str]:
     """Build the openplanter-agent CLI command.
 
     Provider is auto-inferred from the model name if set to "auto".
     Supports any model/provider combination the OpenPlanter agent supports:
     Anthropic (claude-*), OpenAI (gpt-*, o1-*, o3-*), OpenRouter (org/model),
-    Cerebras (llama*cerebras, qwen-*).
+    Cerebras (llama*cerebras, qwen-*), Ollama (local models).
     """
     agent_cmd = find_agent_command()
     if not agent_cmd:
         raise RuntimeError(
             "openplanter-agent not found. Install with: "
-            "pip install -e /path/to/OpenPlanter"
+            "pip install -e /path/to/OpenPlanter\n"
+            "Or set OPENPLANTER_REPO=/path/to/repo"
         )
 
     resolved_provider = provider if provider != "auto" else _infer_provider(model)
+
+    # Resume mode: simpler command, just session ID + workspace
+    if resume_session:
+        cmd = [
+            *agent_cmd,
+            "--resume", resume_session,
+            "--workspace", workspace,
+            "--headless",
+        ]
+        if resolved_provider != "auto":
+            cmd.extend(["--provider", resolved_provider])
+        return cmd
 
     cmd = [
         *agent_cmd,
@@ -141,6 +182,8 @@ def build_command(
         cmd.append("--recursive")
     if acceptance_criteria:
         cmd.append("--acceptance-criteria")
+    if reasoning_effort:
+        cmd.extend(["--reasoning-effort", reasoning_effort])
     return cmd
 
 
@@ -230,6 +273,79 @@ def collect_output_files(workspace: Path) -> list[str]:
     return output_files
 
 
+def list_sessions(workspace: str) -> list[dict]:
+    """List saved investigation sessions in the workspace."""
+    ws = Path(workspace).resolve()
+    session_dir = ws / ".openplanter" / "sessions"
+    if not session_dir.exists():
+        return []
+
+    sessions = []
+    for d in sorted(session_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+        if not d.is_dir():
+            continue
+        entry: dict = {
+            "session_id": d.name,
+            "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(d.stat().st_ctime)),
+            "modified": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(d.stat().st_mtime)),
+        }
+        meta_path = d / "metadata.json"
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                entry["objective"] = meta.get("objective", "")
+                entry["status"] = meta.get("status", "")
+                entry["model"] = meta.get("model", "")
+                entry["steps_taken"] = meta.get("steps_taken", 0)
+            except (json.JSONDecodeError, OSError):
+                pass
+        sessions.append(entry)
+    return sessions
+
+
+def list_models(provider: str = "ollama", timeout: int = 10) -> list[dict]:
+    """List available models for a provider.
+
+    Currently supports Ollama (local) by querying its API.
+    For cloud providers, returns a curated list of recommended models.
+    """
+    if provider == "ollama":
+        import urllib.error
+        import urllib.request
+        ollama_url = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        try:
+            req = urllib.request.Request(
+                f"{ollama_url}/api/tags",
+                headers={"Accept": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            return [
+                {"name": m.get("name", ""), "size": m.get("size", 0)}
+                for m in data.get("models", [])
+            ]
+        except (urllib.error.URLError, OSError):
+            return [{"error": f"Ollama not reachable at {ollama_url}"}]
+
+    # Curated recommendations for cloud providers
+    recommendations = {
+        "anthropic": [
+            {"name": "claude-sonnet-4-5-20250929", "note": "Default, best cost/quality"},
+            {"name": "claude-opus-4-6", "note": "Maximum capability"},
+            {"name": "claude-haiku-4-5-20251001", "note": "Fast, low cost"},
+        ],
+        "openai": [
+            {"name": "gpt-4o", "note": "Default"},
+            {"name": "o3", "note": "Reasoning model"},
+        ],
+        "openrouter": [
+            {"name": "anthropic/claude-sonnet-4-5", "note": "Via OpenRouter"},
+            {"name": "meta-llama/llama-3.1-70b-instruct", "note": "Open-weight"},
+        ],
+    }
+    return recommendations.get(provider, [{"note": f"Unknown provider: {provider}"}])
+
+
 def run_delegation(
     objective: str,
     workspace: str,
@@ -240,6 +356,8 @@ def run_delegation(
     timeout: int = 600,
     recursive: bool = True,
     acceptance_criteria: bool = True,
+    reasoning_effort: str | None = None,
+    resume_session: str | None = None,
 ) -> dict:
     """Run the OpenPlanter agent and return structured results."""
     ws = Path(workspace).resolve()
@@ -254,6 +372,8 @@ def run_delegation(
             max_depth=max_depth,
             recursive=recursive,
             acceptance_criteria=acceptance_criteria,
+            reasoning_effort=reasoning_effort,
+            resume_session=resume_session,
         )
     except RuntimeError as e:
         return {
@@ -308,23 +428,24 @@ def main() -> None:
         description="Delegate an investigation to the OpenPlanter RLM agent"
     )
     parser.add_argument(
-        "--objective", required=True,
+        "--objective",
         help="Investigation objective (what the agent should accomplish)",
     )
     parser.add_argument(
-        "--workspace", required=True, type=Path,
+        "--workspace", type=Path,
         help="Path to investigation workspace directory",
     )
     parser.add_argument(
         "--model", default="claude-sonnet-4-5-20250929",
         help="Model name for the top-level agent. Provider is auto-inferred "
              "from the name: claude-* → anthropic, gpt-*/o1-* → openai, "
-             "org/model → openrouter. (default: claude-sonnet-4-5-20250929)",
+             "org/model → openrouter, llama*/qwen* → ollama. "
+             "(default: claude-sonnet-4-5-20250929)",
     )
     parser.add_argument(
         "--provider", default="auto",
-        help="LLM provider: auto, anthropic, openai, openrouter, cerebras. "
-             "'auto' infers from the model name. (default: auto)",
+        help="LLM provider: auto, anthropic, openai, openrouter, cerebras, "
+             "ollama. 'auto' infers from the model name. (default: auto)",
     )
     parser.add_argument(
         "--max-steps", type=int, default=50,
@@ -347,11 +468,28 @@ def main() -> None:
         help="Disable acceptance criteria judging",
     )
     parser.add_argument(
+        "--reasoning-effort", choices=["low", "medium", "high"],
+        help="Control reasoning depth (low/medium/high)",
+    )
+    parser.add_argument(
+        "--resume", dest="resume_session",
+        help="Resume a saved investigation session by ID",
+    )
+    parser.add_argument(
+        "--list-sessions", action="store_true",
+        help="List all saved investigation sessions in workspace",
+    )
+    parser.add_argument(
+        "--list-models", action="store_true",
+        help="Show available models for the current provider",
+    )
+    parser.add_argument(
         "--check", action="store_true",
         help="Check if openplanter-agent is available and exit",
     )
     args = parser.parse_args()
 
+    # Info-only commands (no workspace/objective required)
     if args.check:
         cmd = find_agent_command()
         if cmd:
@@ -360,6 +498,47 @@ def main() -> None:
             print(json.dumps({"available": False, "error": "openplanter-agent not found"}))
             sys.exit(1)
         return
+
+    if args.list_models:
+        provider = args.provider if args.provider != "auto" else _infer_provider(args.model)
+        models = list_models(provider)
+        print(json.dumps(models, indent=2))
+        return
+
+    if args.list_sessions:
+        if not args.workspace:
+            print(json.dumps({"error": "--workspace required for --list-sessions"}))
+            sys.exit(1)
+        sessions = list_sessions(str(args.workspace.resolve()))
+        print(json.dumps(sessions, indent=2))
+        return
+
+    # Resume mode: objective not required
+    if args.resume_session:
+        if not args.workspace:
+            print(json.dumps({"error": "--workspace required for --resume"}))
+            sys.exit(1)
+        workspace = args.workspace.resolve()
+        if not workspace.exists():
+            print(json.dumps({"status": "error", "error": f"Workspace does not exist: {workspace}"}))
+            sys.exit(1)
+        result = run_delegation(
+            objective="",  # Not used in resume mode
+            workspace=str(workspace),
+            model=args.model,
+            provider=args.provider,
+            timeout=args.timeout,
+            resume_session=args.resume_session,
+        )
+        print(json.dumps(result, indent=2))
+        sys.exit(0 if result["status"] == "success" else 1)
+        return
+
+    # Standard delegation: objective + workspace required
+    if not args.objective:
+        parser.error("--objective is required (unless using --resume, --list-sessions, or --list-models)")
+    if not args.workspace:
+        parser.error("--workspace is required")
 
     workspace = args.workspace.resolve()
     if not workspace.exists():
@@ -378,6 +557,7 @@ def main() -> None:
         timeout=args.timeout,
         recursive=not args.no_recursive,
         acceptance_criteria=not args.no_acceptance_criteria,
+        reasoning_effort=args.reasoning_effort,
     )
     print(json.dumps(result, indent=2))
     sys.exit(0 if result["status"] == "success" else 1)

@@ -169,8 +169,8 @@ The skill operates in three modes based on investigation complexity:
 | Mode | When | Scripts |
 |------|------|---------|
 | **Methodology Only** | Simple tasks, 1-2 datasets, local analysis | `entity_resolver.py`, `cross_reference.py`, `evidence_chain.py`, `confidence_scorer.py` |
-| **Web-Enriched** | Need external data, public records, entity enrichment | Above + `dataset_fetcher.py`, `web_enrich.py`, `scrape_records.py` |
-| **Full RLM Delegation** | Complex multi-step investigations, 3+ datasets, 20+ reasoning steps | `delegate_to_rlm.py` → full OpenPlanter agent (provider-agnostic) |
+| **Web-Enriched** | Need external data, public records, entity enrichment | Above + `dataset_fetcher.py`, `web_enrich.py`, `scrape_records.py`, + 6 specialized fetchers |
+| **Full RLM Delegation** | Complex multi-step investigations, 3+ datasets, 20+ reasoning steps | `delegate_to_rlm.py` → full OpenPlanter agent (provider-agnostic, session-resumable) |
 
 **One-command pipeline** for any mode: `investigate.py /path/to/workspace --phases all`
 
@@ -188,13 +188,28 @@ python3 scripts/delegate_to_rlm.py --objective "..." --workspace DIR --model gpt
 # OpenRouter (any model via slash routing)
 python3 scripts/delegate_to_rlm.py --objective "..." --workspace DIR --model anthropic/claude-sonnet-4-5
 
+# Ollama (local inference, air-gapped)
+python3 scripts/delegate_to_rlm.py --objective "..." --workspace DIR --provider ollama --model llama3
+
 # Cerebras (model name doesn't contain "cerebras", so specify --provider)
 python3 scripts/delegate_to_rlm.py --objective "..." --workspace DIR --model qwen-3-235b-a22b-instruct-2507 --provider cerebras
+
+# Resume a previous investigation session
+python3 scripts/delegate_to_rlm.py --resume abc123 --workspace DIR
+
+# List saved sessions
+python3 scripts/delegate_to_rlm.py --list-sessions --workspace DIR
+
+# Control reasoning depth
+python3 scripts/delegate_to_rlm.py --objective "..." --workspace DIR --reasoning-effort high
+
+# List available models for a provider
+python3 scripts/delegate_to_rlm.py --list-models --provider ollama
 ```
 
-Provider auto-detection works for model names containing the provider name (e.g., `claude-*` → anthropic, `gpt-*` → openai, `org/model` → openrouter, `*cerebras*` → cerebras). For models without a recognizable prefix, pass `--provider` explicitly.
+Provider auto-detection: `claude-*` → anthropic, `gpt-*/o1-*/o3-*` → openai, `org/model` → openrouter, `*cerebras*` → cerebras, `llama*/qwen*/mistral*/gemma*` → ollama. For models without a recognizable prefix, pass `--provider` explicitly.
 
-API keys pass through environment variables: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `CEREBRAS_API_KEY` (or `OPENPLANTER_`-prefixed variants).
+API keys pass through environment variables: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `CEREBRAS_API_KEY` (or `OPENPLANTER_`-prefixed variants). Ollama requires no API key. Set `OPENPLANTER_REPO` to override local clone discovery.
 
 ## Scripts Reference
 
@@ -214,16 +229,47 @@ All scripts use Python stdlib only. Zero external dependencies. External tools (
 
 | Script | Purpose | Example |
 |--------|---------|---------|
-| `dataset_fetcher.py` | Download bulk public datasets (SEC, FEC, OFAC, LDA) | `python3 scripts/dataset_fetcher.py /tmp/investigation --sources sec,fec` |
+| `dataset_fetcher.py` | Download bulk public datasets (SEC, FEC, OFAC, LDA, OpenSanctions) | `python3 scripts/dataset_fetcher.py /tmp/investigation --sources sec,fec` |
 | `web_enrich.py` | Enrich entities via Exa neural search | `python3 scripts/web_enrich.py /tmp/investigation --categories company,news` |
 | `scrape_records.py` | Fetch entity records from government APIs | `python3 scripts/scrape_records.py /tmp/investigation --entities "Acme Corp" --sources sec,fec` |
+
+### Specialized Data Fetchers
+
+Individual scripts for targeted government and public data sources. All use Python stdlib only, produce JSON + provenance sidecar, and support `--dry-run` and `--list`.
+
+| Script | Data Source | Auth | Key Linking Fields |
+|--------|-------------|------|--------------------|
+| `fetch_census.py` | US Census Bureau ACS 5-Year | Optional `CENSUS_API_KEY` | Geography (state, county, ZIP) |
+| `fetch_epa.py` | EPA ECHO Facility Search | None | `registry_id`, lat/lon, SIC/NAICS |
+| `fetch_icij.py` | ICIJ Offshore Leaks Database | None | `icij_id`, entity name, jurisdiction |
+| `fetch_osha.py` | OSHA DOL Enforcement | None | `activity_nr`, `estab_name`, SIC |
+| `fetch_propublica990.py` | ProPublica Nonprofit Explorer (IRS 990) | None | `ein`, org name, NTEE code |
+| `fetch_sam.py` | SAM.gov Entity Registration | `SAM_GOV_API_KEY` | UEI, CAGE code, NAICS |
+
+**Usage pattern** (all fetchers follow the same interface):
+```bash
+python3 scripts/fetch_sam.py /tmp/investigation --query "Raytheon" --state CT
+python3 scripts/fetch_epa.py /tmp/investigation --state TX --query "Refinery"
+python3 scripts/fetch_icij.py /tmp/investigation --entity "Mossack" --type intermediary
+python3 scripts/fetch_propublica990.py /tmp/investigation --ein 237327340
+python3 scripts/fetch_census.py /tmp/investigation --state 36 --county "*"
+python3 scripts/fetch_osha.py /tmp/investigation --sic 2911 --state TX
+```
 
 ### Orchestration & Delegation
 
 | Script | Purpose | Example |
 |--------|---------|---------|
 | `investigate.py` | Run full pipeline end-to-end | `python3 scripts/investigate.py /tmp/investigation --phases all` |
-| `delegate_to_rlm.py` | Spawn full OpenPlanter agent (provider-agnostic) | `python3 scripts/delegate_to_rlm.py --objective "..." --workspace DIR` |
+| `delegate_to_rlm.py` | Spawn full OpenPlanter agent (session-resumable, provider-agnostic) | `python3 scripts/delegate_to_rlm.py --objective "..." --workspace DIR` |
+
+### Knowledge Graph
+
+| Script | Purpose | Example |
+|--------|---------|---------|
+| `wiki_graph_query.py` | Query OpenPlanter wiki knowledge graph (read-only) | `python3 scripts/wiki_graph_query.py /tmp/investigation --entity "Raytheon" --neighbors` |
+
+Supports entity lookup, neighbor traversal, BFS path finding, full-text search, and graph statistics. Reads NetworkX node-link JSON graphs produced by OpenPlanter's wiki_graph.py during delegated investigations.
 
 ## Skill Integration
 
@@ -235,25 +281,39 @@ OpenPlanter methodology composes with existing Claude Code skills:
 | Scrape JS-heavy public records portals | `Firecrawl` | `firecrawl scrape URL --only-main-content` |
 | Structured government APIs | Built-in | `scrape_records.py` queries SEC, FEC, LDA, USAspending via `urllib` |
 | Bulk dataset downloads | Built-in | `dataset_fetcher.py` fetches SEC, FEC, OFAC, OpenSanctions, LDA |
+| Defense contractor lookup | Built-in | `fetch_sam.py` queries SAM.gov by name/UEI/CAGE/NAICS |
+| Environmental compliance | Built-in | `fetch_epa.py` queries EPA ECHO for facilities + violations |
+| Nonprofit/dark money flows | Built-in | `fetch_propublica990.py` queries IRS 990 data via ProPublica |
+| Offshore entity chains | Built-in | `fetch_icij.py` queries Panama/Paradise/Pandora Papers |
+| Workplace safety records | Built-in | `fetch_osha.py` queries DOL enforcement data |
+| Demographics/economic context | Built-in | `fetch_census.py` queries Census ACS 5-Year estimates |
+| Knowledge graph query | Built-in | `wiki_graph_query.py` reads OpenPlanter wiki graphs |
 | Local RAG over large document corpora | `rlama` | Create collection from `datasets/`, query semantically |
 | Parallel investigation threads | `minoan-swarm` | Elat Research Swarm with domain-split investigators |
 | Academic/legal research | `academic-research` | Case law, regulatory filings, citations |
 | Twitter/social media OSINT | `twitter` | `x-search` for entity mentions, `bird` for profile data |
+| Daimonic timeline curation | `worldwarwatcher-update` | Mazkir ha-Milḥamat entity resolution for non-military domains |
 
 ### US Public Records Datasets
 
 Key datasets and their linking keys for cross-reference investigations:
 
-| Dataset | Access | Linking Key | Format |
-|---|---|---|---|
-| FEC Campaign Finance | `api.open.fec.gov` + bulk CSV | `committee_id`, contributor name | CSV, JSON API |
-| Senate LDA Lobbying | `lda.senate.gov/api` | Registrant name, Client name | JSON API, XML |
-| SEC EDGAR | `data.sec.gov` + EFTS search | `CIK` (Central Index Key) | JSON, XBRL |
-| State Corporate Registries | Per-state (or OpenCorporates API) | State registration number, registered agent | Varies |
-| Property Records | County-level (or ATTOM/CoreLogic) | Parcel ID (APN), owner name | CSV, shapefile |
-| OFAC Sanctions | `treasury.gov/ofac` (or OpenSanctions) | Name + aliases, identifiers | CSV, XML |
+| Dataset | Access | Linking Key | Script | Format |
+|---|---|---|---|---|
+| FEC Campaign Finance | `api.open.fec.gov` + bulk CSV | `committee_id`, contributor name | `dataset_fetcher.py` | CSV, JSON API |
+| Senate LDA Lobbying | `lda.senate.gov/api` | Registrant name, Client name | `dataset_fetcher.py` | JSON API, XML |
+| SEC EDGAR | `data.sec.gov` + EFTS search | `CIK` (Central Index Key) | `dataset_fetcher.py` | JSON, XBRL |
+| SAM.gov Entity Registration | `api.sam.gov` | UEI, CAGE code, NAICS | `fetch_sam.py` | JSON API |
+| EPA ECHO Facilities | `echodata.epa.gov` | FRS Registry ID, lat/lon | `fetch_epa.py` | JSON API |
+| ProPublica 990 (IRS) | `projects.propublica.org` | EIN, org name | `fetch_propublica990.py` | JSON API |
+| ICIJ Offshore Leaks | `offshoreleaks.icij.org` | Node ID, entity name, jurisdiction | `fetch_icij.py` | JSON API |
+| OSHA Inspections | `enforcedata.dol.gov` | Activity number, SIC code | `fetch_osha.py` | JSON API |
+| US Census ACS | `api.census.gov` | State/county/ZIP FIPS | `fetch_census.py` | JSON API |
+| OFAC Sanctions | `treasury.gov/ofac` (or OpenSanctions) | Name + aliases, identifiers | `dataset_fetcher.py` | CSV, XML |
+| State Corporate Registries | Per-state (or OpenCorporates API) | State registration number | — | Varies |
+| Property Records | County-level (or ATTOM/CoreLogic) | Parcel ID (APN), owner name | — | CSV, shapefile |
 
-**Cross-dataset linking challenge**: No universal corporate ID exists in US public records. The standard approach: normalize names, fuzzy match, filter by jurisdiction/address, then anchor on known IDs (CIK, committee_id, EIN) when available.
+**Cross-dataset linking challenge**: No universal corporate ID exists in US public records. The standard approach: normalize names, fuzzy match, filter by jurisdiction/address, then anchor on known IDs (CIK, committee_id, EIN, UEI, CAGE, FRS ID) when available.
 
 ## Multi-Agent Investigation
 
@@ -272,7 +332,7 @@ For complex scenarios with multiple possible explanations, apply Analysis of Com
 - `references/investigation-methodology.md` — Full epistemic framework, ACH procedure, Key Assumptions Check, multi-agent swarm template
 - `references/entity-resolution-patterns.md` — Complete normalization tables, suffix maps, address canonicalization
 - `references/output-templates.md` — JSON/Markdown templates for investigation plans, summaries, and evidence chains
-- `references/public-records-apis.md` — API endpoints, auth, rate limits, linking keys for SEC, FEC, LDA, OFAC, USAspending
+- `references/public-records-apis.md` — API endpoints, auth, rate limits, linking keys for SEC, FEC, LDA, OFAC, USAspending, Census, EPA, ICIJ, OSHA, ProPublica 990, SAM.gov
 
 ## OpenPlanter Tool to Claude Code Mapping
 
@@ -290,5 +350,13 @@ For complex scenarios with multiple possible explanations, apply Analysis of Com
 | `subtask` | `Task` tool (minoan-swarm) |
 | `execute` | `Task` tool (haiku model) |
 | `think` | Native reasoning |
+| `wiki_graph` | `wiki_graph_query.py` (read-only) |
+| `fetch_sam` | `fetch_sam.py` |
+| `fetch_epa` | `fetch_epa.py` |
+| `fetch_icij` | `fetch_icij.py` |
+| `fetch_osha` | `fetch_osha.py` |
+| `fetch_990` | `fetch_propublica990.py` |
+| `fetch_census` | `fetch_census.py` |
+| `resume_session` | `delegate_to_rlm.py --resume` |
 
 No capability gap. The methodology is what matters, not the tooling.
