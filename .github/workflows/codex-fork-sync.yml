@@ -1,0 +1,139 @@
+name: Codex Fork Sync
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Run even if upstream/main has not moved
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: codex-fork-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out fork
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Ensure Codex secret exists
+        if: ${{ secrets.OPENAI_API_KEY == '' }}
+        run: |
+          echo "Set the OPENAI_API_KEY repository secret to enable Codex fork sync." >> "$GITHUB_STEP_SUMMARY"
+          echo "Missing OPENAI_API_KEY secret." >&2
+          exit 1
+
+      - name: Prepare git state
+        id: prepare
+        run: |
+          set -euo pipefail
+
+          git remote add upstream https://github.com/ShinMegamiBoson/OpenPlanter.git 2>/dev/null || \
+            git remote set-url upstream https://github.com/ShinMegamiBoson/OpenPlanter.git
+
+          git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          git fetch --prune --no-tags upstream '+refs/heads/*:refs/remotes/upstream/*'
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          upstream_sha="$(git rev-parse upstream/main)"
+          fork_sha="$(git rev-parse origin/main)"
+          changed=false
+
+          if [ "$upstream_sha" != "$fork_sha" ]; then
+            changed=true
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            changed=true
+          fi
+
+          echo "upstream_sha=$upstream_sha" >> "$GITHUB_OUTPUT"
+          echo "fork_sha=$fork_sha" >> "$GITHUB_OUTPUT"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Report no-op
+        if: steps.prepare.outputs.changed != 'true'
+        run: |
+          {
+            echo "### Codex Fork Sync"
+            echo
+            echo "No sync needed."
+            echo
+            echo "- upstream/main: \`${{ steps.prepare.outputs.upstream_sha }}\`"
+            echo "- fork/main: \`${{ steps.prepare.outputs.fork_sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run Codex in GitHub Actions
+        if: steps.prepare.outputs.changed == 'true'
+        id: codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/prompts/codex-fork-sync.prompt.md
+          output-file: .codex-fork-sync-summary.md
+          working-directory: .
+          sandbox: danger-full-access
+          safety-strategy: drop-sudo
+          allow-bots: true
+
+      - name: Require clean worktree after Codex
+        if: steps.prepare.outputs.changed == 'true' && success()
+        run: |
+          set -euo pipefail
+          git diff --quiet
+          git diff --cached --quiet
+
+      - name: Push synced branches
+        if: steps.prepare.outputs.changed == 'true' && success()
+        run: |
+          set -euo pipefail
+
+          git push origin main:main
+
+          while IFS= read -r branch; do
+            remote_ref="refs/remotes/origin/${branch}"
+            if ! git show-ref --verify --quiet "$remote_ref"; then
+              continue
+            fi
+
+            local_sha="$(git rev-parse "$branch")"
+            remote_sha="$(git rev-parse "origin/${branch}")"
+
+            if [ "$local_sha" != "$remote_sha" ]; then
+              git push --force-with-lease origin "${branch}:${branch}"
+            fi
+          done < <(git for-each-ref --format='%(refname:short)' refs/heads/chore/)
+
+      - name: Publish Codex summary
+        if: steps.prepare.outputs.changed == 'true' && always()
+        run: |
+          {
+            echo "### Codex Fork Sync"
+            echo
+            echo "- upstream/main before sync: \`${{ steps.prepare.outputs.upstream_sha }}\`"
+            echo "- fork/main before sync: \`${{ steps.prepare.outputs.fork_sha }}\`"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f .codex-fork-sync-summary.md ]; then
+            cat .codex-fork-sync-summary.md >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.codex.outcome }}" = "success" ]; then
+            echo "Codex completed without a written summary." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Codex did not complete successfully." >> "$GITHUB_STEP_SUMMARY"
+          fi
