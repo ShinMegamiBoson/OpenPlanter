@@ -7,11 +7,12 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use anyhow::{Context, anyhow};
+use chrono::{DateTime, Utc};
 use reqwest_eventsource::{Event, RequestBuilderExt};
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-use super::{BaseModel, Message, ModelTurn, ToolCall};
+use super::{BaseModel, Message, ModelTurn, RateLimitError, ToolCall};
 use crate::events::{DeltaEvent, DeltaKind};
 
 #[derive(Debug, Clone, Default)]
@@ -252,6 +253,9 @@ impl OpenAIModel {
         if self.provider != "zai" || err.saw_output {
             return false;
         }
+        if err.error.downcast_ref::<RateLimitError>().is_some() {
+            return true;
+        }
         let text = err.error.to_string().to_lowercase();
         text.contains("429")
             || text.contains("1302")
@@ -266,6 +270,202 @@ impl OpenAIModel {
             || text.contains("502")
             || text.contains("503")
             || text.contains("504")
+    }
+
+    fn parse_retry_after_value(value: Option<&serde_json::Value>) -> Option<f64> {
+        match value {
+            Some(serde_json::Value::Number(num)) => num.as_f64().map(|v| v.max(0.0)),
+            Some(serde_json::Value::String(text)) => Self::parse_retry_after_text(text),
+            _ => None,
+        }
+    }
+
+    fn parse_retry_after_text(text: &str) -> Option<f64> {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        if let Ok(seconds) = trimmed.parse::<f64>() {
+            return Some(seconds.max(0.0));
+        }
+        let parsed = DateTime::parse_from_rfc2822(trimmed).ok()?;
+        Some(
+            (parsed.with_timezone(&Utc) - Utc::now())
+                .num_milliseconds()
+                .max(0) as f64
+                / 1000.0,
+        )
+    }
+
+    fn parse_retry_after_header(headers: &reqwest::header::HeaderMap) -> Option<f64> {
+        let value = headers.get(reqwest::header::RETRY_AFTER)?;
+        let text = value.to_str().ok()?;
+        Self::parse_retry_after_text(text)
+    }
+
+    fn extract_provider_code(value: Option<&serde_json::Value>) -> Option<String> {
+        match value {
+            Some(serde_json::Value::String(text)) => {
+                let trimmed = text.trim();
+                (!trimmed.is_empty()).then(|| trimmed.to_string())
+            }
+            Some(serde_json::Value::Number(num)) => Some(num.to_string()),
+            Some(other) => {
+                let rendered = other.to_string();
+                let trimmed = rendered.trim();
+                (!trimmed.is_empty()).then(|| trimmed.to_string())
+            }
+            None => None,
+        }
+    }
+
+    fn extract_openai_style_error(
+        payload: &serde_json::Value,
+    ) -> (String, Option<String>, Option<f64>) {
+        if let Some(error) = payload.get("error").and_then(|value| value.as_object()) {
+            let message = error
+                .get("message")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            let provider_code = Self::extract_provider_code(error.get("code"));
+            let retry_after = Self::parse_retry_after_value(error.get("retry_after"))
+                .or_else(|| Self::parse_retry_after_value(payload.get("retry_after")));
+            return (message, provider_code, retry_after);
+        }
+        (
+            String::new(),
+            None,
+            Self::parse_retry_after_value(payload.get("retry_after")),
+        )
+    }
+
+    fn is_rate_limit_error(
+        status_code: Option<u16>,
+        provider_code: Option<&str>,
+        message: &str,
+    ) -> bool {
+        if status_code == Some(429) {
+            return true;
+        }
+        if let Some(code) = provider_code {
+            let code = code.trim().to_lowercase();
+            if matches!(
+                code.as_str(),
+                "1302" | "429" | "rate_limit" | "rate_limit_exceeded" | "too_many_requests"
+            ) {
+                return true;
+            }
+        }
+        let text = message.to_lowercase();
+        text.contains("rate limit") || text.contains("too many requests")
+    }
+
+    fn classify_stream_payload_error(payload: &serde_json::Value) -> Option<anyhow::Error> {
+        let is_error_type = payload
+            .get("type")
+            .and_then(|value| value.as_str())
+            .is_some_and(|value| value == "error");
+        let error = payload.get("error")?;
+        let message = error
+            .get("message")
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| payload.to_string());
+        let provider_code = Self::extract_provider_code(error.get("code"));
+        let retry_after = Self::parse_retry_after_value(error.get("retry_after"));
+        let prefixed_message = format!("Stream error: {message}");
+
+        if Self::is_rate_limit_error(None, provider_code.as_deref(), &message) {
+            return Some(anyhow::Error::new(RateLimitError {
+                message: prefixed_message,
+                status_code: None,
+                provider_code,
+                body: payload.to_string(),
+                retry_after_sec: retry_after,
+            }));
+        }
+
+        if is_error_type || provider_code.is_some() || payload.get("retry_after").is_some() {
+            return Some(anyhow!(prefixed_message));
+        }
+
+        None
+    }
+
+    async fn classify_sse_error(
+        &self,
+        url: &str,
+        error: reqwest_eventsource::Error,
+    ) -> anyhow::Error {
+        match error {
+            reqwest_eventsource::Error::InvalidStatusCode(status, response) => {
+                self.classify_invalid_status(url, status, response).await
+            }
+            other => anyhow!("SSE stream error: {other}"),
+        }
+    }
+
+    async fn classify_invalid_status(
+        &self,
+        url: &str,
+        status: reqwest::StatusCode,
+        response: reqwest::Response,
+    ) -> anyhow::Error {
+        let response_url = response.url().clone();
+        let headers = response.headers().clone();
+        let body = response.text().await.unwrap_or_default();
+        let parsed = serde_json::from_str::<serde_json::Value>(&body).ok();
+        let mut message = String::new();
+        let mut provider_code = None;
+        let mut retry_after = Self::parse_retry_after_header(&headers);
+
+        if let Some(ref payload) = parsed {
+            let (body_message, body_code, body_retry_after) =
+                Self::extract_openai_style_error(payload);
+            message = body_message;
+            provider_code = body_code;
+            if retry_after.is_none() {
+                retry_after = body_retry_after;
+            }
+        }
+
+        let detail = if !message.is_empty() {
+            message.clone()
+        } else if !body.trim().is_empty() {
+            body.clone()
+        } else {
+            status.to_string()
+        };
+
+        if Self::is_rate_limit_error(Some(status.as_u16()), provider_code.as_deref(), &detail) {
+            return anyhow::Error::new(RateLimitError {
+                message: format!(
+                    "HTTP {} calling {}: {}",
+                    status.as_u16(),
+                    response_url,
+                    detail
+                ),
+                status_code: Some(status.as_u16()),
+                provider_code,
+                body,
+                retry_after_sec: retry_after,
+            });
+        }
+
+        anyhow!(
+            "HTTP {} calling {}: {}",
+            status.as_u16(),
+            if response_url.as_str().is_empty() {
+                url
+            } else {
+                response_url.as_str()
+            },
+            detail
+        )
     }
 
     async fn chat_stream_once(
@@ -317,10 +517,8 @@ impl OpenAIModel {
                 Some(Err(reqwest_eventsource::Error::StreamEnded)) => break,
                 Some(Err(e)) => {
                     es.close();
-                    return Err(StreamAttemptError {
-                        error: anyhow!("SSE stream error: {e}"),
-                        saw_output,
-                    });
+                    let error = self.classify_sse_error(&url, e).await;
+                    return Err(StreamAttemptError { error, saw_output });
                 }
                 None => break,
             };
@@ -335,6 +533,10 @@ impl OpenAIModel {
                     let chunk: serde_json::Value = serde_json::from_str(&msg.data)
                         .with_context(|| format!("Failed to parse SSE chunk: {}", &msg.data))
                         .map_err(|error| StreamAttemptError { error, saw_output })?;
+
+                    if let Some(error) = Self::classify_stream_payload_error(&chunk) {
+                        return Err(StreamAttemptError { error, saw_output });
+                    }
 
                     if let Some(usage) = chunk.get("usage") {
                         if let Some(pt) = usage.get("prompt_tokens").and_then(|v| v.as_u64()) {
@@ -728,6 +930,32 @@ mod tests {
                 "https://api.z.ai/api/paas/v4".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn test_retry_after_parses_seconds_and_http_dates() {
+        assert_eq!(OpenAIModel::parse_retry_after_text("3"), Some(3.0));
+        assert!(OpenAIModel::parse_retry_after_text("Wed, 21 Oct 2015 07:28:00 GMT").is_some());
+        assert_eq!(OpenAIModel::parse_retry_after_text(""), None);
+    }
+
+    #[test]
+    fn test_classify_stream_payload_rate_limit_error() {
+        let payload = serde_json::json!({
+            "type": "error",
+            "error": {
+                "message": "Too many requests",
+                "code": "1302",
+                "retry_after": 4
+            }
+        });
+        let error = OpenAIModel::classify_stream_payload_error(&payload)
+            .expect("payload should classify as an error");
+        let rate_limit = error
+            .downcast_ref::<RateLimitError>()
+            .expect("expected a structured rate-limit error");
+        assert_eq!(rate_limit.provider_code.as_deref(), Some("1302"));
+        assert_eq!(rate_limit.retry_after_sec, Some(4.0));
     }
 
     #[test]

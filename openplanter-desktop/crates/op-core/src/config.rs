@@ -36,6 +36,13 @@ fn env_int(key: &str, default: i64) -> i64 {
         .unwrap_or(default)
 }
 
+fn env_float(key: &str, default: f64) -> f64 {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
 fn env_bool(key: &str, default: bool) -> bool {
     match env::var(key) {
         Ok(v) => matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes"),
@@ -114,6 +121,10 @@ pub struct AgentConfig {
     pub session_root_dir: String,
     pub max_persisted_observations: i64,
     pub max_solve_seconds: i64,
+    pub rate_limit_max_retries: i64,
+    pub rate_limit_backoff_base_sec: f64,
+    pub rate_limit_backoff_max_sec: f64,
+    pub rate_limit_retry_after_cap_sec: f64,
     pub zai_stream_max_retries: i64,
     pub recursive: bool,
     pub min_subtask_depth: i64,
@@ -164,6 +175,10 @@ impl Default for AgentConfig {
             session_root_dir: ".openplanter".into(),
             max_persisted_observations: 400,
             max_solve_seconds: 0,
+            rate_limit_max_retries: 12,
+            rate_limit_backoff_base_sec: 1.0,
+            rate_limit_backoff_max_sec: 60.0,
+            rate_limit_retry_after_cap_sec: 120.0,
             zai_stream_max_retries: 10,
             recursive: true,
             min_subtask_depth: 0,
@@ -282,6 +297,13 @@ impl AgentConfig {
             session_root_dir: env_or("OPENPLANTER_SESSION_DIR", ".openplanter"),
             max_persisted_observations: env_int("OPENPLANTER_MAX_PERSISTED_OBS", 400),
             max_solve_seconds: env_int("OPENPLANTER_MAX_SOLVE_SECONDS", 0),
+            rate_limit_max_retries: env_int("OPENPLANTER_RATE_LIMIT_MAX_RETRIES", 12),
+            rate_limit_backoff_base_sec: env_float("OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC", 1.0),
+            rate_limit_backoff_max_sec: env_float("OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC", 60.0),
+            rate_limit_retry_after_cap_sec: env_float(
+                "OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC",
+                120.0,
+            ),
             zai_stream_max_retries: env_int("OPENPLANTER_ZAI_STREAM_MAX_RETRIES", 10),
             recursive: env_bool("OPENPLANTER_RECURSIVE", true),
             min_subtask_depth: env_int("OPENPLANTER_MIN_SUBTASK_DEPTH", 0),
@@ -330,6 +352,10 @@ mod tests {
         assert_eq!(cfg.zai_plan, "paygo");
         assert_eq!(cfg.zai_base_url, ZAI_PAYGO_BASE_URL);
         assert_eq!(cfg.web_search_provider, "exa");
+        assert_eq!(cfg.rate_limit_max_retries, 12);
+        assert_eq!(cfg.rate_limit_backoff_base_sec, 1.0);
+        assert_eq!(cfg.rate_limit_backoff_max_sec, 60.0);
+        assert_eq!(cfg.rate_limit_retry_after_cap_sec, 120.0);
         assert!(cfg.recursive);
         assert!(cfg.acceptance_criteria);
         assert!(!cfg.demo);
@@ -374,6 +400,10 @@ mod tests {
             "OPENPLANTER_WEB_SEARCH_PROVIDER",
             "OPENPLANTER_ZAI_PLAN",
             "OPENPLANTER_ZAI_BASE_URL",
+            "OPENPLANTER_RATE_LIMIT_MAX_RETRIES",
+            "OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC",
+            "OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC",
+            "OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC",
             "OPENPLANTER_ZAI_STREAM_MAX_RETRIES",
         ];
         // Save original values
@@ -398,6 +428,10 @@ mod tests {
         assert!(cfg.anthropic_api_key.is_none());
         assert!(cfg.zai_api_key.is_none());
         assert_eq!(cfg.web_search_provider, "exa");
+        assert_eq!(cfg.rate_limit_max_retries, 12);
+        assert_eq!(cfg.rate_limit_backoff_base_sec, 1.0);
+        assert_eq!(cfg.rate_limit_backoff_max_sec, 60.0);
+        assert_eq!(cfg.rate_limit_retry_after_cap_sec, 120.0);
 
         unsafe {
             // --- Phase 2: test custom values ---
@@ -410,6 +444,10 @@ mod tests {
             env::set_var("OPENAI_API_KEY", "sk-test123");
             env::set_var("ZAI_API_KEY", "zai-test123");
             env::set_var("OPENPLANTER_WEB_SEARCH_PROVIDER", "firecrawl");
+            env::set_var("OPENPLANTER_RATE_LIMIT_MAX_RETRIES", "5");
+            env::set_var("OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC", "2.5");
+            env::set_var("OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC", "30.0");
+            env::set_var("OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC", "90.0");
             env::set_var("OPENPLANTER_ZAI_PLAN", "coding");
             env::set_var("OPENPLANTER_ZAI_STREAM_MAX_RETRIES", "7");
         }
@@ -427,6 +465,10 @@ mod tests {
         assert_eq!(cfg.zai_base_url, ZAI_CODING_BASE_URL);
         assert_eq!(cfg.zai_stream_max_retries, 7);
         assert_eq!(cfg.web_search_provider, "firecrawl");
+        assert_eq!(cfg.rate_limit_max_retries, 5);
+        assert_eq!(cfg.rate_limit_backoff_base_sec, 2.5);
+        assert_eq!(cfg.rate_limit_backoff_max_sec, 30.0);
+        assert_eq!(cfg.rate_limit_retry_after_cap_sec, 90.0);
 
         // Restore original values
         for (k, v) in saved {
