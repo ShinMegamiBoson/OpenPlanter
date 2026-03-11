@@ -48,7 +48,7 @@ describe("createApp", () => {
     __setHandler("list_sessions", () => [SESSION_B, SESSION_A]);
     __setHandler("get_credentials_status", () => ({
       openai: true, anthropic: true, openrouter: false,
-      cerebras: false, ollama: true, exa: false,
+      cerebras: false, zai: true, ollama: true, exa: false, firecrawl: true,
     }));
     __setHandler("open_session", () => ({
       id: "20260227-120000-cccc3333",
@@ -79,13 +79,21 @@ describe("createApp", () => {
   });
 
   it("renders settings display", () => {
-    appState.update((s) => ({ ...s, provider: "anthropic", model: "claude-opus-4-6" }));
+    appState.update((s) => ({
+      ...s,
+      provider: "zai",
+      model: "glm-5",
+      zaiPlan: "coding",
+      webSearchProvider: "firecrawl",
+    }));
     const root = document.createElement("div");
     createApp(root);
     const settings = root.querySelector(".settings-display");
     expect(settings).not.toBeNull();
-    expect(settings!.textContent).toContain("anthropic");
-    expect(settings!.textContent).toContain("claude-opus-4-6");
+    expect(settings!.textContent).toContain("zai");
+    expect(settings!.textContent).toContain("glm-5");
+    expect(settings!.textContent).toContain("coding");
+    expect(settings!.textContent).toContain("firecrawl");
   });
 
   it("renders credential status", async () => {
@@ -95,7 +103,7 @@ describe("createApp", () => {
 
     await vi.waitFor(() => {
       const creds = root.querySelector(".cred-status");
-      expect(creds!.children.length).toBe(6);
+      expect(creds!.children.length).toBe(8);
       expect(creds!.querySelector(".cred-ok")!.textContent).toContain("openai");
       expect(creds!.querySelector(".cred-missing")!.textContent).toContain("openrouter");
     });

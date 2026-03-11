@@ -6,17 +6,17 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use axum::Router;
 use axum::body::Body;
 use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing::post;
-use axum::Router;
 use tokio_util::sync::CancellationToken;
 
 use op_core::events::{DeltaEvent, DeltaKind};
-use op_core::model::openai::OpenAIModel;
 use op_core::model::anthropic::AnthropicModel;
-use op_core::model::{BaseModel, Message};
+use op_core::model::openai::OpenAIModel;
+use op_core::model::{BaseModel, Message, RateLimitError};
 
 // ─── Helpers ───
 
@@ -81,10 +81,62 @@ async fn start_error_server(status: u16, body: &'static str) -> SocketAddr {
     addr
 }
 
+#[derive(Clone)]
+struct MockHttpResponse {
+    status: u16,
+    content_type: &'static str,
+    body: &'static str,
+    headers: Vec<(&'static str, &'static str)>,
+}
+
+async fn start_stateful_http_server(responses: Vec<MockHttpResponse>) -> SocketAddr {
+    let counter = Arc::new(Mutex::new(0usize));
+    let responses = Arc::new(responses);
+
+    let app = Router::new().route(
+        "/{*path}",
+        post(move || {
+            let counter = counter.clone();
+            let responses = responses.clone();
+            async move {
+                let mut idx = counter.lock().unwrap();
+                let response = if *idx < responses.len() {
+                    responses[*idx].clone()
+                } else {
+                    responses
+                        .last()
+                        .expect("expected at least one HTTP response")
+                        .clone()
+                };
+                *idx += 1;
+
+                let mut builder = Response::builder()
+                    .status(StatusCode::from_u16(response.status).unwrap())
+                    .header("content-type", response.content_type);
+                for (name, value) in &response.headers {
+                    builder = builder.header(*name, *value);
+                }
+                builder.body(Body::from(response.body)).unwrap()
+            }
+        }),
+    );
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    addr
+}
+
 fn simple_messages() -> Vec<Message> {
     vec![
-        Message::System { content: "You are helpful.".to_string() },
-        Message::User { content: "Say hello".to_string() },
+        Message::System {
+            content: "You are helpful.".to_string(),
+        },
+        Message::User {
+            content: "Say hello".to_string(),
+        },
     ]
 }
 
@@ -350,7 +402,10 @@ async fn test_openai_chat_non_streaming() {
     );
 
     // chat() should internally call chat_stream with no-op callback
-    let turn = model.chat(&simple_messages(), &[]).await.expect("chat should succeed");
+    let turn = model
+        .chat(&simple_messages(), &[])
+        .await
+        .expect("chat should succeed");
     assert_eq!(turn.text, "Hello world");
     assert_eq!(turn.input_tokens, 10);
 }
@@ -365,7 +420,10 @@ async fn test_anthropic_chat_non_streaming() {
         None,
     );
 
-    let turn = model.chat(&simple_messages(), &[]).await.expect("chat should succeed");
+    let turn = model
+        .chat(&simple_messages(), &[])
+        .await
+        .expect("chat should succeed");
     assert_eq!(turn.text, "Hello from Claude");
     assert_eq!(turn.input_tokens, 25);
 }
@@ -377,7 +435,8 @@ async fn test_openai_http_error() {
     let addr = start_error_server(
         401,
         r#"{"error":{"message":"Invalid API key","type":"invalid_request_error"}}"#,
-    ).await;
+    )
+    .await;
     let model = OpenAIModel::new(
         "gpt-4o".to_string(),
         "openai".to_string(),
@@ -396,11 +455,49 @@ async fn test_openai_http_error() {
 }
 
 #[tokio::test]
+async fn test_openai_rate_limit_error_includes_retry_after() {
+    let addr = start_stateful_http_server(vec![MockHttpResponse {
+        status: 429,
+        content_type: "application/json",
+        body: r#"{"error":{"message":"Too many requests","code":"1302"}}"#,
+        headers: vec![("retry-after", "3")],
+    }])
+    .await;
+    let model = OpenAIModel::new(
+        "glm-5".to_string(),
+        "zai".to_string(),
+        format!("http://{addr}"),
+        "zai-key".to_string(),
+        Some("high".to_string()),
+        HashMap::new(),
+    )
+    .with_zai_runtime(op_core::model::openai::ZaiRuntimeConfig {
+        paygo_base_url: format!("http://{addr}"),
+        coding_base_url: format!("http://{addr}"),
+        stream_max_retries: 1,
+    });
+
+    let cancel = CancellationToken::new();
+    let error = model
+        .chat_stream(&simple_messages(), &[], &|_| {}, &cancel)
+        .await
+        .expect_err("should fail with a structured rate-limit error");
+
+    let rate_limit = error
+        .downcast_ref::<RateLimitError>()
+        .expect("expected a structured rate-limit error");
+    assert_eq!(rate_limit.status_code, Some(429));
+    assert_eq!(rate_limit.provider_code.as_deref(), Some("1302"));
+    assert_eq!(rate_limit.retry_after_sec, Some(3.0));
+}
+
+#[tokio::test]
 async fn test_anthropic_http_error() {
     let addr = start_error_server(
         401,
         r#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#,
-    ).await;
+    )
+    .await;
     let model = AnthropicModel::new(
         "claude-sonnet-4-5".to_string(),
         format!("http://{addr}"),
@@ -421,12 +518,13 @@ async fn test_anthropic_http_error() {
 #[tokio::test]
 async fn test_solve_with_mock_anthropic() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{solve, SolveEmitter};
+    use op_core::engine::{SolveEmitter, solve};
     use op_core::events::StepEvent;
 
     let addr = start_mock_sse_server(ANTHROPIC_SSE_SIMPLE).await;
 
     #[derive(Debug, Clone)]
+    #[allow(dead_code)]
     enum Ev {
         Trace(String),
         Delta(DeltaEvent),
@@ -440,7 +538,10 @@ async fn test_solve_with_mock_anthropic() {
     }
     impl SolveEmitter for TestEmitter {
         fn emit_trace(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev::Trace(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Trace(message.to_string()));
         }
         fn emit_delta(&self, event: DeltaEvent) {
             self.events.lock().unwrap().push(Ev::Delta(event));
@@ -449,15 +550,23 @@ async fn test_solve_with_mock_anthropic() {
             self.events.lock().unwrap().push(Ev::Step(event));
         }
         fn emit_complete(&self, result: &str) {
-            self.events.lock().unwrap().push(Ev::Complete(result.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Complete(result.to_string()));
         }
         fn emit_error(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev::Error(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Error(message.to_string()));
         }
     }
 
     let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter { events: events.clone() };
+    let emitter = TestEmitter {
+        events: events.clone(),
+    };
 
     let cfg = AgentConfig {
         provider: "anthropic".into(),
@@ -475,7 +584,9 @@ async fn test_solve_with_mock_anthropic() {
 
     // Should have a trace
     assert!(
-        recorded.iter().any(|e| matches!(e, Ev::Trace(m) if m.contains("anthropic"))),
+        recorded
+            .iter()
+            .any(|e| matches!(e, Ev::Trace(m) if m.contains("anthropic"))),
         "should have a trace mentioning anthropic"
     );
 
@@ -491,13 +602,17 @@ async fn test_solve_with_mock_anthropic() {
 
     // Should have a step
     assert!(
-        recorded.iter().any(|e| matches!(e, Ev::Step(s) if s.is_final && s.tokens.input_tokens == 25)),
+        recorded
+            .iter()
+            .any(|e| matches!(e, Ev::Step(s) if s.is_final && s.tokens.input_tokens == 25)),
         "should have a final step with correct token count"
     );
 
     // Should have complete with the full text
     assert!(
-        recorded.iter().any(|e| matches!(e, Ev::Complete(t) if t == "Hello from Claude")),
+        recorded
+            .iter()
+            .any(|e| matches!(e, Ev::Complete(t) if t == "Hello from Claude")),
         "should complete with full text"
     );
 
@@ -511,7 +626,7 @@ async fn test_solve_with_mock_anthropic() {
 #[tokio::test]
 async fn test_solve_with_mock_openai() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{solve, SolveEmitter};
+    use op_core::engine::{SolveEmitter, solve};
     use op_core::events::StepEvent;
 
     let addr = start_mock_sse_server(OPENAI_SSE_SIMPLE).await;
@@ -531,7 +646,10 @@ async fn test_solve_with_mock_openai() {
     }
     impl SolveEmitter for TestEmitter2 {
         fn emit_trace(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev2::Trace(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev2::Trace(message.to_string()));
         }
         fn emit_delta(&self, event: DeltaEvent) {
             self.events.lock().unwrap().push(Ev2::Delta(event));
@@ -540,15 +658,23 @@ async fn test_solve_with_mock_openai() {
             self.events.lock().unwrap().push(Ev2::Step(event));
         }
         fn emit_complete(&self, result: &str) {
-            self.events.lock().unwrap().push(Ev2::Complete(result.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev2::Complete(result.to_string()));
         }
         fn emit_error(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev2::Error(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev2::Error(message.to_string()));
         }
     }
 
     let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter2 { events: events.clone() };
+    let emitter = TestEmitter2 {
+        events: events.clone(),
+    };
 
     let cfg = AgentConfig {
         provider: "openai".into(),
@@ -567,9 +693,17 @@ async fn test_solve_with_mock_openai() {
 
     // Should have a trace mentioning openai
     assert!(
-        recorded.iter().any(|e| matches!(e, Ev2::Trace(m) if m.contains("openai"))),
+        recorded
+            .iter()
+            .any(|e| matches!(e, Ev2::Trace(m) if m.contains("openai"))),
         "should have a trace mentioning openai, got: {:?}",
-        recorded.iter().filter_map(|e| match e { Ev2::Trace(m) => Some(m.clone()), _ => None }).collect::<Vec<_>>()
+        recorded
+            .iter()
+            .filter_map(|e| match e {
+                Ev2::Trace(m) => Some(m.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
     );
 
     // Should have text deltas that spell "Hello world"
@@ -584,13 +718,17 @@ async fn test_solve_with_mock_openai() {
 
     // Should have a step with correct tokens
     assert!(
-        recorded.iter().any(|e| matches!(e, Ev2::Step(s) if s.is_final && s.tokens.input_tokens == 10)),
+        recorded
+            .iter()
+            .any(|e| matches!(e, Ev2::Step(s) if s.is_final && s.tokens.input_tokens == 10)),
         "should have a final step with 10 input tokens"
     );
 
     // Should complete with the full text
     assert!(
-        recorded.iter().any(|e| matches!(e, Ev2::Complete(t) if t == "Hello world")),
+        recorded
+            .iter()
+            .any(|e| matches!(e, Ev2::Complete(t) if t == "Hello world")),
         "should complete with 'Hello world'"
     );
 
@@ -604,13 +742,10 @@ async fn test_solve_with_mock_openai() {
 #[tokio::test]
 async fn test_solve_http_error_emits_error() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{solve, SolveEmitter};
+    use op_core::engine::{SolveEmitter, solve};
     use op_core::events::StepEvent;
 
-    let addr = start_error_server(
-        401,
-        r#"{"error":{"message":"Invalid API key"}}"#,
-    ).await;
+    let addr = start_error_server(401, r#"{"error":{"message":"Invalid API key"}}"#).await;
 
     struct ErrorEmitter {
         errors: Arc<Mutex<Vec<String>>>,
@@ -626,7 +761,9 @@ async fn test_solve_http_error_emits_error() {
     }
 
     let errors = Arc::new(Mutex::new(Vec::new()));
-    let emitter = ErrorEmitter { errors: errors.clone() };
+    let emitter = ErrorEmitter {
+        errors: errors.clone(),
+    };
 
     let cfg = AgentConfig {
         provider: "openai".into(),
@@ -642,16 +779,117 @@ async fn test_solve_http_error_emits_error() {
     solve("Test", &cfg, &emitter, cancel).await;
 
     let recorded = errors.lock().unwrap().clone();
+    assert!(!recorded.is_empty(), "should emit an error for HTTP 401");
+}
+
+#[tokio::test]
+async fn test_solve_rate_limit_retry_eventually_completes() {
+    use op_core::config::AgentConfig;
+    use op_core::engine::{SolveEmitter, solve};
+    use op_core::events::StepEvent;
+
+    #[derive(Debug, Clone)]
+    #[allow(dead_code)]
+    enum Ev {
+        Trace(String),
+        Complete(String),
+        Error(String),
+    }
+
+    struct RetryEmitter {
+        events: Arc<Mutex<Vec<Ev>>>,
+    }
+
+    impl SolveEmitter for RetryEmitter {
+        fn emit_trace(&self, message: &str) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Trace(message.to_string()));
+        }
+
+        fn emit_delta(&self, _: DeltaEvent) {}
+
+        fn emit_step(&self, _: StepEvent) {}
+
+        fn emit_complete(&self, result: &str) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Complete(result.to_string()));
+        }
+
+        fn emit_error(&self, message: &str) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Error(message.to_string()));
+        }
+    }
+
+    let addr = start_stateful_http_server(vec![
+        MockHttpResponse {
+            status: 429,
+            content_type: "application/json",
+            body: r#"{"error":{"message":"Too many requests","code":"1302"}}"#,
+            headers: vec![("retry-after", "0")],
+        },
+        MockHttpResponse {
+            status: 200,
+            content_type: "text/event-stream",
+            body: OPENAI_SSE_SIMPLE,
+            headers: vec![("cache-control", "no-cache")],
+        },
+    ])
+    .await;
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let emitter = RetryEmitter {
+        events: events.clone(),
+    };
+
+    let cfg = AgentConfig {
+        provider: "zai".into(),
+        model: "glm-5".into(),
+        zai_api_key: Some("zai-key".into()),
+        zai_base_url: format!("http://{addr}"),
+        zai_paygo_base_url: format!("http://{addr}"),
+        zai_coding_base_url: format!("http://{addr}"),
+        rate_limit_max_retries: 1,
+        rate_limit_backoff_base_sec: 0.0,
+        rate_limit_backoff_max_sec: 0.0,
+        rate_limit_retry_after_cap_sec: 0.0,
+        zai_stream_max_retries: 1,
+        demo: false,
+        ..Default::default()
+    };
+
+    let cancel = CancellationToken::new();
+    solve("Test", &cfg, &emitter, cancel).await;
+
+    let recorded = events.lock().unwrap().clone();
     assert!(
-        !recorded.is_empty(),
-        "should emit an error for HTTP 401"
+        recorded.iter().any(|event| {
+            matches!(event, Ev::Trace(message) if message.contains("rate limited (1302)"))
+        }),
+        "expected a retry trace after the 429, got: {recorded:?}"
+    );
+    assert!(
+        recorded
+            .iter()
+            .any(|event| matches!(event, Ev::Complete(text) if text == "Hello world")),
+        "expected the solve to complete after retry, got: {recorded:?}"
+    );
+    assert!(
+        !recorded.iter().any(|event| matches!(event, Ev::Error(_))),
+        "did not expect an error after retry success, got: {recorded:?}"
     );
 }
 
 #[tokio::test]
 async fn test_solve_cancel_emits_cancelled() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{solve, SolveEmitter};
+    use op_core::engine::{SolveEmitter, solve};
     use op_core::events::StepEvent;
 
     // Use a server that returns data but we cancel before processing
@@ -671,7 +909,9 @@ async fn test_solve_cancel_emits_cancelled() {
     }
 
     let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = CancelEmitter { events: events.clone() };
+    let emitter = CancelEmitter {
+        events: events.clone(),
+    };
 
     let cfg = AgentConfig {
         provider: "anthropic".into(),
@@ -697,7 +937,7 @@ async fn test_solve_cancel_emits_cancelled() {
 #[tokio::test]
 async fn test_solve_demo_mode_bypasses_llm() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{solve, SolveEmitter};
+    use op_core::engine::{SolveEmitter, solve};
     use op_core::events::StepEvent;
 
     struct TestEmitter {
@@ -716,7 +956,9 @@ async fn test_solve_demo_mode_bypasses_llm() {
     }
 
     let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter { events: events.clone() };
+    let emitter = TestEmitter {
+        events: events.clone(),
+    };
 
     let cfg = AgentConfig {
         demo: true,
@@ -736,7 +978,7 @@ async fn test_solve_demo_mode_bypasses_llm() {
 #[tokio::test]
 async fn test_solve_missing_key_emits_error() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{solve, SolveEmitter};
+    use op_core::engine::{SolveEmitter, solve};
     use op_core::events::StepEvent;
 
     struct TestEmitter {
@@ -753,11 +995,17 @@ async fn test_solve_missing_key_emits_error() {
     }
 
     let errors = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter { errors: errors.clone() };
+    let emitter = TestEmitter {
+        errors: errors.clone(),
+    };
 
     let cfg = AgentConfig {
         provider: "openai".into(),
         model: "gpt-4o".into(),
+        base_url: "https://api.openai.com/v1".into(),
+        openai_base_url: "https://api.openai.com/v1".into(),
+        api_key: None,
+        openai_api_key: None,
         demo: false,
         // No API key set
         ..Default::default()
@@ -840,14 +1088,12 @@ async fn start_stateful_mock_server(responses: Vec<&'static str>) -> SocketAddr 
 #[tokio::test]
 async fn test_solve_multi_step_agentic_loop() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{solve, SolveEmitter};
+    use op_core::engine::{SolveEmitter, solve};
     use op_core::events::StepEvent;
 
     // Mock server: first call → tool call, second call → final answer
-    let addr = start_stateful_mock_server(vec![
-        ANTHROPIC_SSE_TOOL_LIST,
-        ANTHROPIC_SSE_FINAL_ANSWER,
-    ]).await;
+    let addr =
+        start_stateful_mock_server(vec![ANTHROPIC_SSE_TOOL_LIST, ANTHROPIC_SSE_FINAL_ANSWER]).await;
 
     #[derive(Debug, Clone)]
     #[allow(dead_code)]
@@ -864,7 +1110,10 @@ async fn test_solve_multi_step_agentic_loop() {
     }
     impl SolveEmitter for TestEmitter3 {
         fn emit_trace(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev3::Trace(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev3::Trace(message.to_string()));
         }
         fn emit_delta(&self, event: DeltaEvent) {
             self.events.lock().unwrap().push(Ev3::Delta(event));
@@ -873,15 +1122,23 @@ async fn test_solve_multi_step_agentic_loop() {
             self.events.lock().unwrap().push(Ev3::Step(event));
         }
         fn emit_complete(&self, result: &str) {
-            self.events.lock().unwrap().push(Ev3::Complete(result.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev3::Complete(result.to_string()));
         }
         fn emit_error(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev3::Error(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev3::Error(message.to_string()));
         }
     }
 
     let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter3 { events: events.clone() };
+    let emitter = TestEmitter3 {
+        events: events.clone(),
+    };
 
     // Use a temp dir as workspace so list_files has something to work with
     let tmp = tempfile::TempDir::new().unwrap();
@@ -930,14 +1187,16 @@ async fn test_solve_multi_step_agentic_loop() {
     );
 
     // Last step should be final
-    assert!(
-        steps.last().unwrap().is_final,
-        "last step should be final"
-    );
+    assert!(steps.last().unwrap().is_final, "last step should be final");
 
     // Should have tool execution trace
-    let has_tool_trace = recorded.iter().any(|e| matches!(e, Ev3::Trace(m) if m.contains("list_files")));
-    assert!(has_tool_trace, "should have a trace mentioning list_files tool execution");
+    let has_tool_trace = recorded
+        .iter()
+        .any(|e| matches!(e, Ev3::Trace(m) if m.contains("list_files")));
+    assert!(
+        has_tool_trace,
+        "should have a trace mentioning list_files tool execution"
+    );
 
     // Should have text deltas from both steps
     let text_content: String = recorded
@@ -958,7 +1217,9 @@ async fn test_solve_multi_step_agentic_loop() {
 
     // Should complete with the final answer text
     assert!(
-        recorded.iter().any(|e| matches!(e, Ev3::Complete(t) if t.contains("Here is the answer"))),
+        recorded
+            .iter()
+            .any(|e| matches!(e, Ev3::Complete(t) if t.contains("Here is the answer"))),
         "should complete with the final answer"
     );
 

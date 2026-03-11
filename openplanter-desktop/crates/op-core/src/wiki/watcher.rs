@@ -37,34 +37,35 @@ impl WikiWatcher {
     ) -> std::io::Result<(Self, mpsc::UnboundedReceiver<WikiChangeEvent>)> {
         let (tx, rx) = mpsc::unbounded_channel();
 
-        let mut watcher = notify::recommended_watcher(move |result: Result<Event, notify::Error>| {
-            let event = match result {
-                Ok(e) => e,
-                Err(err) => {
-                    eprintln!("[wiki-watcher] error: {err}");
-                    return;
-                }
-            };
+        let mut watcher =
+            notify::recommended_watcher(move |result: Result<Event, notify::Error>| {
+                let event = match result {
+                    Ok(e) => e,
+                    Err(err) => {
+                        eprintln!("[wiki-watcher] error: {err}");
+                        return;
+                    }
+                };
 
-            let kind = match event.kind {
-                EventKind::Create(_) => WikiChangeKind::Created,
-                EventKind::Modify(_) => WikiChangeKind::Modified,
-                EventKind::Remove(_) => WikiChangeKind::Deleted,
-                _ => return,
-            };
+                let kind = match event.kind {
+                    EventKind::Create(_) => WikiChangeKind::Created,
+                    EventKind::Modify(_) => WikiChangeKind::Modified,
+                    EventKind::Remove(_) => WikiChangeKind::Deleted,
+                    _ => return,
+                };
 
-            for path in event.paths {
-                // Only watch .md files
-                if path.extension().and_then(|e| e.to_str()) != Some("md") {
-                    continue;
+                for path in event.paths {
+                    // Only watch .md files
+                    if path.extension().and_then(|e| e.to_str()) != Some("md") {
+                        continue;
+                    }
+                    let _ = tx.send(WikiChangeEvent {
+                        path,
+                        kind: kind.clone(),
+                    });
                 }
-                let _ = tx.send(WikiChangeEvent {
-                    path,
-                    kind: kind.clone(),
-                });
-            }
-        })
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            })
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         watcher
             .watch(&wiki_dir, RecursiveMode::Recursive)
@@ -83,7 +84,7 @@ impl WikiWatcher {
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
 
     #[tokio::test]
     async fn test_watcher_detects_create() {

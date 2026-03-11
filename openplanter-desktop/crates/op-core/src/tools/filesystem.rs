@@ -1,5 +1,4 @@
 /// Filesystem tools: read, write, edit, list, search.
-
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -20,10 +19,7 @@ pub(crate) fn clip(text: &str, max_chars: usize) -> String {
     }
     let end = text.floor_char_boundary(max_chars);
     let omitted = text.len() - end;
-    format!(
-        "{}\n\n...[truncated {omitted} chars]...",
-        &text[..end]
-    )
+    format!("{}\n\n...[truncated {omitted} chars]...", &text[..end])
 }
 
 pub(crate) fn resolve_path(root: &Path, raw_path: &str) -> Result<PathBuf, String> {
@@ -374,12 +370,7 @@ pub fn search_files(
         let rel = entry.path().strip_prefix(root).unwrap_or(entry.path());
         for (idx, line) in text.lines().enumerate() {
             if line.to_lowercase().contains(&lower_query) {
-                matches.push(format!(
-                    "{}:{}:{}",
-                    rel.to_string_lossy(),
-                    idx + 1,
-                    line
-                ));
+                matches.push(format!("{}:{}:{}", rel.to_string_lossy(), idx + 1, line));
                 if matches.len() >= max_hits {
                     let mut result = matches.join("\n");
                     result.push_str("\n...[match limit reached]...");
@@ -467,13 +458,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         std::fs::write(dir.path().join("test.txt"), "hello world").unwrap();
         let mut files_read = HashSet::new();
-        let result = edit_file(
-            dir.path(),
-            "test.txt",
-            "hello",
-            "goodbye",
-            &mut files_read,
-        );
+        let result = edit_file(dir.path(), "test.txt", "hello", "goodbye", &mut files_read);
         assert!(!result.is_error);
         assert_eq!(
             std::fs::read_to_string(dir.path().join("test.txt")).unwrap(),

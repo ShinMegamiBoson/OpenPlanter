@@ -1,16 +1,15 @@
+use crate::state::AppState;
+use op_core::events::{GraphData, GraphEdge, GraphNode, NodeType};
+use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use regex::Regex;
 use tauri::State;
-use crate::state::AppState;
-use op_core::events::{GraphData, GraphEdge, GraphNode, NodeType};
 
 static LINK_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\[([^\]]+)\]\(([^)]+\.md)\)").unwrap());
-static CATEGORY_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^#{2,3}\s+(.+)").unwrap());
+static CATEGORY_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#{2,3}\s+(.+)").unwrap());
 
 /// Walk up from `start` to find a directory containing `wiki/index.md`.
 /// Checks both `.openplanter/wiki/` (preferred) and `wiki/` at each level.
@@ -117,27 +116,47 @@ pub fn parse_index_nodes(content: &str) -> Vec<GraphNode> {
 /// Extract distinctive search terms from a node's label for text-based matching.
 fn search_terms_for_node(node: &GraphNode) -> Vec<String> {
     let stopwords: HashSet<&str> = [
-        "a", "an", "the", "of", "and", "or", "in", "to", "for", "by",
-        "on", "at", "is", "it", "its", "us", "gov", "list",
-    ].into_iter().collect();
+        "a", "an", "the", "of", "and", "or", "in", "to", "for", "by", "on", "at", "is", "it",
+        "its", "us", "gov", "list",
+    ]
+    .into_iter()
+    .collect();
 
     let generic: HashSet<&str> = [
-        "federal", "state", "united", "states", "government", "bureau",
-        "department", "database", "national", "public",
-    ].into_iter().collect();
+        "federal",
+        "state",
+        "united",
+        "states",
+        "government",
+        "bureau",
+        "department",
+        "database",
+        "national",
+        "public",
+    ]
+    .into_iter()
+    .collect();
 
     let mut terms = Vec::new();
 
     // Full label (lowercased)
     terms.push(node.label.to_lowercase());
 
-    for word in node.label.split(|c: char| c.is_whitespace() || c == '/' || c == '(' || c == ')') {
-        let clean: String = word.chars()
+    for word in node
+        .label
+        .split(|c: char| c.is_whitespace() || c == '/' || c == '(' || c == ')')
+    {
+        let clean: String = word
+            .chars()
             .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-')
             .collect();
-        if clean.is_empty() { continue; }
+        if clean.is_empty() {
+            continue;
+        }
         let lower = clean.to_lowercase();
-        if stopwords.contains(lower.as_str()) { continue; }
+        if stopwords.contains(lower.as_str()) {
+            continue;
+        }
 
         // Acronyms: all uppercase, >= 2 chars (OCPF, FEC, EDGAR, FDIC, etc.)
         let alpha_chars: String = clean.chars().filter(|c| c.is_alphabetic()).collect();
@@ -165,15 +184,16 @@ pub fn find_cross_references(nodes: &[GraphNode], wiki_dir: &Path) -> Vec<GraphE
     let mut seen: HashSet<(String, String)> = HashSet::new();
 
     // Pre-compute search terms for all nodes
-    let node_terms: Vec<Vec<String>> = nodes.iter()
-        .map(|n| search_terms_for_node(n))
-        .collect();
+    let node_terms: Vec<Vec<String>> = nodes.iter().map(|n| search_terms_for_node(n)).collect();
 
     // Read all file contents upfront
-    let file_contents: HashMap<String, String> = nodes.iter()
+    let file_contents: HashMap<String, String> = nodes
+        .iter()
         .filter_map(|node| {
             let file_path = wiki_dir.join(&node.path);
-            fs::read_to_string(&file_path).ok().map(|c| (node.id.clone(), c))
+            fs::read_to_string(&file_path)
+                .ok()
+                .map(|c| (node.id.clone(), c))
         })
         .collect();
 
@@ -207,11 +227,17 @@ pub fn find_cross_references(nodes: &[GraphNode], wiki_dir: &Path) -> Vec<GraphE
         // 2. Text-based mention edges
         let content_lower = file_content.to_lowercase();
         for (j, other) in nodes.iter().enumerate() {
-            if i == j { continue; }
+            if i == j {
+                continue;
+            }
             let key = (node.id.clone(), other.id.clone());
-            if seen.contains(&key) { continue; }
+            if seen.contains(&key) {
+                continue;
+            }
 
-            let matched = node_terms[j].iter().any(|term| content_lower.contains(term.as_str()));
+            let matched = node_terms[j]
+                .iter()
+                .any(|term| content_lower.contains(term.as_str()));
             if matched {
                 seen.insert(key);
                 edges.push(GraphEdge {
@@ -490,7 +516,8 @@ pub fn parse_source_file(
     // Post-process: remove childless sections and empty-content facts
     let node_ids: HashSet<String> = nodes.iter().map(|n| n.id.clone()).collect();
     // Find section IDs that are the source of at least one structural child edge
-    let parent_section_ids: HashSet<&str> = edges.iter()
+    let parent_section_ids: HashSet<&str> = edges
+        .iter()
         .filter(|e| {
             let label = e.label.as_deref().unwrap_or("");
             (label == "has-section" || label == "contains") && node_ids.contains(&e.target)
@@ -499,7 +526,8 @@ pub fn parse_source_file(
         .collect();
 
     // IDs to remove: childless sections + empty-content facts
-    let remove_ids: HashSet<String> = nodes.iter()
+    let remove_ids: HashSet<String> = nodes
+        .iter()
         .filter(|n| {
             match n.node_type.as_ref() {
                 Some(NodeType::Section) => !parent_section_ids.contains(n.id.as_str()),
@@ -554,9 +582,10 @@ pub fn extract_cross_ref_edges(
             continue;
         }
         // Check if this fact is under a cross-reference section
-        let in_cross_ref = node.parent_id.as_ref().map_or(false, |pid| {
-            pid.contains("cross-reference")
-        });
+        let in_cross_ref = node
+            .parent_id
+            .as_ref()
+            .map_or(false, |pid| pid.contains("cross-reference"));
         if !in_cross_ref {
             continue;
         }
@@ -604,15 +633,21 @@ pub fn find_shared_field_edges(all_nodes: &[GraphNode]) -> Vec<GraphEdge> {
             continue;
         }
         // Check if this fact is under a data-schema section
-        let in_data_schema = node.parent_id.as_ref().map_or(false, |pid| {
-            pid.contains("data-schema")
-        });
+        let in_data_schema = node
+            .parent_id
+            .as_ref()
+            .map_or(false, |pid| pid.contains("data-schema"));
         if !in_data_schema {
             continue;
         }
 
         // Normalize field name: lowercase, strip backticks
-        let normalized = node.label.to_lowercase().replace('`', "").trim().to_string();
+        let normalized = node
+            .label
+            .to_lowercase()
+            .replace('`', "")
+            .trim()
+            .to_string();
         if !normalized.is_empty() {
             field_map.entry(normalized).or_default().push(node);
         }
@@ -651,13 +686,16 @@ pub fn find_shared_field_edges(all_nodes: &[GraphNode]) -> Vec<GraphEdge> {
 
 /// Get the wiki knowledge graph data by parsing wiki/index.md and all source files.
 #[tauri::command]
-pub async fn get_graph_data(
-    state: State<'_, AppState>,
-) -> Result<GraphData, String> {
+pub async fn get_graph_data(state: State<'_, AppState>) -> Result<GraphData, String> {
     let cfg = state.config.lock().await;
     let wiki_dir = match find_wiki_dir(&cfg.workspace) {
         Some(d) => d,
-        None => return Ok(GraphData { nodes: vec![], edges: vec![] }),
+        None => {
+            return Ok(GraphData {
+                nodes: vec![],
+                edges: vec![],
+            });
+        }
     };
 
     let index_path = wiki_dir.join("index.md");
@@ -690,15 +728,15 @@ pub async fn get_graph_data(
     let shared_field_edges = find_shared_field_edges(&all_nodes);
     all_edges.extend(shared_field_edges);
 
-    Ok(GraphData { nodes: all_nodes, edges: all_edges })
+    Ok(GraphData {
+        nodes: all_nodes,
+        edges: all_edges,
+    })
 }
 
 /// Read a wiki markdown file's contents, given a relative path like "wiki/fec.md".
 #[tauri::command]
-pub async fn read_wiki_file(
-    path: String,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn read_wiki_file(path: String, state: State<'_, AppState>) -> Result<String, String> {
     // Validate: must end in .md
     if !path.ends_with(".md") {
         return Err("Path must end in .md".into());
@@ -713,14 +751,16 @@ pub async fn read_wiki_file(
     }
 
     let cfg = state.config.lock().await;
-    let wiki_dir = find_wiki_dir(&cfg.workspace)
-        .ok_or_else(|| "Wiki directory not found".to_string())?;
+    let wiki_dir =
+        find_wiki_dir(&cfg.workspace).ok_or_else(|| "Wiki directory not found".to_string())?;
 
     let project_root = wiki_dir.parent().unwrap_or(&cfg.workspace);
     let resolved = project_root.join(&path);
 
     // Canonicalize and verify it's under the wiki dir
-    let canonical = resolved.canonicalize().map_err(|e| format!("File not found: {e}"))?;
+    let canonical = resolved
+        .canonicalize()
+        .map_err(|e| format!("File not found: {e}"))?;
     let canon_wiki = wiki_dir.canonicalize().map_err(|e| e.to_string())?;
     if !canonical.starts_with(&canon_wiki) {
         return Err("Path is outside wiki directory".into());
@@ -862,7 +902,9 @@ mod tests {
             label: "A".to_string(),
             category: "test".to_string(),
             path: "wiki/a.md".to_string(),
-            node_type: None, parent_id: None, content: None,
+            node_type: None,
+            parent_id: None,
+            content: None,
         }];
         let edges = find_cross_references(&nodes, tmp.path());
         assert!(edges.is_empty());
@@ -883,14 +925,18 @@ mod tests {
                 label: "A".to_string(),
                 category: "test".to_string(),
                 path: "wiki/a.md".to_string(),
-                node_type: None, parent_id: None, content: None,
+                node_type: None,
+                parent_id: None,
+                content: None,
             },
             GraphNode {
                 id: "b".to_string(),
                 label: "B".to_string(),
                 category: "test".to_string(),
                 path: "wiki/b.md".to_string(),
-                node_type: None, parent_id: None, content: None,
+                node_type: None,
+                parent_id: None,
+                content: None,
             },
         ];
         let edges = find_cross_references(&nodes, tmp.path());
@@ -996,7 +1042,10 @@ mod tests {
         // project_root should be .openplanter/ so joining with wiki/fec.md works
         let project_root = found.parent().unwrap();
         let file_path = project_root.join(&nodes[0].path);
-        assert!(file_path.exists(), "should resolve to .openplanter/wiki/fec.md");
+        assert!(
+            file_path.exists(),
+            "should resolve to .openplanter/wiki/fec.md"
+        );
     }
 
     #[test]
@@ -1046,7 +1095,11 @@ mod tests {
         let wiki_dir = tmp.path().join("wiki");
         fs::create_dir_all(&wiki_dir).unwrap();
         // File A mentions EDGAR (from B's label "SEC EDGAR") but doesn't link to it
-        fs::write(wiki_dir.join("a.md"), "Cross-reference with EDGAR filings for details.").unwrap();
+        fs::write(
+            wiki_dir.join("a.md"),
+            "Cross-reference with EDGAR filings for details.",
+        )
+        .unwrap();
         fs::write(wiki_dir.join("b.md"), "# SEC EDGAR\nContent.").unwrap();
 
         let nodes = vec![
@@ -1055,14 +1108,18 @@ mod tests {
                 label: "FEC Data".to_string(),
                 category: "campaign-finance".to_string(),
                 path: "wiki/a.md".to_string(),
-                node_type: None, parent_id: None, content: None,
+                node_type: None,
+                parent_id: None,
+                content: None,
             },
             GraphNode {
                 id: "b".to_string(),
                 label: "SEC EDGAR".to_string(),
                 category: "corporate".to_string(),
                 path: "wiki/b.md".to_string(),
-                node_type: None, parent_id: None, content: None,
+                node_type: None,
+                parent_id: None,
+                content: None,
             },
         ];
         let edges = find_cross_references(&nodes, tmp.path());
@@ -1080,17 +1137,20 @@ mod tests {
         // File A mentions its own label — should not create edge
         fs::write(wiki_dir.join("a.md"), "# EDGAR\nThis is SEC EDGAR data.").unwrap();
 
-        let nodes = vec![
-            GraphNode {
-                id: "a".to_string(),
-                label: "SEC EDGAR".to_string(),
-                category: "corporate".to_string(),
-                path: "wiki/a.md".to_string(),
-                node_type: None, parent_id: None, content: None,
-            },
-        ];
+        let nodes = vec![GraphNode {
+            id: "a".to_string(),
+            label: "SEC EDGAR".to_string(),
+            category: "corporate".to_string(),
+            path: "wiki/a.md".to_string(),
+            node_type: None,
+            parent_id: None,
+            content: None,
+        }];
         let edges = find_cross_references(&nodes, tmp.path());
-        assert!(edges.is_empty(), "should not create self-referencing edge from text mention");
+        assert!(
+            edges.is_empty(),
+            "should not create self-referencing edge from text mention"
+        );
     }
 
     #[test]
@@ -1107,14 +1167,18 @@ mod tests {
                 label: "EPA Data".to_string(),
                 category: "regulatory".to_string(),
                 path: "wiki/a.md".to_string(),
-                node_type: None, parent_id: None, content: None,
+                node_type: None,
+                parent_id: None,
+                content: None,
             },
             GraphNode {
                 id: "b".to_string(),
                 label: "OSHA Inspections".to_string(),
                 category: "regulatory".to_string(),
                 path: "wiki/b.md".to_string(),
-                node_type: None, parent_id: None, content: None,
+                node_type: None,
+                parent_id: None,
+                content: None,
             },
         ];
         let edges = find_cross_references(&nodes, tmp.path());
@@ -1136,14 +1200,18 @@ mod tests {
                 label: "A Data".to_string(),
                 category: "test".to_string(),
                 path: "wiki/a.md".to_string(),
-                node_type: None, parent_id: None, content: None,
+                node_type: None,
+                parent_id: None,
+                content: None,
             },
             GraphNode {
                 id: "b".to_string(),
                 label: "SEC EDGAR".to_string(),
                 category: "corporate".to_string(),
                 path: "wiki/b.md".to_string(),
-                node_type: None, parent_id: None, content: None,
+                node_type: None,
+                parent_id: None,
+                content: None,
             },
         ];
         let edges = find_cross_references(&nodes, tmp.path());
@@ -1163,7 +1231,9 @@ mod tests {
             label: "A".to_string(),
             category: "test".to_string(),
             path: "wiki/a.md".to_string(),
-            node_type: None, parent_id: None, content: None,
+            node_type: None,
+            parent_id: None,
+            content: None,
         }];
         let edges = find_cross_references(&nodes, tmp.path());
         assert!(edges.is_empty(), "self-references should be excluded");
@@ -1174,7 +1244,10 @@ mod tests {
     #[test]
     fn test_slugify_basic() {
         assert_eq!(slugify("Data Schema"), "data-schema");
-        assert_eq!(slugify("Cross-Reference Potential"), "cross-reference-potential");
+        assert_eq!(
+            slugify("Cross-Reference Potential"),
+            "cross-reference-potential"
+        );
         assert_eq!(slugify("Legal & Licensing"), "legal-licensing");
         assert_eq!(slugify("  multiple   spaces  "), "multiple-spaces");
     }
@@ -1258,13 +1331,19 @@ mod tests {
         let (nodes, edges) = parse_source_file(&source, content);
         // Data Schema + 2 subsections + 2 facts = 5
         assert_eq!(nodes.len(), 5);
-        let sections: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Section)).collect();
+        let sections: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.node_type == Some(NodeType::Section))
+            .collect();
         assert_eq!(sections.len(), 3);
         // Subsections are children of the h2
         assert_eq!(sections[1].parent_id.as_deref(), Some("fec::data-schema"));
         assert_eq!(sections[2].parent_id.as_deref(), Some("fec::data-schema"));
         // has-section edges
-        let has_section: Vec<_> = edges.iter().filter(|e| e.label.as_deref() == Some("has-section")).collect();
+        let has_section: Vec<_> = edges
+            .iter()
+            .filter(|e| e.label.as_deref() == Some("has-section"))
+            .collect();
         assert_eq!(has_section.len(), 3);
     }
 
@@ -1275,16 +1354,26 @@ mod tests {
         let (nodes, edges) = parse_source_file(&source, content);
         // 1 section + 2 facts
         assert_eq!(nodes.len(), 3);
-        let facts: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Fact)).collect();
+        let facts: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.node_type == Some(NodeType::Fact))
+            .collect();
         assert_eq!(facts.len(), 2);
         assert_eq!(facts[0].label, "Jurisdiction");
         assert_eq!(facts[1].label, "Time range");
         // Facts should have content
         assert!(facts[0].content.as_ref().unwrap().contains("Federal"));
         // Facts parented to section
-        assert!(facts.iter().all(|f| f.parent_id.as_deref() == Some("fec::coverage")));
+        assert!(
+            facts
+                .iter()
+                .all(|f| f.parent_id.as_deref() == Some("fec::coverage"))
+        );
         // Contains edges
-        let contains: Vec<_> = edges.iter().filter(|e| e.label.as_deref() == Some("contains")).collect();
+        let contains: Vec<_> = edges
+            .iter()
+            .filter(|e| e.label.as_deref() == Some("contains"))
+            .collect();
         assert_eq!(contains.len(), 2);
     }
 
@@ -1293,13 +1382,22 @@ mod tests {
         let source = make_source("fec");
         let content = "## Coverage\n\n- **Time range**:\n  - Records: 1979-present\n  - Contributions: 1979-present\n- **Jurisdiction**: Federal";
         let (nodes, _) = parse_source_file(&source, content);
-        let facts: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Fact)).collect();
+        let facts: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.node_type == Some(NodeType::Fact))
+            .collect();
         assert_eq!(facts.len(), 2);
         // Time range should have accumulated sub-bullets
         let time_range = facts.iter().find(|f| f.label == "Time range").unwrap();
         let content = time_range.content.as_ref().unwrap();
-        assert!(content.contains("Records: 1979-present"), "should contain sub-bullet");
-        assert!(content.contains("Contributions: 1979-present"), "should contain second sub-bullet");
+        assert!(
+            content.contains("Records: 1979-present"),
+            "should contain sub-bullet"
+        );
+        assert!(
+            content.contains("Contributions: 1979-present"),
+            "should contain second sub-bullet"
+        );
     }
 
     #[test]
@@ -1308,7 +1406,10 @@ mod tests {
         // Bold bullet with NO sub-bullets and NO value after colon → should be pruned
         let content = "## Coverage\n\n- **Empty**:\n- **Jurisdiction**: Federal";
         let (nodes, _) = parse_source_file(&source, content);
-        let facts: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Fact)).collect();
+        let facts: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.node_type == Some(NodeType::Fact))
+            .collect();
         // "Empty" should be pruned, only "Jurisdiction" remains
         assert_eq!(facts.len(), 1);
         assert_eq!(facts[0].label, "Jurisdiction");
@@ -1320,7 +1421,10 @@ mod tests {
         let content = "## Data Schema\n\n| Field | Description |\n|-------|-------------|\n| `candidate_id` | Unique ID |\n| `name` | Full name |";
         let (nodes, edges) = parse_source_file(&source, content);
         // 1 section + 2 fact rows (header + separator skipped)
-        let facts: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Fact)).collect();
+        let facts: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.node_type == Some(NodeType::Fact))
+            .collect();
         assert_eq!(facts.len(), 2);
         assert_eq!(facts[0].label, "candidate_id"); // backticks stripped
         assert_eq!(facts[1].label, "name");
@@ -1331,7 +1435,10 @@ mod tests {
         let source = make_source("fec");
         let content = "## Schema\n\n| Header1 | Header2 |\n| --- | --- |\n| value1 | desc1 |";
         let (nodes, _edges) = parse_source_file(&source, content);
-        let facts: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Fact)).collect();
+        let facts: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.node_type == Some(NodeType::Fact))
+            .collect();
         assert_eq!(facts.len(), 1);
         assert_eq!(facts[0].label, "value1");
     }
@@ -1339,11 +1446,17 @@ mod tests {
     #[test]
     fn test_parse_fact_parents_correct() {
         let source = make_source("fec");
-        let content = "## Data Schema\n\n### Candidate Records\n\n| Field | Desc |\n|---|---|\n| cid | ID |";
+        let content =
+            "## Data Schema\n\n### Candidate Records\n\n| Field | Desc |\n|---|---|\n| cid | ID |";
         let (nodes, _) = parse_source_file(&source, content);
         let fact = nodes.iter().find(|n| n.label == "cid").unwrap();
         // Fact should be parented to the h3 section, not the h2
-        assert!(fact.parent_id.as_ref().unwrap().contains("candidate-records"));
+        assert!(
+            fact.parent_id
+                .as_ref()
+                .unwrap()
+                .contains("candidate-records")
+        );
     }
 
     #[test]
@@ -1352,7 +1465,10 @@ mod tests {
         // Two sections with same name, each with a fact so they survive pruning
         let content = "## Summary\n\n- **A**: 1\n\n## Summary\n\n- **B**: 2";
         let (nodes, _) = parse_source_file(&source, content);
-        let sections: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Section)).collect();
+        let sections: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.node_type == Some(NodeType::Section))
+            .collect();
         assert_eq!(sections.len(), 2);
         assert_eq!(sections[0].id, "fec::summary");
         assert_eq!(sections[1].id, "fec::summary-2"); // deduplicated
@@ -1393,15 +1509,27 @@ Overview paragraph.
 
 Links here.";
         let (nodes, edges) = parse_source_file(&source, content);
-        let sections: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Section)).collect();
-        let facts: Vec<_> = nodes.iter().filter(|n| n.node_type == Some(NodeType::Fact)).collect();
+        let sections: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.node_type == Some(NodeType::Section))
+            .collect();
+        let facts: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.node_type == Some(NodeType::Fact))
+            .collect();
         // Summary and References pruned (no children), Coverage + Data Schema + Records remain = 3
         assert_eq!(sections.len(), 3);
         // 2 bullets + 2 table rows = 4 facts
         assert_eq!(facts.len(), 4);
         // Structural edges: 2 has-section (Coverage→source, Data Schema→source) + 1 has-section (Records→Data Schema) + 4 contains
-        let has_section_count = edges.iter().filter(|e| e.label.as_deref() == Some("has-section")).count();
-        let contains_count = edges.iter().filter(|e| e.label.as_deref() == Some("contains")).count();
+        let has_section_count = edges
+            .iter()
+            .filter(|e| e.label.as_deref() == Some("has-section"))
+            .count();
+        let contains_count = edges
+            .iter()
+            .filter(|e| e.label.as_deref() == Some("contains"))
+            .count();
         assert_eq!(has_section_count, 3);
         assert_eq!(contains_count, 4);
     }
@@ -1481,7 +1609,10 @@ Links here.";
         let all_nodes = vec![source_a.clone(), source_b.clone(), fact];
         let source_nodes = vec![source_a, source_b];
         let edges = extract_cross_ref_edges(&all_nodes, &source_nodes);
-        assert!(edges.is_empty(), "should only match facts under cross-reference sections");
+        assert!(
+            edges.is_empty(),
+            "should only match facts under cross-reference sections"
+        );
     }
 
     // ── find_shared_field_edges ──
@@ -1532,7 +1663,10 @@ Links here.";
             content: None,
         };
         let edges = find_shared_field_edges(&vec![fact_a, fact_b]);
-        assert!(edges.is_empty(), "should not create edge between same-source facts");
+        assert!(
+            edges.is_empty(),
+            "should not create edge between same-source facts"
+        );
     }
 
     #[test]
@@ -1601,7 +1735,9 @@ Links here.";
             content: None,
         };
         let edges = find_shared_field_edges(&vec![fact_a, fact_b]);
-        assert!(edges.is_empty(), "should only match facts under data-schema sections");
+        assert!(
+            edges.is_empty(),
+            "should only match facts under data-schema sections"
+        );
     }
-
 }

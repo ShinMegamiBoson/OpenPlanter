@@ -67,12 +67,7 @@ pub async fn solve(
         if let Err(e) = result {
             let msg = format!("Internal error: {e}");
             eprintln!("[bridge] panic: {msg}");
-            let _ = error_handle.emit(
-                "agent:error",
-                op_core::events::ErrorEvent {
-                    message: msg,
-                },
-            );
+            let _ = error_handle.emit("agent:error", op_core::events::ErrorEvent { message: msg });
         }
     });
 
@@ -81,9 +76,7 @@ pub async fn solve(
 
 /// Cancel a running solve.
 #[tauri::command]
-pub async fn cancel(
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn cancel(state: State<'_, AppState>) -> Result<(), String> {
     let token = state.cancel_token.lock().await;
     token.cancel();
     Ok(())

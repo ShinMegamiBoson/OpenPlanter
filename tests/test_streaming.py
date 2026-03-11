@@ -8,7 +8,9 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from agent.model import (
+    HTTPModelError,
     ModelError,
+    RateLimitError,
     _accumulate_anthropic_stream,
     _accumulate_openai_stream,
     _http_stream_sse,
@@ -76,6 +78,15 @@ class ReadSSEEventsTests(unittest.TestCase):
         with self.assertRaises(ModelError) as ctx:
             _read_sse_events(resp)
         self.assertIn("Overloaded", str(ctx.exception))
+
+    def test_openai_style_rate_limit_error_event_raises(self) -> None:
+        resp = self._make_resp([
+            'data: {"error":{"code":"1302","message":"Rate limit reached for requests"}}',
+            '',
+        ])
+        with self.assertRaises(RateLimitError) as ctx:
+            _read_sse_events(resp)
+        self.assertIn("Rate limit", str(ctx.exception))
 
     def test_done_terminates_early(self) -> None:
         resp = self._make_resp([
@@ -269,6 +280,77 @@ class HttpStreamSSETests(unittest.TestCase):
             self.assertIn("HTTP 400", str(ctx.exception))
         # Should only be called once — no retries on HTTP errors
         self.assertEqual(call_count, 1)
+
+    def test_http_429_raises_rate_limit_error(self) -> None:
+        call_count = 0
+
+        def fake_urlopen(req, timeout=None):
+            nonlocal call_count
+            call_count += 1
+            import urllib.error
+            raise urllib.error.HTTPError(
+                url="http://test",
+                code=429,
+                msg="Too Many Requests",
+                hdrs={"Retry-After": "2"},
+                fp=io.BytesIO(b'{"error":{"message":"Too many requests","code":"rate_limit_exceeded"}}'),
+            )
+
+        with patch("agent.model.urllib.request.urlopen", fake_urlopen):
+            with self.assertRaises(RateLimitError) as ctx:
+                _http_stream_sse(
+                    url="http://test/v1/chat/completions",
+                    method="POST",
+                    headers={},
+                    payload={"model": "test"},
+                    max_retries=3,
+                )
+            self.assertEqual(ctx.exception.status_code, 429)
+        self.assertEqual(call_count, 1)
+
+    def test_http_400_with_code_1302_raises_rate_limit_error(self) -> None:
+        def fake_urlopen(req, timeout=None):
+            import urllib.error
+            raise urllib.error.HTTPError(
+                url="http://test",
+                code=400,
+                msg="Bad Request",
+                hdrs={},
+                fp=io.BytesIO(b'{"error":{"message":"Rate limit reached for requests","code":"1302"}}'),
+            )
+
+        with patch("agent.model.urllib.request.urlopen", fake_urlopen):
+            with self.assertRaises(RateLimitError) as ctx:
+                _http_stream_sse(
+                    url="http://test/v1/chat/completions",
+                    method="POST",
+                    headers={},
+                    payload={"model": "test"},
+                    max_retries=3,
+                )
+            self.assertEqual(ctx.exception.provider_code, "1302")
+
+    def test_http_400_non_rate_limit_raises_http_model_error(self) -> None:
+        def fake_urlopen(req, timeout=None):
+            import urllib.error
+            raise urllib.error.HTTPError(
+                url="http://test",
+                code=400,
+                msg="Bad Request",
+                hdrs={},
+                fp=io.BytesIO(b'{"error":{"message":"bad request","code":"invalid_request"}}'),
+            )
+
+        with patch("agent.model.urllib.request.urlopen", fake_urlopen):
+            with self.assertRaises(HTTPModelError) as ctx:
+                _http_stream_sse(
+                    url="http://test/v1/chat/completions",
+                    method="POST",
+                    headers={},
+                    payload={"model": "test"},
+                    max_retries=3,
+                )
+            self.assertEqual(ctx.exception.status_code, 400)
 
 
 if __name__ == "__main__":

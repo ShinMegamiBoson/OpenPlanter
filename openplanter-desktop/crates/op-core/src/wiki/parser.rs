@@ -37,9 +37,7 @@ pub fn parse_index(content: &str) -> Vec<WikiEntry> {
         if trimmed.starts_with("### ") {
             current_category = trimmed[4..].trim().to_lowercase();
             // Normalize common category names
-            current_category = current_category
-                .replace(' ', "-")
-                .replace('_', "-");
+            current_category = current_category.replace(' ', "-").replace('_', "-");
             continue;
         }
 

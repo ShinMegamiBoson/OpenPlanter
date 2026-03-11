@@ -9,7 +9,16 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .config import PROVIDER_DEFAULT_MODELS, AgentConfig
+from .config import (
+    ANTHROPIC_FOUNDRY_MODEL_PREFIX,
+    AZURE_FOUNDRY_MODEL_PREFIX,
+    PROVIDER_DEFAULT_MODELS,
+    AgentConfig,
+    is_foundry_anthropic_base_url,
+    is_foundry_openai_base_url,
+    resolve_anthropic_api_key,
+    resolve_openai_api_key,
+)
 from .engine import RLMEngine
 from .model import (
     AnthropicModel,
@@ -27,7 +36,8 @@ from .tools import WorkspaceTools
 # Patterns that unambiguously identify a provider.
 _ANTHROPIC_RE = re.compile(r"^claude", re.IGNORECASE)
 _OPENAI_RE = re.compile(r"^(gpt|o[1-4]-|o[1-4]$|chatgpt|dall-e|tts-|whisper)", re.IGNORECASE)
-_CEREBRAS_RE = re.compile(r"^(llama.*cerebras|qwen-3|gpt-oss|zai-glm)", re.IGNORECASE)
+_CEREBRAS_RE = re.compile(r"^(llama.*cerebras|qwen-3|gpt-oss)", re.IGNORECASE)
+_ZAI_RE = re.compile(r"^(glm|zai-glm)", re.IGNORECASE)
 _OLLAMA_RE = re.compile(
     r"^(llama|mistral|gemma|phi|codellama|deepseek|vicuna|tinyllama|"
     r"neural-chat|dolphin|wizardlm|orca|nous-hermes|command-r|qwen(?!-3))",
@@ -37,12 +47,19 @@ _OLLAMA_RE = re.compile(
 
 def infer_provider_for_model(model: str) -> str | None:
     """Return the likely provider for *model*, or ``None`` if ambiguous."""
+    lowered = model.strip().lower()
+    if lowered.startswith(ANTHROPIC_FOUNDRY_MODEL_PREFIX):
+        return "anthropic"
+    if lowered.startswith(AZURE_FOUNDRY_MODEL_PREFIX):
+        return "openai"
     if "/" in model:
         return "openrouter"
     if _ANTHROPIC_RE.search(model):
         return "anthropic"
     if _CEREBRAS_RE.search(model):
         return "cerebras"
+    if _ZAI_RE.search(model):
+        return "zai"
     if _OPENAI_RE.search(model):
         return "openai"
     if _OLLAMA_RE.search(model):
@@ -66,13 +83,37 @@ def _validate_model_provider(model_name: str, provider: str) -> None:
 
 def _fetch_models_for_provider(cfg: AgentConfig, provider: str) -> list[dict]:
     if provider == "openai":
-        if not cfg.openai_api_key:
+        api_key = resolve_openai_api_key(cfg.openai_api_key, cfg.openai_base_url)
+        if not api_key:
             raise ModelError("OpenAI key not configured.")
-        return list_openai_models(api_key=cfg.openai_api_key, base_url=cfg.openai_base_url)
+        models = list_openai_models(api_key=api_key, base_url=cfg.openai_base_url)
+        if is_foundry_openai_base_url(cfg.openai_base_url):
+            return [
+                {
+                    **row,
+                    "id": row["id"]
+                    if str(row.get("id", "")).lower().startswith(AZURE_FOUNDRY_MODEL_PREFIX)
+                    else f"{AZURE_FOUNDRY_MODEL_PREFIX}{row['id']}",
+                }
+                for row in models
+            ]
+        return models
     if provider == "anthropic":
-        if not cfg.anthropic_api_key:
+        api_key = resolve_anthropic_api_key(cfg.anthropic_api_key, cfg.anthropic_base_url)
+        if not api_key:
             raise ModelError("Anthropic key not configured.")
-        return list_anthropic_models(api_key=cfg.anthropic_api_key, base_url=cfg.anthropic_base_url)
+        models = list_anthropic_models(api_key=api_key, base_url=cfg.anthropic_base_url)
+        if is_foundry_anthropic_base_url(cfg.anthropic_base_url):
+            return [
+                {
+                    **row,
+                    "id": row["id"]
+                    if str(row.get("id", "")).lower().startswith(ANTHROPIC_FOUNDRY_MODEL_PREFIX)
+                    else f"{ANTHROPIC_FOUNDRY_MODEL_PREFIX}{row['id']}",
+                }
+                for row in models
+            ]
+        return models
     if provider == "openrouter":
         if not cfg.openrouter_api_key:
             raise ModelError("OpenRouter key not configured.")
@@ -81,6 +122,10 @@ def _fetch_models_for_provider(cfg: AgentConfig, provider: str) -> list[dict]:
         if not cfg.cerebras_api_key:
             raise ModelError("Cerebras key not configured.")
         return list_openai_models(api_key=cfg.cerebras_api_key, base_url=cfg.cerebras_base_url)
+    if provider == "zai":
+        if not cfg.zai_api_key:
+            raise ModelError("Z.AI key not configured.")
+        return list_openai_models(api_key=cfg.zai_api_key, base_url=cfg.zai_base_url)
     if provider == "ollama":
         return list_ollama_models(base_url=cfg.ollama_base_url)
     raise ModelError(f"Unknown provider: {provider}")
@@ -98,25 +143,28 @@ def _resolve_model_name(cfg: AgentConfig) -> str:
         if not models:
             raise ModelError(f"No models returned for provider '{cfg.provider}'.")
         return str(models[0]["id"])
-    return PROVIDER_DEFAULT_MODELS.get(cfg.provider, "claude-opus-4-6")
+    return PROVIDER_DEFAULT_MODELS.get(cfg.provider, "anthropic-foundry/claude-opus-4-6")
 
 
 def build_model_factory(cfg: AgentConfig) -> ModelFactory | None:
     """Return a factory that creates models by name + optional reasoning effort."""
+    openai_api_key = resolve_openai_api_key(cfg.openai_api_key, cfg.openai_base_url)
+    anthropic_api_key = resolve_anthropic_api_key(cfg.anthropic_api_key, cfg.anthropic_base_url)
+
     def _factory(model_name: str, reasoning_effort: str | None = None) -> AnthropicModel | OpenAICompatibleModel:
         provider = infer_provider_for_model(model_name)
         effort = reasoning_effort or cfg.reasoning_effort
-        if provider == "anthropic" and cfg.anthropic_api_key:
+        if provider == "anthropic" and anthropic_api_key:
             return AnthropicModel(
                 model=model_name,
-                api_key=cfg.anthropic_api_key,
+                api_key=anthropic_api_key,
                 base_url=cfg.anthropic_base_url,
                 reasoning_effort=effort,
             )
-        if provider in ("openai", None) and cfg.openai_api_key:
+        if provider in ("openai", None) and openai_api_key:
             return OpenAICompatibleModel(
                 model=model_name,
-                api_key=cfg.openai_api_key,
+                api_key=openai_api_key,
                 base_url=cfg.openai_base_url,
                 reasoning_effort=effort,
             )
@@ -138,6 +186,18 @@ def build_model_factory(cfg: AgentConfig) -> ModelFactory | None:
                 base_url=cfg.cerebras_base_url,
                 reasoning_effort=effort,
             )
+        if provider == "zai" and cfg.zai_api_key:
+            thinking_type = "disabled" if effort in (None, "", "none") else "enabled"
+            return OpenAICompatibleModel(
+                model=model_name,
+                api_key=cfg.zai_api_key,
+                base_url=cfg.zai_base_url,
+                reasoning_effort=effort,
+                thinking_type=thinking_type,
+                extra_headers={"Accept-Language": "en-US,en"},
+                provider="zai",
+                stream_max_retries=cfg.zai_stream_max_retries,
+            )
         if provider == "ollama":
             return OpenAICompatibleModel(
                 model=model_name,
@@ -149,7 +209,14 @@ def build_model_factory(cfg: AgentConfig) -> ModelFactory | None:
             )
         raise ModelError(f"No API key available for model '{model_name}' (provider={provider})")
 
-    if cfg.anthropic_api_key or cfg.openai_api_key or cfg.openrouter_api_key or cfg.cerebras_api_key or cfg.ollama_base_url:
+    if (
+        anthropic_api_key
+        or openai_api_key
+        or cfg.openrouter_api_key
+        or cfg.cerebras_api_key
+        or cfg.zai_api_key
+        or cfg.ollama_base_url
+    ):
         return _factory
     return None
 
@@ -163,8 +230,11 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
         max_file_chars=cfg.max_file_chars,
         max_files_listed=cfg.max_files_listed,
         max_search_hits=cfg.max_search_hits,
+        web_search_provider=cfg.web_search_provider,
         exa_api_key=cfg.exa_api_key,
         exa_base_url=cfg.exa_base_url,
+        firecrawl_api_key=cfg.firecrawl_api_key,
+        firecrawl_base_url=cfg.firecrawl_base_url,
     )
 
     try:
@@ -175,10 +245,13 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
 
     _validate_model_provider(model_name, cfg.provider)
 
-    if cfg.provider == "openai" and cfg.openai_api_key:
+    openai_api_key = resolve_openai_api_key(cfg.openai_api_key, cfg.openai_base_url)
+    anthropic_api_key = resolve_anthropic_api_key(cfg.anthropic_api_key, cfg.anthropic_base_url)
+
+    if cfg.provider == "openai" and openai_api_key:
         model = OpenAICompatibleModel(
             model=model_name,
-            api_key=cfg.openai_api_key,
+            api_key=openai_api_key,
             base_url=cfg.openai_base_url,
             reasoning_effort=cfg.reasoning_effort,
         )
@@ -200,6 +273,18 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
             base_url=cfg.cerebras_base_url,
             reasoning_effort=cfg.reasoning_effort,
         )
+    elif cfg.provider == "zai" and cfg.zai_api_key:
+        thinking_type = "disabled" if cfg.reasoning_effort in (None, "", "none") else "enabled"
+        model = OpenAICompatibleModel(
+            model=model_name,
+            api_key=cfg.zai_api_key,
+            base_url=cfg.zai_base_url,
+            reasoning_effort=cfg.reasoning_effort,
+            thinking_type=thinking_type,
+            extra_headers={"Accept-Language": "en-US,en"},
+            provider="zai",
+            stream_max_retries=cfg.zai_stream_max_retries,
+        )
     elif cfg.provider == "ollama":
         model = OpenAICompatibleModel(
             model=model_name,
@@ -209,10 +294,10 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
             first_byte_timeout=120,
             strict_tools=False,
         )
-    elif cfg.provider == "anthropic" and cfg.anthropic_api_key:
+    elif cfg.provider == "anthropic" and anthropic_api_key:
         model = AnthropicModel(
             model=model_name,
-            api_key=cfg.anthropic_api_key,
+            api_key=anthropic_api_key,
             base_url=cfg.anthropic_base_url,
             reasoning_effort=cfg.reasoning_effort,
         )

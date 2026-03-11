@@ -24,6 +24,7 @@ describe("createStatusBar", () => {
     expect(bar.querySelector(".provider")).not.toBeNull();
     expect(bar.querySelector(".model")).not.toBeNull();
     expect(bar.querySelector(".reasoning")).not.toBeNull();
+    expect(bar.querySelector(".zai-plan")).not.toBeNull();
     expect(bar.querySelector(".mode")).not.toBeNull();
     expect(bar.querySelector(".session")).not.toBeNull();
     expect(bar.querySelector(".tokens")).not.toBeNull();
@@ -52,6 +53,18 @@ describe("createStatusBar", () => {
     appState.update((s) => ({ ...s, reasoningEffort: null }));
     const bar = createStatusBar();
     expect(bar.querySelector(".reasoning")!.textContent).toBe("");
+  });
+
+  it("renders Z.AI plan when provider is zai", () => {
+    appState.update((s) => ({ ...s, provider: "zai", zaiPlan: "coding" }));
+    const bar = createStatusBar();
+    expect(bar.querySelector(".zai-plan")!.textContent).toBe("zai:coding");
+  });
+
+  it("hides Z.AI plan when provider is not zai", () => {
+    appState.update((s) => ({ ...s, provider: "anthropic", zaiPlan: "coding" }));
+    const bar = createStatusBar();
+    expect(bar.querySelector(".zai-plan")!.textContent).toBe("");
   });
 
   it("renders recursive mode", () => {

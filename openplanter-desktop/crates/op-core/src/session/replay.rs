@@ -179,13 +179,11 @@ mod tests {
             step_tokens_out: Some(2100),
             step_elapsed: Some(5000),
             step_model_preview: Some("The analysis shows...".into()),
-            step_tool_calls: Some(vec![
-                StepToolCallEntry {
-                    name: "read_file".into(),
-                    key_arg: "/src/main.ts".into(),
-                    elapsed: 1200,
-                },
-            ]),
+            step_tool_calls: Some(vec![StepToolCallEntry {
+                name: "read_file".into(),
+                key_arg: "/src/main.ts".into(),
+                elapsed: 1200,
+            }]),
         };
         logger.append(entry).await.unwrap();
 
@@ -218,7 +216,8 @@ mod tests {
                 step_elapsed: None,
                 step_model_preview: None,
                 step_tool_calls: None,
-            }).unwrap(),
+            })
+            .unwrap(),
             serde_json::to_string(&ReplayEntry {
                 seq: 2,
                 timestamp: "2026-01-01T00:01:00Z".into(),
@@ -232,7 +231,8 @@ mod tests {
                 step_elapsed: None,
                 step_model_preview: None,
                 step_tool_calls: None,
-            }).unwrap(),
+            })
+            .unwrap(),
         );
         fs::write(&path, content).await.unwrap();
 
@@ -285,7 +285,9 @@ mod tests {
         };
         logger.append(entry).await.unwrap();
 
-        let content = fs::read_to_string(tmp.path().join("replay.jsonl")).await.unwrap();
+        let content = fs::read_to_string(tmp.path().join("replay.jsonl"))
+            .await
+            .unwrap();
         assert!(!content.contains("tool_name"));
         assert!(!content.contains("step_number"));
         assert!(!content.contains("step_tool_calls"));

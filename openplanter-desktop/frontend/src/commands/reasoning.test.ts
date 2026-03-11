@@ -38,6 +38,7 @@ describe("handleReasoningCommand", () => {
       return {
         provider: "anthropic",
         model: "claude-opus-4-6",
+        zai_plan: "paygo",
         reasoning_effort: "low",
         workspace: ".",
         session_id: null,
@@ -57,6 +58,7 @@ describe("handleReasoningCommand", () => {
     __setHandler("update_config", ({ partial }: any) => ({
       provider: "anthropic",
       model: "claude-opus-4-6",
+      zai_plan: "coding",
       reasoning_effort: "high",
       workspace: ".",
       session_id: null,
@@ -77,6 +79,7 @@ describe("handleReasoningCommand", () => {
       return {
         provider: "anthropic",
         model: "claude-opus-4-6",
+        zai_plan: "paygo",
         reasoning_effort: null,
         workspace: ".",
         session_id: null,
@@ -103,6 +106,7 @@ describe("handleReasoningCommand", () => {
       return {
         provider: "anthropic",
         model: "claude-opus-4-6",
+        zai_plan: "coding",
         reasoning_effort: "high",
         workspace: ".",
         session_id: null,
@@ -122,6 +126,7 @@ describe("handleReasoningCommand", () => {
     __setHandler("update_config", ({ partial }: any) => ({
       provider: "anthropic",
       model: "claude-opus-4-6",
+      zai_plan: "coding",
       reasoning_effort: "high",
       workspace: ".",
       session_id: null,
@@ -130,6 +135,9 @@ describe("handleReasoningCommand", () => {
       max_steps_per_call: 100,
       demo: false,
     }));
+    __setHandler("save_settings", ({ settings }: any) => {
+      expect(settings.default_reasoning_effort).toBe("high");
+    });
 
     const result = await handleReasoningCommand("high --save");
     expect(result.action).toBe("handled");

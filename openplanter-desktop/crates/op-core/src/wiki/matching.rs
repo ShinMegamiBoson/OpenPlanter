@@ -18,15 +18,13 @@ impl NameRegistry {
 
     /// Register a canonical name for an entity.
     pub fn register(&mut self, name: &str, entity_id: &str) {
-        self.entries
-            .push((name.to_string(), entity_id.to_string()));
+        self.entries.push((name.to_string(), entity_id.to_string()));
     }
 
     /// Register multiple aliases for the same entity.
     pub fn register_aliases(&mut self, aliases: &[String], entity_id: &str) {
         for alias in aliases {
-            self.entries
-                .push((alias.clone(), entity_id.to_string()));
+            self.entries.push((alias.clone(), entity_id.to_string()));
         }
     }
 
@@ -123,10 +121,7 @@ mod tests {
     fn test_aliases() {
         let mut reg = NameRegistry::new();
         reg.register("Acme Corp", "acme-corp");
-        reg.register_aliases(
-            &["AC".to_string(), "Acme".to_string()],
-            "acme-corp",
-        );
+        reg.register_aliases(&["AC".to_string(), "Acme".to_string()], "acme-corp");
         assert_eq!(reg.len(), 3);
 
         let result = reg.find_best("Acme");

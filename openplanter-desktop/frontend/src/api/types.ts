@@ -65,6 +65,8 @@ export interface ConfigView {
   provider: string;
   model: string;
   reasoning_effort: string | null;
+  zai_plan: string;
+  web_search_provider: string;
   workspace: string;
   session_id: string | null;
   recursive: boolean;
@@ -77,6 +79,8 @@ export interface PartialConfig {
   provider?: string;
   model?: string;
   reasoning_effort?: string;
+  zai_plan?: string;
+  web_search_provider?: string;
 }
 
 export interface ModelInfo {
@@ -99,7 +103,10 @@ export interface PersistentSettings {
   default_model_anthropic?: string | null;
   default_model_openrouter?: string | null;
   default_model_cerebras?: string | null;
+  default_model_zai?: string | null;
   default_model_ollama?: string | null;
+  zai_plan?: string | null;
+  web_search_provider?: string | null;
 }
 
 export interface SlashResult {

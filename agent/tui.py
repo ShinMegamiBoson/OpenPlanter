@@ -110,14 +110,15 @@ HELP_LINES: list[str] = [
 ]
 
 MODEL_ALIASES: dict[str, str] = {
-    "opus": "claude-opus-4-6",
-    "opus4.6": "claude-opus-4-6",
-    "sonnet": "claude-sonnet-4-5-20250929",
-    "sonnet4.5": "claude-sonnet-4-5-20250929",
-    "haiku": "claude-haiku-4-5-20251001",
-    "haiku4.5": "claude-haiku-4-5-20251001",
-    "gpt5": "gpt-5.2",
-    "gpt5.2": "gpt-5.2",
+    "opus": "anthropic-foundry/claude-opus-4-6",
+    "opus4.6": "anthropic-foundry/claude-opus-4-6",
+    "sonnet": "anthropic-foundry/claude-sonnet-4-6",
+    "sonnet4.6": "anthropic-foundry/claude-sonnet-4-6",
+    "haiku": "anthropic-foundry/claude-haiku-4-5",
+    "haiku4.5": "anthropic-foundry/claude-haiku-4-5",
+    "gpt5": "azure-foundry/gpt-5.3-codex",
+    "gpt5.3": "azure-foundry/gpt-5.3-codex",
+    "kimi": "azure-foundry/Kimi-K2.5",
     "gpt4": "gpt-4.1",
     "gpt4.1": "gpt-4.1",
     "gpt4o": "gpt-4o",
@@ -128,6 +129,8 @@ MODEL_ALIASES: dict[str, str] = {
     "cerebras": "qwen-3-235b-a22b-instruct-2507",
     "qwen235b": "qwen-3-235b-a22b-instruct-2507",
     "oss120b": "gpt-oss-120b",
+    "glm5": "glm-5",
+    "zai": "glm-5",
     "llama": "llama3.2",
     "llama3": "llama3.2",
     "mistral": "mistral",
@@ -176,6 +179,7 @@ def _api_key_for_provider(cfg: AgentConfig, provider: str) -> str | None:
         "anthropic": cfg.anthropic_api_key,
         "openrouter": cfg.openrouter_api_key,
         "cerebras": cfg.cerebras_api_key,
+        "zai": cfg.zai_api_key,
         "ollama": "ollama",
     }.get(provider)
 
@@ -191,6 +195,8 @@ def _available_providers(cfg: AgentConfig) -> list[str]:
         providers.append("openrouter")
     if cfg.cerebras_api_key:
         providers.append("cerebras")
+    if cfg.zai_api_key:
+        providers.append("zai")
     providers.append("ollama")
     return providers
 
@@ -220,7 +226,7 @@ def handle_model_command(args: str, ctx: ChatContext) -> list[str]:
         list_target = parts[1] if len(parts) > 1 else None
         if list_target == "all":
             providers = _available_providers(ctx.cfg)
-        elif list_target in {"openai", "anthropic", "openrouter", "cerebras", "ollama"}:
+        elif list_target in {"openai", "anthropic", "openrouter", "cerebras", "zai", "ollama"}:
             providers = [list_target]
         else:
             providers = [ctx.cfg.provider]
@@ -280,6 +286,8 @@ def handle_model_command(args: str, ctx: ChatContext) -> list[str]:
             settings.default_model_openrouter = new_model
         elif provider == "cerebras":
             settings.default_model_cerebras = new_model
+        elif provider == "zai":
+            settings.default_model_zai = new_model
         elif provider == "ollama":
             settings.default_model_ollama = new_model
         else:

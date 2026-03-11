@@ -10,7 +10,9 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
 use op_core::engine::SolveEmitter;
-use op_core::events::{CompleteEvent, CuratorUpdateEvent, DeltaEvent, DeltaKind, ErrorEvent, StepEvent, TraceEvent};
+use op_core::events::{
+    CompleteEvent, CuratorUpdateEvent, DeltaEvent, DeltaKind, ErrorEvent, StepEvent, TraceEvent,
+};
 use op_core::session::replay::{ReplayEntry, ReplayLogger, StepToolCallEntry};
 
 pub struct TauriEmitter {
@@ -35,12 +37,18 @@ impl SolveEmitter for TauriEmitter {
     }
 
     fn emit_delta(&self, event: DeltaEvent) {
-        eprintln!("[bridge] delta: kind={:?} text={:?}", event.kind, event.text);
+        eprintln!(
+            "[bridge] delta: kind={:?} text={:?}",
+            event.kind, event.text
+        );
         let _ = self.handle.emit("agent:delta", event);
     }
 
     fn emit_step(&self, event: StepEvent) {
-        eprintln!("[bridge] step: depth={} step={} is_final={}", event.depth, event.step, event.is_final);
+        eprintln!(
+            "[bridge] step: depth={} step={} is_final={}",
+            event.depth, event.step, event.is_final
+        );
         let _ = self.handle.emit("agent:step", event);
     }
 
@@ -172,7 +180,11 @@ impl<E: SolveEmitter> SolveEmitter for LoggingEmitter<E> {
         let model_preview = {
             let buf = self.streaming_buf.lock().unwrap();
             let trimmed = buf.trim().to_string();
-            if trimmed.is_empty() { None } else { Some(trimmed) }
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
         };
 
         let step_tools: Vec<StepToolCallEntry> = {
@@ -327,7 +339,12 @@ mod tests {
         assert_eq!(step.step_number, Some(1));
         assert!(step.step_tokens_in.is_some());
         assert!(step.step_model_preview.is_some());
-        assert!(step.step_model_preview.as_ref().unwrap().contains("Test persistence"));
+        assert!(
+            step.step_model_preview
+                .as_ref()
+                .unwrap()
+                .contains("Test persistence")
+        );
 
         let assistant = entries.iter().find(|e| e.role == "assistant");
         assert!(assistant.is_some(), "expected an assistant entry");
@@ -355,20 +372,23 @@ mod tests {
 
         // 1. Log user message
         let mut replay = ReplayLogger::new(tmp.path());
-        replay.append(ReplayEntry {
-            seq: 0,
-            timestamp: String::new(),
-            role: "user".into(),
-            content: "Roundtrip test".into(),
-            tool_name: None,
-            is_rendered: None,
-            step_number: None,
-            step_tokens_in: None,
-            step_tokens_out: None,
-            step_elapsed: None,
-            step_model_preview: None,
-            step_tool_calls: None,
-        }).await.unwrap();
+        replay
+            .append(ReplayEntry {
+                seq: 0,
+                timestamp: String::new(),
+                role: "user".into(),
+                content: "Roundtrip test".into(),
+                tool_name: None,
+                is_rendered: None,
+                step_number: None,
+                step_tokens_in: None,
+                step_tokens_out: None,
+                step_elapsed: None,
+                step_model_preview: None,
+                step_tool_calls: None,
+            })
+            .await
+            .unwrap();
 
         // 2. Run demo_solve through LoggingEmitter
         let emitter = LoggingEmitter::new(NullEmitter, replay);
@@ -377,7 +397,11 @@ mod tests {
 
         // 3. Read back full conversation
         let entries = ReplayLogger::read_all(tmp.path()).await.unwrap();
-        assert!(entries.len() >= 3, "expected user + step-summary + assistant, got {}", entries.len());
+        assert!(
+            entries.len() >= 3,
+            "expected user + step-summary + assistant, got {}",
+            entries.len()
+        );
 
         assert_eq!(entries[0].role, "user");
         assert_eq!(entries[0].content, "Roundtrip test");

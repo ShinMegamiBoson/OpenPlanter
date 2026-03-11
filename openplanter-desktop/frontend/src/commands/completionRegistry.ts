@@ -13,6 +13,7 @@ const PROVIDER_FILTERS: CompletionItem[] = [
   { value: "anthropic", description: "Anthropic models" },
   { value: "ollama", description: "Local Ollama models" },
   { value: "cerebras", description: "Cerebras models" },
+  { value: "zai", description: "Z.AI models" },
   { value: "openrouter", description: "OpenRouter models" },
 ];
 
@@ -35,6 +36,16 @@ const REASONING_LEVELS: CompletionItem[] = [
   { value: "off", description: "Disable reasoning", children: SAVE_FLAG },
 ];
 
+const WEB_SEARCH_PROVIDERS: CompletionItem[] = [
+  { value: "exa", description: "Use Exa for web search", children: SAVE_FLAG },
+  { value: "firecrawl", description: "Use Firecrawl for web search", children: SAVE_FLAG },
+];
+
+const ZAI_PLANS: CompletionItem[] = [
+  { value: "paygo", description: "Use the Z.AI PAYGO endpoint", children: SAVE_FLAG },
+  { value: "coding", description: "Use the Z.AI Coding Plan endpoint", children: SAVE_FLAG },
+];
+
 export const COMMAND_COMPLETIONS: CompletionItem[] = [
   { value: "/help", description: "Show available commands" },
   { value: "/new", description: "Start a new session" },
@@ -49,6 +60,16 @@ export const COMMAND_COMPLETIONS: CompletionItem[] = [
       { value: "list", description: "List available models", children: PROVIDER_FILTERS },
       ...MODEL_ALIAS_ITEMS,
     ],
+  },
+  {
+    value: "/zai-plan",
+    description: "Show or switch the Z.AI endpoint family",
+    children: ZAI_PLANS,
+  },
+  {
+    value: "/web-search",
+    description: "Show or switch the web search provider",
+    children: WEB_SEARCH_PROVIDERS,
   },
   {
     value: "/reasoning",

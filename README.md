@@ -36,6 +36,9 @@ cd openplanter-desktop
 # Install frontend dependencies
 cd frontend && npm install && cd ..
 
+# Install the Tauri Cargo subcommand
+cargo install tauri-cli --version "^2"
+
 # Run in development mode
 cargo tauri dev
 
@@ -43,7 +46,7 @@ cargo tauri dev
 cargo tauri build
 ```
 
-Requires: Rust stable, Node.js 20+, and platform-specific Tauri dependencies ([see Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)).
+Requires: Rust stable, Node.js 20+, the Tauri CLI, and platform-specific Tauri dependencies ([see Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)).
 
 ## CLI Agent
 
@@ -81,11 +84,17 @@ The container mounts `./workspace` as the agent's working directory.
 
 | Provider | Default Model | Env Var |
 |----------|---------------|---------|
-| OpenAI | `gpt-5.2` | `OPENAI_API_KEY` |
-| Anthropic | `claude-opus-4-6` | `ANTHROPIC_API_KEY` |
+| OpenAI | `azure-foundry/gpt-5.3-codex` | `OPENAI_API_KEY` |
+| Anthropic | `anthropic-foundry/claude-opus-4-6` | `ANTHROPIC_API_KEY` |
 | OpenRouter | `anthropic/claude-sonnet-4-5` | `OPENROUTER_API_KEY` |
 | Cerebras | `qwen-3-235b-a22b-instruct-2507` | `CEREBRAS_API_KEY` |
+| Z.AI | `glm-5` | `ZAI_API_KEY` |
 | Ollama | `llama3.2` | (none — local) |
+
+OpenAI-compatible requests now default to the Azure Foundry proxy at
+`https://foundry-proxy.cheetah-koi.ts.net/openai/v1`, and Anthropic requests
+default to the Anthropic Foundry proxy at
+`https://foundry-proxy.cheetah-koi.ts.net/anthropic/v1`.
 
 ### Local Models (Ollama)
 
@@ -98,6 +107,46 @@ openplanter-agent --provider ollama --list-models
 ```
 
 The base URL defaults to `http://localhost:11434/v1` and can be overridden with `OPENPLANTER_OLLAMA_BASE_URL` or `--base-url`. The first request may be slow while Ollama loads the model into memory; a 120-second first-byte timeout is used automatically.
+
+### Z.AI Endpoint Plans
+
+Z.AI has two distinct endpoint plans:
+
+- PAYGO endpoint: `https://api.z.ai/api/paas/v4`
+- Coding plan endpoint: `https://api.z.ai/api/coding/paas/v4`
+
+Choose the plan explicitly:
+
+```bash
+export OPENPLANTER_ZAI_PLAN=paygo   # or coding
+```
+
+Or per run:
+
+```bash
+openplanter-agent --provider zai --model glm-5 --zai-plan coding
+```
+
+Advanced overrides:
+
+```bash
+export OPENPLANTER_ZAI_PAYGO_BASE_URL=https://api.z.ai/api/paas/v4
+export OPENPLANTER_ZAI_CODING_BASE_URL=https://api.z.ai/api/coding/paas/v4
+```
+
+`OPENPLANTER_ZAI_BASE_URL` still overrides both plans when set.
+
+### Z.AI Reliability Tuning
+
+Z.AI rate limits (`HTTP 429`, code `1302`) are retried with capped backoff and jitter. For Z.AI streaming connection issues, OpenPlanter also retries up to `OPENPLANTER_ZAI_STREAM_MAX_RETRIES` times.
+
+```bash
+export OPENPLANTER_RATE_LIMIT_MAX_RETRIES=12
+export OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC=1.0
+export OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC=60.0
+export OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC=120.0
+export OPENPLANTER_ZAI_STREAM_MAX_RETRIES=10
+```
 
 Additional service keys: `EXA_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings).
 
@@ -136,8 +185,9 @@ openplanter-agent [options]
 
 | Flag | Description |
 |------|-------------|
-| `--provider NAME` | `auto`, `openai`, `anthropic`, `openrouter`, `cerebras`, `ollama` |
+| `--provider NAME` | `auto`, `openai`, `anthropic`, `openrouter`, `cerebras`, `zai`, `ollama` |
 | `--model NAME` | Model name or `newest` to auto-select |
+| `--zai-plan PLAN` | Z.AI endpoint plan: `paygo` or `coding` |
 | `--reasoning-effort LEVEL` | `low`, `medium`, `high`, or `none` |
 | `--list-models` | Fetch available models from the provider API |
 

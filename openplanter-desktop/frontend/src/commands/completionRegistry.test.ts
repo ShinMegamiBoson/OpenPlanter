@@ -23,6 +23,8 @@ describe("completionRegistry", () => {
     expect(values).toContain("/exit");
     expect(values).toContain("/status");
     expect(values).toContain("/model");
+    expect(values).toContain("/zai-plan");
+    expect(values).toContain("/web-search");
     expect(values).toContain("/reasoning");
   });
 
@@ -60,6 +62,7 @@ describe("completionRegistry", () => {
     expect(providerValues).toContain("openai");
     expect(providerValues).toContain("anthropic");
     expect(providerValues).toContain("ollama");
+    expect(providerValues).toContain("zai");
   });
 
   it("model alias children have --save flag", () => {
@@ -76,6 +79,26 @@ describe("completionRegistry", () => {
 
     const childValues = reasoningCmd!.children!.map((c) => c.value);
     expect(childValues).toEqual(["low", "medium", "high", "off"]);
+  });
+
+  it("/web-search has exa and firecrawl children", () => {
+    const webSearchCmd = COMMAND_COMPLETIONS.find((c) => c.value === "/web-search");
+    expect(webSearchCmd).toBeDefined();
+    expect(webSearchCmd!.children).toBeDefined();
+
+    const childValues = webSearchCmd!.children!.map((c) => c.value);
+    expect(childValues).toEqual(["exa", "firecrawl"]);
+    expect(webSearchCmd!.children![0].children?.[0].value).toBe("--save");
+  });
+
+  it("/zai-plan has paygo and coding children", () => {
+    const zaiPlanCmd = COMMAND_COMPLETIONS.find((c) => c.value === "/zai-plan");
+    expect(zaiPlanCmd).toBeDefined();
+    expect(zaiPlanCmd!.children).toBeDefined();
+
+    const childValues = zaiPlanCmd!.children!.map((c) => c.value);
+    expect(childValues).toEqual(["paygo", "coding"]);
+    expect(zaiPlanCmd!.children![0].children?.[0].value).toBe("--save");
   });
 
   it("reasoning level children have --save flag", () => {

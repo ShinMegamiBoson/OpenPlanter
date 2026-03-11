@@ -3,14 +3,13 @@
 /// Runs as a non-blocking background task after each main agent step.
 /// Reads the latest step context, decides if wiki updates are needed,
 /// and writes to `.openplanter/wiki/` using a restricted tool set.
-
 use tokio_util::sync::CancellationToken;
 
 use crate::builder::build_model;
 use crate::config::AgentConfig;
 use crate::model::Message;
-use crate::tools::defs::build_curator_tool_defs;
 use crate::tools::WorkspaceTools;
+use crate::tools::defs::build_curator_tool_defs;
 
 /// Result of a curator run.
 #[derive(Debug, Clone)]
@@ -78,7 +77,9 @@ pub fn extract_step_context(messages: &[Message]) -> String {
     let mut context = String::new();
 
     // Find last Assistant message index
-    let assistant_idx = messages.iter().rposition(|m| matches!(m, Message::Assistant { .. }));
+    let assistant_idx = messages
+        .iter()
+        .rposition(|m| matches!(m, Message::Assistant { .. }));
     let start = match assistant_idx {
         Some(idx) => idx,
         None => return context,
@@ -86,7 +87,10 @@ pub fn extract_step_context(messages: &[Message]) -> String {
 
     for msg in &messages[start..] {
         match msg {
-            Message::Assistant { content, tool_calls } => {
+            Message::Assistant {
+                content,
+                tool_calls,
+            } => {
                 context.push_str("=== Assistant ===\n");
                 context.push_str(content);
                 context.push('\n');
@@ -223,8 +227,10 @@ pub async fn run_curator(
             let result = tools.execute(&tc.name, &tc.arguments).await;
 
             // Track file modifications
-            if matches!(tc.name.as_str(), "write_file" | "edit_file" | "apply_patch" | "hashline_edit")
-                && !result.is_error
+            if matches!(
+                tc.name.as_str(),
+                "write_file" | "edit_file" | "apply_patch" | "hashline_edit"
+            ) && !result.is_error
             {
                 files_changed += 1;
                 // Extract path for summary
@@ -270,8 +276,12 @@ mod tests {
     #[test]
     fn test_extract_step_context_no_assistant() {
         let messages = vec![
-            Message::System { content: "sys".into() },
-            Message::User { content: "hello".into() },
+            Message::System {
+                content: "sys".into(),
+            },
+            Message::User {
+                content: "hello".into(),
+            },
         ];
         assert_eq!(extract_step_context(&messages), "");
     }
@@ -279,8 +289,12 @@ mod tests {
     #[test]
     fn test_extract_step_context_with_tool_calls() {
         let messages = vec![
-            Message::System { content: "sys".into() },
-            Message::User { content: "investigate".into() },
+            Message::System {
+                content: "sys".into(),
+            },
+            Message::User {
+                content: "investigate".into(),
+            },
             Message::Assistant {
                 content: "I'll search for data.".into(),
                 tool_calls: Some(vec![ToolCall {
@@ -319,7 +333,9 @@ mod tests {
                 content: "old step".into(),
                 tool_calls: None,
             },
-            Message::User { content: "continue".into() },
+            Message::User {
+                content: "continue".into(),
+            },
             Message::Assistant {
                 content: "new step".into(),
                 tool_calls: Some(vec![ToolCall {
@@ -342,8 +358,18 @@ mod tests {
     #[test]
     fn test_curator_tool_names_no_dangerous_tools() {
         for name in CURATOR_TOOL_NAMES {
-            assert!(!["web_search", "fetch_url", "run_shell", "run_shell_bg", "check_shell_bg", "kill_shell_bg"]
-                .contains(name), "Curator should not have access to {name}");
+            assert!(
+                ![
+                    "web_search",
+                    "fetch_url",
+                    "run_shell",
+                    "run_shell_bg",
+                    "check_shell_bg",
+                    "kill_shell_bg"
+                ]
+                .contains(name),
+                "Curator should not have access to {name}"
+            );
         }
     }
 }

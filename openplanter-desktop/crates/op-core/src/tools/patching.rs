@@ -1,5 +1,4 @@
 /// Codex-style patch application and hashline editing.
-
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -24,8 +23,13 @@ fn resolve_path(root: &Path, raw_path: &str) -> Result<PathBuf, String> {
 // ── Codex-style patch format ──
 
 enum PatchOp {
-    Add { path: String, content: String },
-    Delete { path: String },
+    Add {
+        path: String,
+        content: String,
+    },
+    Delete {
+        path: String,
+    },
     Update {
         path: String,
         move_to: Option<String>,
@@ -66,10 +70,7 @@ fn parse_agent_patch(text: &str) -> Result<Vec<PatchOp>, String> {
         let line = body[i].trim();
 
         if line.starts_with("*** Add File:") {
-            let path = line
-                .trim_start_matches("*** Add File:")
-                .trim()
-                .to_string();
+            let path = line.trim_start_matches("*** Add File:").trim().to_string();
             i += 1;
             let mut content_lines: Vec<String> = Vec::new();
             while i < body.len() && !body[i].trim().starts_with("***") {
@@ -174,11 +175,7 @@ fn parse_chunks(raw_lines: &[&str]) -> Vec<PatchChunk> {
     }
 }
 
-fn find_subsequence(
-    haystack: &[String],
-    needle: &[String],
-    start_idx: usize,
-) -> Option<usize> {
+fn find_subsequence(haystack: &[String], needle: &[String], start_idx: usize) -> Option<usize> {
     if needle.is_empty() {
         return Some(start_idx.min(haystack.len()));
     }
@@ -202,8 +199,7 @@ fn find_subsequence(
     }
 
     // Pass 2: whitespace-normalized match
-    let normalize =
-        |s: &str| -> String { s.split_whitespace().collect::<Vec<_>>().join(" ") };
+    let normalize = |s: &str| -> String { s.split_whitespace().collect::<Vec<_>>().join(" ") };
     let norm_needle: Vec<String> = needle.iter().map(|s| normalize(s)).collect();
 
     for i in 0..=max_start {
@@ -219,11 +215,7 @@ fn find_subsequence(
     None
 }
 
-pub fn apply_patch(
-    root: &Path,
-    patch_text: &str,
-    files_read: &mut HashSet<PathBuf>,
-) -> ToolResult {
+pub fn apply_patch(root: &Path, patch_text: &str, files_read: &mut HashSet<PathBuf>) -> ToolResult {
     if patch_text.trim().is_empty() {
         return ToolResult::error("apply_patch requires non-empty patch text".into());
     }
@@ -248,9 +240,7 @@ pub fn apply_patch(
                     let _ = std::fs::create_dir_all(parent);
                 }
                 if let Err(e) = std::fs::write(&resolved, &content) {
-                    return ToolResult::error(format!(
-                        "Patch failed: could not write {path}: {e}"
-                    ));
+                    return ToolResult::error(format!("Patch failed: could not write {path}: {e}"));
                 }
                 files_read.insert(resolved);
                 added.push(path);
@@ -261,9 +251,7 @@ pub fn apply_patch(
                     Err(e) => return ToolResult::error(format!("Patch failed: {e}")),
                 };
                 if !resolved.exists() {
-                    return ToolResult::error(format!(
-                        "Patch failed: file not found: {path}"
-                    ));
+                    return ToolResult::error(format!("Patch failed: file not found: {path}"));
                 }
                 if let Err(e) = std::fs::remove_file(&resolved) {
                     return ToolResult::error(format!(
@@ -286,14 +274,13 @@ pub fn apply_patch(
                     Err(e) => {
                         return ToolResult::error(format!(
                             "Patch failed: could not read {path}: {e}"
-                        ))
+                        ));
                     }
                 };
                 files_read.insert(resolved.clone());
 
                 let had_trailing_newline = content.ends_with('\n');
-                let mut lines: Vec<String> =
-                    content.lines().map(|l| l.to_string()).collect();
+                let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
                 let mut cursor = 0usize;
 
                 for chunk in &chunks {
@@ -333,9 +320,7 @@ pub fn apply_patch(
                     let _ = std::fs::create_dir_all(parent);
                 }
                 if let Err(e) = std::fs::write(&target, &result) {
-                    return ToolResult::error(format!(
-                        "Patch failed: could not write {path}: {e}"
-                    ));
+                    return ToolResult::error(format!("Patch failed: could not write {path}: {e}"));
                 }
                 files_read.insert(target);
                 updated.push(path);
@@ -414,10 +399,8 @@ pub fn hashline_edit(
                 new_lines: vec![new_line],
             });
         } else if let Some(range) = edit.get("replace_lines") {
-            let start_anchor =
-                range.get("start").and_then(|v| v.as_str()).unwrap_or("");
-            let end_anchor =
-                range.get("end").and_then(|v| v.as_str()).unwrap_or("");
+            let start_anchor = range.get("start").and_then(|v| v.as_str()).unwrap_or("");
+            let end_anchor = range.get("end").and_then(|v| v.as_str()).unwrap_or("");
             let (start, err) = validate_anchor(start_anchor, &line_hashes, &lines);
             if let Some(e) = err {
                 return ToolResult::error(e);
@@ -427,12 +410,9 @@ pub fn hashline_edit(
                 return ToolResult::error(e);
             }
             if end < start {
-                return ToolResult::error(format!(
-                    "End line {end} is before start line {start}"
-                ));
+                return ToolResult::error(format!("End line {end} is before start line {start}"));
             }
-            let raw_content =
-                edit.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            let raw_content = edit.get("content").and_then(|v| v.as_str()).unwrap_or("");
             let new_lines: Vec<String> = raw_content
                 .lines()
                 .map(|l| HASHLINE_PREFIX_RE.replace(l, "").to_string())
@@ -443,15 +423,12 @@ pub fn hashline_edit(
                 end,
                 new_lines,
             });
-        } else if let Some(anchor) =
-            edit.get("insert_after").and_then(|v| v.as_str())
-        {
+        } else if let Some(anchor) = edit.get("insert_after").and_then(|v| v.as_str()) {
             let (lineno, err) = validate_anchor(anchor, &line_hashes, &lines);
             if let Some(e) = err {
                 return ToolResult::error(e);
             }
-            let raw_content =
-                edit.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            let raw_content = edit.get("content").and_then(|v| v.as_str()).unwrap_or("");
             let new_lines: Vec<String> = raw_content
                 .lines()
                 .map(|l| HASHLINE_PREFIX_RE.replace(l, "").to_string())
@@ -483,13 +460,9 @@ pub fn hashline_edit(
                 }
             }
             "replace" => {
-                let old_slice: Vec<String> =
-                    lines[edit.start - 1..edit.end].to_vec();
+                let old_slice: Vec<String> = lines[edit.start - 1..edit.end].to_vec();
                 if old_slice != edit.new_lines {
-                    lines.splice(
-                        edit.start - 1..edit.end,
-                        edit.new_lines.iter().cloned(),
-                    );
+                    lines.splice(edit.start - 1..edit.end, edit.new_lines.iter().cloned());
                     changed += 1;
                 }
             }
@@ -527,9 +500,7 @@ fn validate_anchor(
     if parts.len() != 2 || parts[1].len() != 2 {
         return (
             0,
-            Some(format!(
-                "Invalid anchor format: {anchor:?} (expected N:HH)"
-            )),
+            Some(format!("Invalid anchor format: {anchor:?} (expected N:HH)")),
         );
     }
     let lineno: usize = match parts[0].parse() {
@@ -537,10 +508,8 @@ fn validate_anchor(
         Err(_) => {
             return (
                 0,
-                Some(format!(
-                    "Invalid anchor format: {anchor:?} (expected N:HH)"
-                )),
-            )
+                Some(format!("Invalid anchor format: {anchor:?} (expected N:HH)")),
+            );
         }
     };
     let expected_hash = parts[1];
@@ -553,10 +522,7 @@ fn validate_anchor(
             )),
         );
     }
-    let actual_hash = line_hashes
-        .get(&lineno)
-        .map(|s| s.as_str())
-        .unwrap_or("");
+    let actual_hash = line_hashes.get(&lineno).map(|s| s.as_str()).unwrap_or("");
     if actual_hash != expected_hash {
         let ctx_start = lineno.saturating_sub(2).max(1);
         let ctx_end = (lineno + 2).min(lines.len());
@@ -565,10 +531,7 @@ fn validate_anchor(
                 format!(
                     "  {}:{}|{}",
                     i,
-                    line_hashes
-                        .get(&i)
-                        .map(|s| s.as_str())
-                        .unwrap_or("??"),
+                    line_hashes.get(&i).map(|s| s.as_str()).unwrap_or("??"),
                     lines[i - 1]
                 )
             })
@@ -603,8 +566,7 @@ mod tests {
         let result = apply_patch(dir.path(), patch, &mut files_read);
         assert!(!result.is_error, "error: {}", result.content);
         assert!(result.content.contains("Added"));
-        let content =
-            std::fs::read_to_string(dir.path().join("new_file.txt")).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("new_file.txt")).unwrap();
         assert_eq!(content, "hello\nworld\n");
     }
 
@@ -625,8 +587,7 @@ mod tests {
     #[test]
     fn test_apply_patch_update_file() {
         let dir = TempDir::new().unwrap();
-        std::fs::write(dir.path().join("test.txt"), "line1\nline2\nline3\n")
-            .unwrap();
+        std::fs::write(dir.path().join("test.txt"), "line1\nline2\nline3\n").unwrap();
         let mut files_read = HashSet::new();
         let patch = "\
 *** Begin Patch
@@ -639,8 +600,7 @@ mod tests {
 *** End Patch";
         let result = apply_patch(dir.path(), patch, &mut files_read);
         assert!(!result.is_error, "error: {}", result.content);
-        let content =
-            std::fs::read_to_string(dir.path().join("test.txt")).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("test.txt")).unwrap();
         assert!(content.contains("line2_modified"));
         assert!(!content.contains("\nline2\n"));
     }
@@ -656,11 +616,9 @@ mod tests {
             "set_line": format!("2:{hash}"),
             "content": "BBB"
         })];
-        let result =
-            hashline_edit(dir.path(), "test.txt", &edits, &mut files_read);
+        let result = hashline_edit(dir.path(), "test.txt", &edits, &mut files_read);
         assert!(!result.is_error, "error: {}", result.content);
-        let content =
-            std::fs::read_to_string(dir.path().join("test.txt")).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("test.txt")).unwrap();
         assert!(content.contains("BBB"));
         assert!(!content.contains("\nbbb\n"));
     }
@@ -676,11 +634,9 @@ mod tests {
             "insert_after": format!("2:{hash}"),
             "content": "inserted_line"
         })];
-        let result =
-            hashline_edit(dir.path(), "test.txt", &edits, &mut files_read);
+        let result = hashline_edit(dir.path(), "test.txt", &edits, &mut files_read);
         assert!(!result.is_error, "error: {}", result.content);
-        let content =
-            std::fs::read_to_string(dir.path().join("test.txt")).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("test.txt")).unwrap();
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(lines[2], "inserted_line");
     }
@@ -693,16 +649,14 @@ mod tests {
 
     #[test]
     fn test_find_subsequence_exact() {
-        let haystack: Vec<String> =
-            vec!["a".into(), "b".into(), "c".into()];
+        let haystack: Vec<String> = vec!["a".into(), "b".into(), "c".into()];
         let needle: Vec<String> = vec!["b".into(), "c".into()];
         assert_eq!(find_subsequence(&haystack, &needle, 0), Some(1));
     }
 
     #[test]
     fn test_find_subsequence_whitespace() {
-        let haystack: Vec<String> =
-            vec!["a".into(), "  b  ".into(), "c".into()];
+        let haystack: Vec<String> = vec!["a".into(), "  b  ".into(), "c".into()];
         let needle: Vec<String> = vec!["b".into(), "c".into()];
         assert_eq!(find_subsequence(&haystack, &needle, 0), Some(1));
     }

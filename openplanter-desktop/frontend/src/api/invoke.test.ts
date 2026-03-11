@@ -46,54 +46,74 @@ describe("invoke wrappers", () => {
   it("getConfig returns config", async () => {
     __setHandler("get_config", () => ({
       provider: "anthropic",
-      model: "claude-opus-4-6",
+      model: "anthropic-foundry/claude-opus-4-6",
+      zai_plan: "paygo",
       workspace: ".",
       session_id: null,
       recursive: true,
       max_depth: 4,
       max_steps_per_call: 100,
       reasoning_effort: "high",
+      web_search_provider: "exa",
       demo: false,
     }));
     const config = await getConfig();
     expect(config.provider).toBe("anthropic");
-    expect(config.model).toBe("claude-opus-4-6");
+    expect(config.model).toBe("anthropic-foundry/claude-opus-4-6");
+    expect(config.zai_plan).toBe("paygo");
+    expect(config.web_search_provider).toBe("exa");
   });
 
   it("updateConfig sends partial and returns config", async () => {
     __setHandler("update_config", ({ partial }: any) => {
-      expect(partial.model).toBe("gpt-5.2");
+      expect(partial.model).toBe("azure-foundry/gpt-5.3-codex");
       return {
         provider: "openai",
-        model: "gpt-5.2",
+        model: "azure-foundry/gpt-5.3-codex",
+        zai_plan: "coding",
         workspace: ".",
         session_id: null,
         recursive: true,
         max_depth: 4,
         max_steps_per_call: 100,
         reasoning_effort: null,
+        web_search_provider: "firecrawl",
         demo: false,
       };
     });
-    const config = await updateConfig({ model: "gpt-5.2" });
-    expect(config.model).toBe("gpt-5.2");
+    const config = await updateConfig({ model: "azure-foundry/gpt-5.3-codex" });
+    expect(config.model).toBe("azure-foundry/gpt-5.3-codex");
+    expect(config.zai_plan).toBe("coding");
+    expect(config.web_search_provider).toBe("firecrawl");
   });
 
   it("listModels sends provider filter", async () => {
     __setHandler("list_models", ({ provider }: any) => {
       expect(provider).toBe("openai");
-      return [{ id: "gpt-5.2", name: "GPT-5.2", provider: "openai" }];
+      return [
+        {
+          id: "azure-foundry/gpt-5.3-codex",
+          name: "GPT-5.3 Codex (Foundry)",
+          provider: "openai",
+        },
+      ];
     });
     const models = await listModels("openai");
     expect(models).toHaveLength(1);
-    expect(models[0].id).toBe("gpt-5.2");
+    expect(models[0].id).toBe("azure-foundry/gpt-5.3-codex");
   });
 
   it("saveSettings sends settings object", async () => {
     __setHandler("save_settings", ({ settings }: any) => {
-      expect(settings.model).toBe("claude-opus-4-6");
+      expect(settings.default_model_zai).toBe("glm-5");
+      expect(settings.zai_plan).toBe("coding");
+      expect(settings.web_search_provider).toBe("firecrawl");
     });
-    await saveSettings({ model: "claude-opus-4-6" } as any);
+    await saveSettings({
+      default_model_zai: "glm-5",
+      zai_plan: "coding",
+      web_search_provider: "firecrawl",
+    });
   });
 
   it("getCredentialsStatus returns provider map", async () => {
@@ -102,12 +122,16 @@ describe("invoke wrappers", () => {
       anthropic: true,
       openrouter: false,
       cerebras: false,
+      zai: true,
       ollama: true,
       exa: false,
+      firecrawl: true,
     }));
     const status = await getCredentialsStatus();
     expect(status.openai).toBe(true);
     expect(status.openrouter).toBe(false);
+    expect(status.zai).toBe(true);
+    expect(status.firecrawl).toBe(true);
   });
 
   it("listSessions sends limit", async () => {

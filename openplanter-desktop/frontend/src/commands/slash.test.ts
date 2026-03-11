@@ -17,6 +17,8 @@ describe("dispatchSlashCommand", () => {
       ...originalState,
       provider: "anthropic",
       model: "claude-opus-4-6",
+      zaiPlan: "paygo",
+      webSearchProvider: "exa",
       sessionId: "20260101-120000-deadbeef",
       reasoningEffort: "medium",
     });
@@ -70,6 +72,18 @@ describe("dispatchSlashCommand", () => {
     expect(result!.lines.some((l) => l.includes("Session:"))).toBe(true);
   });
 
+  it("status shows web search provider", async () => {
+    const result = await dispatchSlashCommand("/status");
+    expect(result).not.toBeNull();
+    expect(result!.lines.some((l) => l.includes("Web search:"))).toBe(true);
+  });
+
+  it("status shows zai plan", async () => {
+    const result = await dispatchSlashCommand("/status");
+    expect(result).not.toBeNull();
+    expect(result!.lines.some((l) => l.includes("Z.AI plan:"))).toBe(true);
+  });
+
   it("unknown command", async () => {
     const result = await dispatchSlashCommand("/foobar");
     expect(result).not.toBeNull();
@@ -110,6 +124,20 @@ describe("dispatchSlashCommand", () => {
     expect(
       result!.lines.some((l) => l.includes("Reasoning effort:"))
     ).toBe(true);
+  });
+
+  it("web search dispatches", async () => {
+    const result = await dispatchSlashCommand("/web-search");
+    expect(result).not.toBeNull();
+    expect(result!.action).toBe("handled");
+    expect(result!.lines.some((l) => l.includes("Web search provider:"))).toBe(true);
+  });
+
+  it("zai plan dispatches", async () => {
+    const result = await dispatchSlashCommand("/zai-plan");
+    expect(result).not.toBeNull();
+    expect(result!.action).toBe("handled");
+    expect(result!.lines.some((l) => l.includes("Z.AI plan:"))).toBe(true);
   });
 
   it("new creates session", async () => {

@@ -1,9 +1,9 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use tauri::State;
 use crate::state::AppState;
 use op_core::events::SessionInfo;
 use op_core::session::replay::{ReplayEntry, ReplayLogger};
+use std::fs;
+use std::path::{Path, PathBuf};
+use tauri::State;
 
 /// Get the sessions directory path from config.
 pub async fn sessions_dir(state: &State<'_, AppState>) -> PathBuf {
@@ -54,11 +54,7 @@ pub fn create_session(dir: &Path) -> Result<SessionInfo, std::io::Error> {
     fs::create_dir_all(dir)?;
 
     let now = chrono::Utc::now();
-    let new_id = format!(
-        "{}-{:08x}",
-        now.format("%Y%m%d-%H%M%S"),
-        rand_hex()
-    );
+    let new_id = format!("{}-{:08x}", now.format("%Y%m%d-%H%M%S"), rand_hex());
 
     let session_dir = dir.join(&new_id);
     fs::create_dir_all(&session_dir)?;
@@ -120,10 +116,7 @@ pub async fn open_session(
 
 /// Delete a session by removing its directory.
 #[tauri::command]
-pub async fn delete_session(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn delete_session(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let dir = sessions_dir(&state).await;
     let session_dir = dir.join(&id);
 
@@ -135,7 +128,9 @@ pub async fn delete_session(
     }
     // Ensure it's actually a session directory (has metadata.json)
     if !session_dir.join("metadata.json").exists() {
-        return Err(format!("Session '{id}' has no metadata — refusing to delete"));
+        return Err(format!(
+            "Session '{id}' has no metadata — refusing to delete"
+        ));
     }
 
     fs::remove_dir_all(&session_dir).map_err(|e| format!("Failed to delete session: {e}"))?;
@@ -156,7 +151,9 @@ pub async fn get_session_history(
     state: State<'_, AppState>,
 ) -> Result<Vec<ReplayEntry>, String> {
     let dir = sessions_dir(&state).await.join(&session_id);
-    ReplayLogger::read_all(&dir).await.map_err(|e| e.to_string())
+    ReplayLogger::read_all(&dir)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Update session metadata: increment turn_count, set last_objective.
@@ -172,13 +169,11 @@ pub async fn update_session_metadata(
     let mut info: SessionInfo = serde_json::from_str(&content)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     info.turn_count += 1;
-    info.last_objective = Some(
-        if objective.len() > 100 {
-            format!("{}...", &objective[..97])
-        } else {
-            objective.to_string()
-        },
-    );
+    info.last_objective = Some(if objective.len() > 100 {
+        format!("{}...", &objective[..97])
+    } else {
+        objective.to_string()
+    });
     let json = serde_json::to_string_pretty(&info)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     tokio::fs::write(&meta_path, json).await
@@ -317,8 +312,14 @@ mod tests {
         let info = create_session(&dir).unwrap();
         let session_dir = dir.join(&info.id);
         assert!(session_dir.exists(), "session dir should exist");
-        assert!(session_dir.join("artifacts").exists(), "artifacts/ should exist");
-        assert!(session_dir.join("metadata.json").exists(), "metadata.json should exist");
+        assert!(
+            session_dir.join("artifacts").exists(),
+            "artifacts/ should exist"
+        );
+        assert!(
+            session_dir.join("metadata.json").exists(),
+            "metadata.json should exist"
+        );
     }
 
     #[test]

@@ -1,9 +1,9 @@
 // Prevents additional console window on Windows in release.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod state;
 mod bridge;
 mod commands;
+mod state;
 
 use state::AppState;
 
@@ -27,8 +27,6 @@ fn main() {
             commands::wiki::get_graph_data,
             commands::wiki::read_wiki_file,
         ])
-        .run(tauri::generate_context!(
-            "tauri.conf.json"
-        ))
+        .run(tauri::generate_context!("tauri.conf.json"))
         .expect("error while running tauri application");
 }

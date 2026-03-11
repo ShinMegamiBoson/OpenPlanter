@@ -86,13 +86,11 @@ impl Default for AcceptanceCriteriaJudge {
 /// Extract significant terms from criteria text (words >= 4 chars, excluding stop words).
 fn extract_terms(text: &str) -> Vec<&str> {
     const STOP_WORDS: &[&str] = &[
-        "the", "and", "for", "are", "but", "not", "you", "all",
-        "can", "has", "her", "was", "one", "our", "out", "with",
-        "that", "this", "have", "from", "they", "been", "said",
-        "each", "which", "their", "will", "other", "about", "many",
-        "then", "them", "these", "some", "would", "make", "like",
-        "into", "could", "time", "very", "when", "what", "your",
-        "there", "should", "must", "also",
+        "the", "and", "for", "are", "but", "not", "you", "all", "can", "has", "her", "was", "one",
+        "our", "out", "with", "that", "this", "have", "from", "they", "been", "said", "each",
+        "which", "their", "will", "other", "about", "many", "then", "them", "these", "some",
+        "would", "make", "like", "into", "could", "time", "very", "when", "what", "your", "there",
+        "should", "must", "also",
     ];
 
     text.split_whitespace()

@@ -1,5 +1,4 @@
 /// Shell execution tools: run_shell, run_shell_bg, check_shell_bg, kill_shell_bg.
-
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -22,10 +21,7 @@ fn clip(text: &str, max_chars: usize) -> String {
     }
     let end = text.floor_char_boundary(max_chars);
     let omitted = text.len() - end;
-    format!(
-        "{}\n\n...[truncated {omitted} chars]...",
-        &text[..end]
-    )
+    format!("{}\n\n...[truncated {omitted} chars]...", &text[..end])
 }
 
 fn check_shell_policy(command: &str) -> Option<String> {
@@ -134,18 +130,11 @@ pub fn run_shell(
     let stderr = String::from_utf8_lossy(&output.stderr);
     let code = output.status.code().unwrap_or(-1);
 
-    let merged = format!(
-        "$ {command}\n[exit_code={code}]\n[stdout]\n{stdout}\n[stderr]\n{stderr}"
-    );
+    let merged = format!("$ {command}\n[exit_code={code}]\n[stdout]\n{stdout}\n[stderr]\n{stderr}");
     ToolResult::ok(clip(&merged, max_output_chars))
 }
 
-pub fn run_shell_bg(
-    root: &Path,
-    shell: &str,
-    command: &str,
-    bg_jobs: &mut BgJobs,
-) -> ToolResult {
+pub fn run_shell_bg(root: &Path, shell: &str, command: &str, bg_jobs: &mut BgJobs) -> ToolResult {
     if let Some(err) = check_shell_policy(command) {
         return ToolResult::error(err);
     }
@@ -195,11 +184,7 @@ pub fn run_shell_bg(
     ))
 }
 
-pub fn check_shell_bg(
-    job_id: u32,
-    bg_jobs: &mut BgJobs,
-    max_output_chars: usize,
-) -> ToolResult {
+pub fn check_shell_bg(job_id: u32, bg_jobs: &mut BgJobs, max_output_chars: usize) -> ToolResult {
     let job = match bg_jobs.jobs.get_mut(&job_id) {
         Some(j) => j,
         None => return ToolResult::error(format!("No background job with id {job_id}")),
@@ -220,9 +205,7 @@ pub fn check_shell_bg(
         }
         Ok(None) => {
             let pid = job.child.id();
-            ToolResult::ok(format!(
-                "[job {job_id} still running, pid={pid}]\n{output}"
-            ))
+            ToolResult::ok(format!("[job {job_id} still running, pid={pid}]\n{output}"))
         }
         Err(e) => ToolResult::error(format!("Error checking job {job_id}: {e}")),
     }
@@ -258,13 +241,7 @@ mod tests {
     #[test]
     fn test_run_shell_heredoc_blocked() {
         let dir = TempDir::new().unwrap();
-        let result = run_shell(
-            dir.path(),
-            "/bin/sh",
-            "cat << EOF\nhello\nEOF",
-            10,
-            16000,
-        );
+        let result = run_shell(dir.path(), "/bin/sh", "cat << EOF\nhello\nEOF", 10, 16000);
         assert!(result.is_error);
         assert!(result.content.contains("BLOCKED"));
     }
