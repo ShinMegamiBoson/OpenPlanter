@@ -35,6 +35,7 @@ async function init() {
       ...s,
       provider: config.provider,
       model: config.model,
+      webSearchProvider: config.web_search_provider,
       sessionId: config.session_id,
       reasoningEffort: config.reasoning_effort,
       recursive: config.recursive,
@@ -66,6 +67,7 @@ async function init() {
         content: [
           `provider: ${provider || "auto"}`,
           `model: ${model || "—"}`,
+          `web search: ${state.webSearchProvider || "exa"}`,
           `reasoning: ${reasoningLabel}`,
           `mode: ${modeLabel}`,
           `workspace: ${state.workspace || "."}`,

@@ -53,11 +53,13 @@ describe("invoke wrappers", () => {
       max_depth: 4,
       max_steps_per_call: 100,
       reasoning_effort: "high",
+      web_search_provider: "exa",
       demo: false,
     }));
     const config = await getConfig();
     expect(config.provider).toBe("anthropic");
     expect(config.model).toBe("claude-opus-4-6");
+    expect(config.web_search_provider).toBe("exa");
   });
 
   it("updateConfig sends partial and returns config", async () => {
@@ -72,11 +74,13 @@ describe("invoke wrappers", () => {
         max_depth: 4,
         max_steps_per_call: 100,
         reasoning_effort: null,
+        web_search_provider: "firecrawl",
         demo: false,
       };
     });
     const config = await updateConfig({ model: "gpt-5.2" });
     expect(config.model).toBe("gpt-5.2");
+    expect(config.web_search_provider).toBe("firecrawl");
   });
 
   it("listModels sends provider filter", async () => {
@@ -91,9 +95,10 @@ describe("invoke wrappers", () => {
 
   it("saveSettings sends settings object", async () => {
     __setHandler("save_settings", ({ settings }: any) => {
-      expect(settings.model).toBe("claude-opus-4-6");
+      expect(settings.default_model_zai).toBe("glm-5");
+      expect(settings.web_search_provider).toBe("firecrawl");
     });
-    await saveSettings({ model: "claude-opus-4-6" } as any);
+    await saveSettings({ default_model_zai: "glm-5", web_search_provider: "firecrawl" });
   });
 
   it("getCredentialsStatus returns provider map", async () => {
@@ -102,12 +107,16 @@ describe("invoke wrappers", () => {
       anthropic: true,
       openrouter: false,
       cerebras: false,
+      zai: true,
       ollama: true,
       exa: false,
+      firecrawl: true,
     }));
     const status = await getCredentialsStatus();
     expect(status.openai).toBe(true);
     expect(status.openrouter).toBe(false);
+    expect(status.zai).toBe(true);
+    expect(status.firecrawl).toBe(true);
   });
 
   it("listSessions sends limit", async () => {

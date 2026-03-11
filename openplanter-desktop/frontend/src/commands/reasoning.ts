@@ -1,5 +1,5 @@
 /** /reasoning slash command handler. */
-import { updateConfig } from "../api/invoke";
+import { saveSettings, updateConfig } from "../api/invoke";
 import { appState } from "../state/store";
 import type { CommandResult } from "./model";
 
@@ -45,6 +45,9 @@ export async function handleReasoningCommand(args: string): Promise<CommandResul
 
     const lines = [`Reasoning effort set to: ${config.reasoning_effort ?? "off"}`];
     if (save) {
+      await saveSettings({
+        default_reasoning_effort: config.reasoning_effort,
+      });
       lines.push("(Settings saved)");
     }
 

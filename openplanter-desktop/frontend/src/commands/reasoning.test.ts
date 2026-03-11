@@ -130,6 +130,9 @@ describe("handleReasoningCommand", () => {
       max_steps_per_call: 100,
       demo: false,
     }));
+    __setHandler("save_settings", ({ settings }: any) => {
+      expect(settings.default_reasoning_effort).toBe("high");
+    });
 
     const result = await handleReasoningCommand("high --save");
     expect(result.action).toBe("handled");

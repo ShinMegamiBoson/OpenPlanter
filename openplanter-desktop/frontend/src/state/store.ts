@@ -61,6 +61,7 @@ export interface ChatMessage {
 export interface AppState {
   provider: string;
   model: string;
+  webSearchProvider: string;
   sessionId: string | null;
   inputTokens: number;
   outputTokens: number;
@@ -80,6 +81,7 @@ export interface AppState {
 export const appState = new Store<AppState>({
   provider: "",
   model: "",
+  webSearchProvider: "exa",
   sessionId: null,
   inputTokens: 0,
   outputTokens: 0,

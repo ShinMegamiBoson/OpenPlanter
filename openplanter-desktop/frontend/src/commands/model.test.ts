@@ -34,6 +34,11 @@ describe("inferProvider", () => {
     expect(inferProvider("qwen-3-235b-a22b-instruct-2507")).toBe("cerebras");
   });
 
+  it("glm returns zai", () => {
+    expect(inferProvider("glm-5")).toBe("zai");
+    expect(inferProvider("zai-glm-4.6")).toBe("zai");
+  });
+
   it("qwen without 3 returns ollama", () => {
     expect(inferProvider("qwen2")).toBe("ollama");
   });
@@ -58,6 +63,10 @@ describe("MODEL_ALIASES", () => {
   it("gpt5 alias", () => {
     expect(MODEL_ALIASES["gpt5"]).toBe("gpt-5.2");
   });
+
+  it("zai alias", () => {
+    expect(MODEL_ALIASES["zai"]).toBe("glm-5");
+  });
 });
 
 describe("handleModelCommand", () => {
@@ -68,6 +77,7 @@ describe("handleModelCommand", () => {
       ...originalState,
       provider: "anthropic",
       model: "claude-opus-4-6",
+      webSearchProvider: "exa",
     });
   });
 
@@ -94,5 +104,33 @@ describe("handleModelCommand", () => {
     const result = await handleModelCommand("list all");
     expect(result.action).toBe("handled");
     expect(result.lines.some((l) => l.includes("gpt-5.2"))).toBe(true);
+  });
+
+  it("save persists provider-specific model default", async () => {
+    __setHandler("update_config", ({ partial }: { partial: Record<string, string> }) => {
+      expect(partial.model).toBe("glm-5");
+      expect(partial.provider).toBe("zai");
+      return {
+        provider: "zai",
+        model: "glm-5",
+        workspace: ".",
+        session_id: null,
+        recursive: true,
+        max_depth: 4,
+        max_steps_per_call: 100,
+        reasoning_effort: "high",
+        web_search_provider: "exa",
+        demo: false,
+      };
+    });
+    __setHandler("save_settings", ({ settings }: { settings: Record<string, string> }) => {
+      expect(settings.default_model).toBe("glm-5");
+      expect(settings.default_model_zai).toBe("glm-5");
+    });
+
+    const result = await handleModelCommand("zai --save");
+    expect(result.lines).toContain("(Settings saved)");
+    expect(appState.get().provider).toBe("zai");
+    expect(appState.get().model).toBe("glm-5");
   });
 });

@@ -5,6 +5,9 @@ use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 
+pub const ZAI_PAYGO_BASE_URL: &str = "https://api.z.ai/api/paas/v4";
+pub const ZAI_CODING_BASE_URL: &str = "https://api.z.ai/api/coding/paas/v4";
+
 /// Default model for each supported provider.
 pub static PROVIDER_DEFAULT_MODELS: LazyLock<HashMap<&'static str, &'static str>> =
     LazyLock::new(|| {
@@ -13,6 +16,7 @@ pub static PROVIDER_DEFAULT_MODELS: LazyLock<HashMap<&'static str, &'static str>
             ("anthropic", "claude-opus-4-6"),
             ("openrouter", "anthropic/claude-sonnet-4-5"),
             ("cerebras", "qwen-3-235b-a22b-instruct-2507"),
+            ("zai", "glm-5"),
             ("ollama", "llama3.2"),
         ])
     });
@@ -39,6 +43,28 @@ fn env_bool(key: &str, default: bool) -> bool {
     }
 }
 
+pub fn normalize_zai_plan(value: Option<&str>) -> String {
+    match value.unwrap_or_default().trim().to_lowercase().as_str() {
+        "coding" => "coding".to_string(),
+        _ => "paygo".to_string(),
+    }
+}
+
+pub fn resolve_zai_base_url(plan: &str, paygo_base_url: &str, coding_base_url: &str) -> String {
+    if normalize_zai_plan(Some(plan)) == "coding" {
+        coding_base_url.to_string()
+    } else {
+        paygo_base_url.to_string()
+    }
+}
+
+pub fn normalize_web_search_provider(value: Option<&str>) -> String {
+    match value.unwrap_or_default().trim().to_lowercase().as_str() {
+        "firecrawl" => "firecrawl".to_string(),
+        _ => "exa".to_string(),
+    }
+}
+
 /// Central configuration for the OpenPlanter agent.
 ///
 /// Mirrors the Python `AgentConfig` dataclass field-for-field.
@@ -55,8 +81,13 @@ pub struct AgentConfig {
     pub anthropic_base_url: String,
     pub openrouter_base_url: String,
     pub cerebras_base_url: String,
+    pub zai_plan: String,
+    pub zai_paygo_base_url: String,
+    pub zai_coding_base_url: String,
+    pub zai_base_url: String,
     pub ollama_base_url: String,
     pub exa_base_url: String,
+    pub firecrawl_base_url: String,
 
     // API keys
     pub api_key: Option<String>,
@@ -64,7 +95,10 @@ pub struct AgentConfig {
     pub anthropic_api_key: Option<String>,
     pub openrouter_api_key: Option<String>,
     pub cerebras_api_key: Option<String>,
+    pub zai_api_key: Option<String>,
     pub exa_api_key: Option<String>,
+    pub firecrawl_api_key: Option<String>,
+    pub web_search_provider: String,
     pub voyage_api_key: Option<String>,
 
     // Limits
@@ -80,6 +114,7 @@ pub struct AgentConfig {
     pub session_root_dir: String,
     pub max_persisted_observations: i64,
     pub max_solve_seconds: i64,
+    pub zai_stream_max_retries: i64,
     pub recursive: bool,
     pub min_subtask_depth: i64,
     pub acceptance_criteria: bool,
@@ -100,14 +135,22 @@ impl Default for AgentConfig {
             anthropic_base_url: "https://api.anthropic.com/v1".into(),
             openrouter_base_url: "https://openrouter.ai/api/v1".into(),
             cerebras_base_url: "https://api.cerebras.ai/v1".into(),
+            zai_plan: "paygo".into(),
+            zai_paygo_base_url: ZAI_PAYGO_BASE_URL.into(),
+            zai_coding_base_url: ZAI_CODING_BASE_URL.into(),
+            zai_base_url: ZAI_PAYGO_BASE_URL.into(),
             ollama_base_url: "http://localhost:11434/v1".into(),
             exa_base_url: "https://api.exa.ai".into(),
+            firecrawl_base_url: "https://api.firecrawl.dev/v1".into(),
             api_key: None,
             openai_api_key: None,
             anthropic_api_key: None,
             openrouter_api_key: None,
             cerebras_api_key: None,
+            zai_api_key: None,
             exa_api_key: None,
+            firecrawl_api_key: None,
+            web_search_provider: "exa".into(),
             voyage_api_key: None,
             max_depth: 4,
             max_steps_per_call: 100,
@@ -121,6 +164,7 @@ impl Default for AgentConfig {
             session_root_dir: ".openplanter".into(),
             max_persisted_observations: 400,
             max_solve_seconds: 0,
+            zai_stream_max_retries: 10,
             recursive: true,
             min_subtask_depth: 0,
             acceptance_criteria: true,
@@ -136,23 +180,27 @@ impl AgentConfig {
     pub fn from_env(workspace: impl AsRef<Path>) -> Self {
         let ws = dunce_canonicalize(workspace.as_ref());
 
-        let openai_api_key = env_opt("OPENPLANTER_OPENAI_API_KEY")
-            .or_else(|| env_opt("OPENAI_API_KEY"));
+        let openai_api_key =
+            env_opt("OPENPLANTER_OPENAI_API_KEY").or_else(|| env_opt("OPENAI_API_KEY"));
 
-        let anthropic_api_key = env_opt("OPENPLANTER_ANTHROPIC_API_KEY")
-            .or_else(|| env_opt("ANTHROPIC_API_KEY"));
+        let anthropic_api_key =
+            env_opt("OPENPLANTER_ANTHROPIC_API_KEY").or_else(|| env_opt("ANTHROPIC_API_KEY"));
 
-        let openrouter_api_key = env_opt("OPENPLANTER_OPENROUTER_API_KEY")
-            .or_else(|| env_opt("OPENROUTER_API_KEY"));
+        let openrouter_api_key =
+            env_opt("OPENPLANTER_OPENROUTER_API_KEY").or_else(|| env_opt("OPENROUTER_API_KEY"));
 
-        let cerebras_api_key = env_opt("OPENPLANTER_CEREBRAS_API_KEY")
-            .or_else(|| env_opt("CEREBRAS_API_KEY"));
+        let cerebras_api_key =
+            env_opt("OPENPLANTER_CEREBRAS_API_KEY").or_else(|| env_opt("CEREBRAS_API_KEY"));
 
-        let exa_api_key = env_opt("OPENPLANTER_EXA_API_KEY")
-            .or_else(|| env_opt("EXA_API_KEY"));
+        let zai_api_key = env_opt("OPENPLANTER_ZAI_API_KEY").or_else(|| env_opt("ZAI_API_KEY"));
 
-        let voyage_api_key = env_opt("OPENPLANTER_VOYAGE_API_KEY")
-            .or_else(|| env_opt("VOYAGE_API_KEY"));
+        let exa_api_key = env_opt("OPENPLANTER_EXA_API_KEY").or_else(|| env_opt("EXA_API_KEY"));
+
+        let firecrawl_api_key =
+            env_opt("OPENPLANTER_FIRECRAWL_API_KEY").or_else(|| env_opt("FIRECRAWL_API_KEY"));
+
+        let voyage_api_key =
+            env_opt("OPENPLANTER_VOYAGE_API_KEY").or_else(|| env_opt("VOYAGE_API_KEY"));
 
         let openai_base_url = env_opt("OPENPLANTER_OPENAI_BASE_URL")
             .or_else(|| env_opt("OPENPLANTER_BASE_URL"))
@@ -167,14 +215,21 @@ impl AgentConfig {
             Some(reasoning_effort_raw)
         };
 
-        let provider_raw = env_or("OPENPLANTER_PROVIDER", "auto")
-            .trim()
-            .to_lowercase();
+        let provider_raw = env_or("OPENPLANTER_PROVIDER", "auto").trim().to_lowercase();
         let provider = if provider_raw.is_empty() {
             "auto".into()
         } else {
             provider_raw
         };
+
+        let zai_plan = normalize_zai_plan(env_opt("OPENPLANTER_ZAI_PLAN").as_deref());
+        let zai_paygo_base_url = env_or("OPENPLANTER_ZAI_PAYGO_BASE_URL", ZAI_PAYGO_BASE_URL);
+        let zai_coding_base_url = env_or("OPENPLANTER_ZAI_CODING_BASE_URL", ZAI_CODING_BASE_URL);
+        let zai_base_url = env_opt("OPENPLANTER_ZAI_BASE_URL").unwrap_or_else(|| {
+            resolve_zai_base_url(&zai_plan, &zai_paygo_base_url, &zai_coding_base_url)
+        });
+        let web_search_provider =
+            normalize_web_search_provider(env_opt("OPENPLANTER_WEB_SEARCH_PROVIDER").as_deref());
 
         Self {
             workspace: ws,
@@ -196,16 +251,24 @@ impl AgentConfig {
                 "OPENPLANTER_CEREBRAS_BASE_URL",
                 "https://api.cerebras.ai/v1",
             ),
-            ollama_base_url: env_or(
-                "OPENPLANTER_OLLAMA_BASE_URL",
-                "http://localhost:11434/v1",
-            ),
+            zai_plan,
+            zai_paygo_base_url,
+            zai_coding_base_url,
+            zai_base_url,
+            ollama_base_url: env_or("OPENPLANTER_OLLAMA_BASE_URL", "http://localhost:11434/v1"),
             exa_base_url: env_or("OPENPLANTER_EXA_BASE_URL", "https://api.exa.ai"),
+            firecrawl_base_url: env_or(
+                "OPENPLANTER_FIRECRAWL_BASE_URL",
+                "https://api.firecrawl.dev/v1",
+            ),
             openai_api_key,
             anthropic_api_key,
             openrouter_api_key,
             cerebras_api_key,
+            zai_api_key,
             exa_api_key,
+            firecrawl_api_key,
+            web_search_provider,
             voyage_api_key,
             max_depth: env_int("OPENPLANTER_MAX_DEPTH", 4),
             max_steps_per_call: env_int("OPENPLANTER_MAX_STEPS", 100),
@@ -219,6 +282,7 @@ impl AgentConfig {
             session_root_dir: env_or("OPENPLANTER_SESSION_DIR", ".openplanter"),
             max_persisted_observations: env_int("OPENPLANTER_MAX_PERSISTED_OBS", 400),
             max_solve_seconds: env_int("OPENPLANTER_MAX_SOLVE_SECONDS", 0),
+            zai_stream_max_retries: env_int("OPENPLANTER_ZAI_STREAM_MAX_RETRIES", 10),
             recursive: env_bool("OPENPLANTER_RECURSIVE", true),
             min_subtask_depth: env_int("OPENPLANTER_MIN_SUBTASK_DEPTH", 0),
             acceptance_criteria: env_bool("OPENPLANTER_ACCEPTANCE_CRITERIA", true),
@@ -263,6 +327,9 @@ mod tests {
         assert_eq!(cfg.reasoning_effort, Some("high".into()));
         assert_eq!(cfg.max_depth, 4);
         assert_eq!(cfg.max_steps_per_call, 100);
+        assert_eq!(cfg.zai_plan, "paygo");
+        assert_eq!(cfg.zai_base_url, ZAI_PAYGO_BASE_URL);
+        assert_eq!(cfg.web_search_provider, "exa");
         assert!(cfg.recursive);
         assert!(cfg.acceptance_criteria);
         assert!(!cfg.demo);
@@ -283,6 +350,7 @@ mod tests {
             PROVIDER_DEFAULT_MODELS.get("cerebras"),
             Some(&"qwen-3-235b-a22b-instruct-2507")
         );
+        assert_eq!(PROVIDER_DEFAULT_MODELS.get("zai"), Some(&"glm-5"));
         assert_eq!(PROVIDER_DEFAULT_MODELS.get("ollama"), Some(&"llama3.2"));
     }
 
@@ -298,15 +366,18 @@ mod tests {
             "OPENAI_API_KEY",
             "OPENPLANTER_ANTHROPIC_API_KEY",
             "ANTHROPIC_API_KEY",
+            "OPENPLANTER_ZAI_API_KEY",
+            "ZAI_API_KEY",
             "OPENPLANTER_MAX_DEPTH",
             "OPENPLANTER_RECURSIVE",
             "OPENPLANTER_DEMO",
+            "OPENPLANTER_WEB_SEARCH_PROVIDER",
+            "OPENPLANTER_ZAI_PLAN",
+            "OPENPLANTER_ZAI_BASE_URL",
+            "OPENPLANTER_ZAI_STREAM_MAX_RETRIES",
         ];
         // Save original values
-        let saved: Vec<_> = keys
-            .iter()
-            .map(|k| (*k, env::var(k).ok()))
-            .collect();
+        let saved: Vec<_> = keys.iter().map(|k| (*k, env::var(k).ok())).collect();
 
         // SAFETY: test-only; combined into one test to avoid parallel env mutation
         unsafe {
@@ -325,6 +396,8 @@ mod tests {
         assert!(!cfg.demo);
         assert!(cfg.openai_api_key.is_none());
         assert!(cfg.anthropic_api_key.is_none());
+        assert!(cfg.zai_api_key.is_none());
+        assert_eq!(cfg.web_search_provider, "exa");
 
         unsafe {
             // --- Phase 2: test custom values ---
@@ -335,6 +408,10 @@ mod tests {
             env::set_var("OPENPLANTER_RECURSIVE", "false");
             env::set_var("OPENPLANTER_DEMO", "true");
             env::set_var("OPENAI_API_KEY", "sk-test123");
+            env::set_var("ZAI_API_KEY", "zai-test123");
+            env::set_var("OPENPLANTER_WEB_SEARCH_PROVIDER", "firecrawl");
+            env::set_var("OPENPLANTER_ZAI_PLAN", "coding");
+            env::set_var("OPENPLANTER_ZAI_STREAM_MAX_RETRIES", "7");
         }
 
         let cfg = AgentConfig::from_env("/tmp");
@@ -345,6 +422,11 @@ mod tests {
         assert!(!cfg.recursive);
         assert!(cfg.demo);
         assert_eq!(cfg.openai_api_key, Some("sk-test123".into()));
+        assert_eq!(cfg.zai_api_key, Some("zai-test123".into()));
+        assert_eq!(cfg.zai_plan, "coding");
+        assert_eq!(cfg.zai_base_url, ZAI_CODING_BASE_URL);
+        assert_eq!(cfg.zai_stream_max_retries, 7);
+        assert_eq!(cfg.web_search_provider, "firecrawl");
 
         // Restore original values
         for (k, v) in saved {
@@ -355,5 +437,20 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_normalizers() {
+        assert_eq!(normalize_zai_plan(Some("coding")), "coding");
+        assert_eq!(normalize_zai_plan(Some("bad-value")), "paygo");
+        assert_eq!(
+            resolve_zai_base_url("coding", "https://paygo.example", "https://coding.example"),
+            "https://coding.example"
+        );
+        assert_eq!(
+            normalize_web_search_provider(Some("firecrawl")),
+            "firecrawl"
+        );
+        assert_eq!(normalize_web_search_provider(Some("other")), "exa");
     }
 }

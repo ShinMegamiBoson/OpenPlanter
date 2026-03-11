@@ -3,6 +3,7 @@ import { appState } from "../state/store";
 import { openSession } from "../api/invoke";
 import { handleModelCommand, type CommandResult } from "./model";
 import { handleReasoningCommand } from "./reasoning";
+import { handleWebSearchCommand } from "./webSearch";
 
 /** Dispatch a slash command. Returns null if not a slash command. */
 export async function dispatchSlashCommand(input: string): Promise<CommandResult | null> {
@@ -28,6 +29,9 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
           "  /model <name>       Switch model (auto-detects provider)",
           "  /model <name> --save  Switch and persist",
           "  /model list [provider]  List available models",
+          "  /web-search        Show current web search provider",
+          "  /web-search <provider>  Set web search provider (exa, firecrawl)",
+          "  /web-search <provider> --save  Set and persist",
           "  /reasoning          Show/set reasoning effort",
           "  /reasoning <level>  Set level (low, medium, high, off)",
         ],
@@ -75,6 +79,7 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
         lines: [
           `Provider:    ${s.provider || "auto"}`,
           `Model:       ${s.model || "—"}`,
+          `Web search:  ${s.webSearchProvider || "exa"}`,
           `Reasoning:   ${s.reasoningEffort ?? "off"}`,
           `Mode:        ${s.recursive ? "recursive" : "flat"}`,
           `Max depth:   ${s.maxDepth}`,
@@ -90,6 +95,9 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
 
     case "/model":
       return handleModelCommand(args);
+
+    case "/web-search":
+      return handleWebSearchCommand(args);
 
     case "/reasoning":
       return handleReasoningCommand(args);

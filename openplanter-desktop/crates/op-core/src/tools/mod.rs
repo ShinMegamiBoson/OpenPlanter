@@ -2,17 +2,16 @@
 ///
 /// The `WorkspaceTools` struct is the central dispatcher that owns tool state
 /// (files-read set, background jobs) and routes tool calls to the appropriate module.
-
 pub mod defs;
 pub mod filesystem;
+pub mod patching;
 pub mod shell;
 pub mod web;
-pub mod patching;
 
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use crate::config::AgentConfig;
+use crate::config::{AgentConfig, normalize_web_search_provider};
 
 /// Result of executing a tool call.
 #[derive(Debug, Clone)]
@@ -47,8 +46,11 @@ pub struct WorkspaceTools {
     max_files_listed: usize,
     max_search_hits: usize,
     max_observation_chars: usize,
+    web_search_provider: String,
     exa_api_key: Option<String>,
     exa_base_url: String,
+    firecrawl_api_key: Option<String>,
+    firecrawl_base_url: String,
     files_read: HashSet<PathBuf>,
     bg_jobs: shell::BgJobs,
 }
@@ -64,8 +66,11 @@ impl WorkspaceTools {
             max_files_listed: config.max_files_listed as usize,
             max_search_hits: config.max_search_hits as usize,
             max_observation_chars: config.max_observation_chars as usize,
+            web_search_provider: normalize_web_search_provider(Some(&config.web_search_provider)),
             exa_api_key: config.exa_api_key.clone(),
             exa_base_url: config.exa_base_url.clone(),
+            firecrawl_api_key: config.firecrawl_api_key.clone(),
+            firecrawl_base_url: config.firecrawl_base_url.clone(),
             files_read: HashSet::new(),
             bg_jobs: shell::BgJobs::new(),
         }
@@ -74,14 +79,17 @@ impl WorkspaceTools {
     /// Execute a tool by name with JSON arguments string.
     /// Returns the tool result, clipped to max_observation_chars.
     pub async fn execute(&mut self, name: &str, args_json: &str) -> ToolResult {
-        let args: serde_json::Value =
-            serde_json::from_str(args_json).unwrap_or(serde_json::Value::Object(Default::default()));
+        let args: serde_json::Value = serde_json::from_str(args_json)
+            .unwrap_or(serde_json::Value::Object(Default::default()));
 
         let result = match name {
             // Filesystem
             "read_file" => {
                 let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
-                let hashline = args.get("hashline").and_then(|v| v.as_bool()).unwrap_or(true);
+                let hashline = args
+                    .get("hashline")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
                 filesystem::read_file(
                     &self.root,
                     path,
@@ -99,13 +107,7 @@ impl WorkspaceTools {
                 let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
                 let old_text = args.get("old_text").and_then(|v| v.as_str()).unwrap_or("");
                 let new_text = args.get("new_text").and_then(|v| v.as_str()).unwrap_or("");
-                filesystem::edit_file(
-                    &self.root,
-                    path,
-                    old_text,
-                    new_text,
-                    &mut self.files_read,
-                )
+                filesystem::edit_file(&self.root, path, old_text, new_text, &mut self.files_read)
             }
             "list_files" => {
                 let glob = args.get("glob").and_then(|v| v.as_str());
@@ -145,12 +147,7 @@ impl WorkspaceTools {
             }
             "run_shell_bg" => {
                 let command = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                shell::run_shell_bg(
-                    &self.root,
-                    &self.shell_path,
-                    command,
-                    &mut self.bg_jobs,
-                )
+                shell::run_shell_bg(&self.root, &self.shell_path, command, &mut self.bg_jobs)
             }
             "check_shell_bg" => {
                 let job_id = args.get("job_id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
@@ -164,11 +161,20 @@ impl WorkspaceTools {
             // Web
             "web_search" => {
                 let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                let num_results = args.get("num_results").and_then(|v| v.as_i64()).unwrap_or(10);
-                let include_text = args.get("include_text").and_then(|v| v.as_bool()).unwrap_or(false);
+                let num_results = args
+                    .get("num_results")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(10);
+                let include_text = args
+                    .get("include_text")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 web::web_search(
+                    &self.web_search_provider,
                     self.exa_api_key.as_deref(),
                     &self.exa_base_url,
+                    self.firecrawl_api_key.as_deref(),
+                    &self.firecrawl_base_url,
                     query,
                     num_results,
                     include_text,
@@ -188,8 +194,11 @@ impl WorkspaceTools {
                     })
                     .unwrap_or_default();
                 web::fetch_url(
+                    &self.web_search_provider,
                     self.exa_api_key.as_deref(),
                     &self.exa_base_url,
+                    self.firecrawl_api_key.as_deref(),
+                    &self.firecrawl_base_url,
                     &urls,
                     self.max_file_chars,
                     self.command_timeout_sec,
