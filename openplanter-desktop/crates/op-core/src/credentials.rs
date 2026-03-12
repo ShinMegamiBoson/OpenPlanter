@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CredentialBundle {
     pub openai_api_key: Option<String>,
+    pub openai_oauth_token: Option<String>,
     pub anthropic_api_key: Option<String>,
     pub openrouter_api_key: Option<String>,
     pub cerebras_api_key: Option<String>,
@@ -28,6 +29,7 @@ impl CredentialBundle {
     pub fn has_any(&self) -> bool {
         let keys: [&Option<String>; 9] = [
             &self.openai_api_key,
+            &self.openai_oauth_token,
             &self.anthropic_api_key,
             &self.openrouter_api_key,
             &self.cerebras_api_key,
@@ -51,6 +53,7 @@ impl CredentialBundle {
             };
         }
         fill!(openai_api_key);
+        fill!(openai_oauth_token);
         fill!(anthropic_api_key);
         fill!(openrouter_api_key);
         fill!(cerebras_api_key);
@@ -72,6 +75,7 @@ impl CredentialBundle {
             };
         }
         add!(openai_api_key, "openai_api_key");
+        add!(openai_oauth_token, "openai_oauth_token");
         add!(anthropic_api_key, "anthropic_api_key");
         add!(openrouter_api_key, "openrouter_api_key");
         add!(cerebras_api_key, "cerebras_api_key");
@@ -93,6 +97,7 @@ impl CredentialBundle {
         }
         Self {
             openai_api_key: get_str(payload, "openai_api_key"),
+            openai_oauth_token: get_str(payload, "openai_oauth_token"),
             anthropic_api_key: get_str(payload, "anthropic_api_key"),
             openrouter_api_key: get_str(payload, "openrouter_api_key"),
             cerebras_api_key: get_str(payload, "cerebras_api_key"),
@@ -148,6 +153,7 @@ pub fn parse_env_file(path: &Path) -> CredentialBundle {
 
     CredentialBundle {
         openai_api_key: get_key(&env_map, "OPENAI_API_KEY", "OPENPLANTER_OPENAI_API_KEY"),
+        openai_oauth_token: get_key(&env_map, "OPENAI_OAUTH_TOKEN", "OPENPLANTER_OPENAI_OAUTH_TOKEN"),
         anthropic_api_key: get_key(
             &env_map,
             "ANTHROPIC_API_KEY",
@@ -183,6 +189,7 @@ pub fn credentials_from_env() -> CredentialBundle {
 
     CredentialBundle {
         openai_api_key: env_key("OPENPLANTER_OPENAI_API_KEY", "OPENAI_API_KEY"),
+        openai_oauth_token: env_key("OPENPLANTER_OPENAI_OAUTH_TOKEN", "OPENAI_OAUTH_TOKEN"),
         anthropic_api_key: env_key("OPENPLANTER_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
         openrouter_api_key: env_key("OPENPLANTER_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"),
         cerebras_api_key: env_key("OPENPLANTER_CEREBRAS_API_KEY", "CEREBRAS_API_KEY"),

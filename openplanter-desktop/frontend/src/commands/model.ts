@@ -14,6 +14,8 @@ export const MODEL_ALIASES: Record<string, string> = {
   gpt5: "azure-foundry/gpt-5.3-codex",
   "gpt-5": "azure-foundry/gpt-5.3-codex",
   "gpt-5.3": "azure-foundry/gpt-5.3-codex",
+  gpt54: "azure-foundry/gpt-5.4",
+  "gpt-5.4": "azure-foundry/gpt-5.4",
   kimi: "azure-foundry/Kimi-K2.5",
   gpt4o: "gpt-4o",
   "gpt-4o": "gpt-4o",

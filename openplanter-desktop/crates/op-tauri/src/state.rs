@@ -43,6 +43,15 @@ pub fn merge_credentials_into_config(
     env_creds: &CredentialBundle,
     file_creds: &CredentialBundle,
 ) {
+    if cfg.openai_api_key.is_none() {
+        cfg.openai_api_key = env_creds
+            .openai_api_key
+            .clone()
+            .or_else(|| env_creds.openai_oauth_token.clone())
+            .or_else(|| file_creds.openai_api_key.clone())
+            .or_else(|| file_creds.openai_oauth_token.clone());
+    }
+
     macro_rules! merge {
         ($field:ident) => {
             if cfg.$field.is_none() {
@@ -53,7 +62,6 @@ pub fn merge_credentials_into_config(
             }
         };
     }
-    merge!(openai_api_key);
     merge!(anthropic_api_key);
     merge!(openrouter_api_key);
     merge!(cerebras_api_key);

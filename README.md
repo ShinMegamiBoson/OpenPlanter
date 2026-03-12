@@ -84,7 +84,7 @@ The container mounts `./workspace` as the agent's working directory.
 
 | Provider | Default Model | Env Var |
 |----------|---------------|---------|
-| OpenAI | `azure-foundry/gpt-5.3-codex` | `OPENAI_API_KEY` |
+| OpenAI | `azure-foundry/gpt-5.3-codex` | `OPENAI_API_KEY` or `OPENAI_OAUTH_TOKEN` |
 | Anthropic | `anthropic-foundry/claude-opus-4-6` | `ANTHROPIC_API_KEY` |
 | OpenRouter | `anthropic/claude-sonnet-4-5` | `OPENROUTER_API_KEY` |
 | Cerebras | `qwen-3-235b-a22b-instruct-2507` | `CEREBRAS_API_KEY` |
@@ -95,6 +95,8 @@ OpenAI-compatible requests now default to the Azure Foundry proxy at
 `https://foundry-proxy.cheetah-koi.ts.net/openai/v1`, and Anthropic requests
 default to the Anthropic Foundry proxy at
 `https://foundry-proxy.cheetah-koi.ts.net/anthropic/v1`.
+
+For OpenAI-compatible access, you can authenticate with either a standard API key or a ChatGPT OAuth token (Plus/Pro/Teams): `OPENAI_OAUTH_TOKEN` (or `OPENPLANTER_OPENAI_OAUTH_TOKEN`).
 
 ### Local Models (Ollama)
 

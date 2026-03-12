@@ -118,6 +118,7 @@ MODEL_ALIASES: dict[str, str] = {
     "haiku4.5": "anthropic-foundry/claude-haiku-4-5",
     "gpt5": "azure-foundry/gpt-5.3-codex",
     "gpt5.3": "azure-foundry/gpt-5.3-codex",
+    "gpt5.4": "azure-foundry/gpt-5.4",
     "kimi": "azure-foundry/Kimi-K2.5",
     "gpt4": "gpt-4.1",
     "gpt4.1": "gpt-4.1",
