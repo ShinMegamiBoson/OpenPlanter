@@ -12,6 +12,7 @@ from pathlib import Path
 @dataclass(slots=True)
 class CredentialBundle:
     openai_api_key: str | None = None
+    openai_oauth_token: str | None = None
     anthropic_api_key: str | None = None
     openrouter_api_key: str | None = None
     cerebras_api_key: str | None = None
@@ -23,6 +24,7 @@ class CredentialBundle:
     def has_any(self) -> bool:
         return bool(
             (self.openai_api_key and self.openai_api_key.strip())
+            or (self.openai_oauth_token and self.openai_oauth_token.strip())
             or (self.anthropic_api_key and self.anthropic_api_key.strip())
             or (self.openrouter_api_key and self.openrouter_api_key.strip())
             or (self.cerebras_api_key and self.cerebras_api_key.strip())
@@ -35,6 +37,8 @@ class CredentialBundle:
     def merge_missing(self, other: "CredentialBundle") -> None:
         if not self.openai_api_key and other.openai_api_key:
             self.openai_api_key = other.openai_api_key
+        if not self.openai_oauth_token and other.openai_oauth_token:
+            self.openai_oauth_token = other.openai_oauth_token
         if not self.anthropic_api_key and other.anthropic_api_key:
             self.anthropic_api_key = other.anthropic_api_key
         if not self.openrouter_api_key and other.openrouter_api_key:
@@ -54,6 +58,8 @@ class CredentialBundle:
         out: dict[str, str] = {}
         if self.openai_api_key:
             out["openai_api_key"] = self.openai_api_key
+        if self.openai_oauth_token:
+            out["openai_oauth_token"] = self.openai_oauth_token
         if self.anthropic_api_key:
             out["anthropic_api_key"] = self.anthropic_api_key
         if self.openrouter_api_key:
@@ -76,6 +82,7 @@ class CredentialBundle:
             return cls()
         return cls(
             openai_api_key=(payload.get("openai_api_key") or "").strip() or None,
+            openai_oauth_token=(payload.get("openai_oauth_token") or "").strip() or None,
             anthropic_api_key=(payload.get("anthropic_api_key") or "").strip() or None,
             openrouter_api_key=(payload.get("openrouter_api_key") or "").strip() or None,
             cerebras_api_key=(payload.get("cerebras_api_key") or "").strip() or None,
@@ -117,6 +124,10 @@ def parse_env_file(path: Path) -> CredentialBundle:
 
     return CredentialBundle(
         openai_api_key=(env.get("OPENAI_API_KEY") or env.get("OPENPLANTER_OPENAI_API_KEY") or "").strip() or None,
+        openai_oauth_token=(
+            env.get("OPENAI_OAUTH_TOKEN") or env.get("OPENPLANTER_OPENAI_OAUTH_TOKEN") or ""
+        ).strip()
+        or None,
         anthropic_api_key=(env.get("ANTHROPIC_API_KEY") or env.get("OPENPLANTER_ANTHROPIC_API_KEY") or "").strip()
         or None,
         openrouter_api_key=(env.get("OPENROUTER_API_KEY") or env.get("OPENPLANTER_OPENROUTER_API_KEY") or "").strip()
@@ -137,6 +148,10 @@ def credentials_from_env() -> CredentialBundle:
             os.getenv("OPENPLANTER_OPENAI_API_KEY")
             or os.getenv("OPENAI_API_KEY")
             or ""
+        ).strip()
+        or None,
+        openai_oauth_token=(
+            os.getenv("OPENPLANTER_OPENAI_OAUTH_TOKEN") or os.getenv("OPENAI_OAUTH_TOKEN") or ""
         ).strip()
         or None,
         anthropic_api_key=(
@@ -251,6 +266,7 @@ def prompt_for_credentials(
     """
     current = CredentialBundle(
         openai_api_key=existing.openai_api_key,
+        openai_oauth_token=existing.openai_oauth_token,
         anthropic_api_key=existing.anthropic_api_key,
         openrouter_api_key=existing.openrouter_api_key,
         cerebras_api_key=existing.cerebras_api_key,
@@ -286,6 +302,7 @@ def prompt_for_credentials(
         return value
 
     current.openai_api_key = _ask("OpenAI", current.openai_api_key)
+    current.openai_oauth_token = _ask("ChatGPT OAuth (Plus/Pro/Teams)", current.openai_oauth_token)
     current.anthropic_api_key = _ask("Anthropic", current.anthropic_api_key)
     current.openrouter_api_key = _ask("OpenRouter", current.openrouter_api_key)
     current.cerebras_api_key = _ask("Cerebras", current.cerebras_api_key)

@@ -266,8 +266,10 @@ impl AgentConfig {
     pub fn from_env(workspace: impl AsRef<Path>) -> Self {
         let ws = dunce_canonicalize(workspace.as_ref());
 
-        let openai_api_key =
-            env_opt("OPENPLANTER_OPENAI_API_KEY").or_else(|| env_opt("OPENAI_API_KEY"));
+        let openai_api_key = env_opt("OPENPLANTER_OPENAI_API_KEY")
+            .or_else(|| env_opt("OPENAI_API_KEY"))
+            .or_else(|| env_opt("OPENPLANTER_OPENAI_OAUTH_TOKEN"))
+            .or_else(|| env_opt("OPENAI_OAUTH_TOKEN"));
 
         let anthropic_api_key =
             env_opt("OPENPLANTER_ANTHROPIC_API_KEY").or_else(|| env_opt("ANTHROPIC_API_KEY"));

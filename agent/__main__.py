@@ -89,6 +89,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url", help="Provider base URL override for this run.")
     parser.add_argument("--api-key", help="Legacy API key alias (maps to OpenAI).")
     parser.add_argument("--openai-api-key", help="OpenAI API key override.")
+    parser.add_argument(
+        "--openai-oauth-token",
+        help="ChatGPT OAuth token (Plus/Pro/Teams) override for OpenAI-compatible endpoints.",
+    )
     parser.add_argument("--anthropic-api-key", help="Anthropic API key override.")
     parser.add_argument("--openrouter-api-key", help="OpenRouter API key override.")
     parser.add_argument("--cerebras-api-key", help="Cerebras API key override.")
@@ -184,7 +188,7 @@ def _resolve_provider(requested: str, creds: CredentialBundle) -> str:
         return requested
     if requested == "all":
         return "all"
-    if creds.openai_api_key:
+    if creds.openai_api_key or creds.openai_oauth_token:
         return "openai"
     if creds.anthropic_api_key:
         return "anthropic"
@@ -235,6 +239,7 @@ def _load_credentials(
 
     creds = CredentialBundle(
         openai_api_key=user_creds.openai_api_key,
+        openai_oauth_token=user_creds.openai_oauth_token,
         anthropic_api_key=user_creds.anthropic_api_key,
         openrouter_api_key=user_creds.openrouter_api_key,
         cerebras_api_key=user_creds.cerebras_api_key,
@@ -248,6 +253,8 @@ def _load_credentials(
     stored = store.load()
     if stored.openai_api_key:
         creds.openai_api_key = stored.openai_api_key
+    if stored.openai_oauth_token:
+        creds.openai_oauth_token = stored.openai_oauth_token
     if stored.anthropic_api_key:
         creds.anthropic_api_key = stored.anthropic_api_key
     if stored.openrouter_api_key:
@@ -266,6 +273,8 @@ def _load_credentials(
     env_creds = credentials_from_env()
     if env_creds.openai_api_key:
         creds.openai_api_key = env_creds.openai_api_key
+    if env_creds.openai_oauth_token:
+        creds.openai_oauth_token = env_creds.openai_oauth_token
     if env_creds.anthropic_api_key:
         creds.anthropic_api_key = env_creds.anthropic_api_key
     if env_creds.openrouter_api_key:
@@ -289,6 +298,8 @@ def _load_credentials(
         creds.openai_api_key = args.api_key.strip() or creds.openai_api_key
     if args.openai_api_key:
         creds.openai_api_key = args.openai_api_key.strip() or creds.openai_api_key
+    if args.openai_oauth_token:
+        creds.openai_oauth_token = args.openai_oauth_token.strip() or creds.openai_oauth_token
     if args.anthropic_api_key:
         creds.anthropic_api_key = args.anthropic_api_key.strip() or creds.anthropic_api_key
     if args.openrouter_api_key:
@@ -339,7 +350,8 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
         cfg.provider = args.provider
     cfg.provider = _resolve_provider(cfg.provider, creds)
 
-    cfg.openai_api_key = resolve_openai_api_key(creds.openai_api_key, cfg.openai_base_url)
+    effective_openai_key = creds.openai_api_key or creds.openai_oauth_token
+    cfg.openai_api_key = resolve_openai_api_key(effective_openai_key, cfg.openai_base_url)
     cfg.anthropic_api_key = resolve_anthropic_api_key(
         creds.anthropic_api_key,
         cfg.anthropic_base_url,

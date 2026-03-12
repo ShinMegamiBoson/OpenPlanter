@@ -20,6 +20,7 @@ class CredentialTests(unittest.TestCase):
                 "\n".join(
                     [
                         "OPENAI_API_KEY=oa-key",
+                        "OPENAI_OAUTH_TOKEN=oauth-token",
                         "ANTHROPIC_API_KEY=an-key",
                         "OPENROUTER_API_KEY=or-key",
                         "ZAI_API_KEY=zai-key",
@@ -31,6 +32,7 @@ class CredentialTests(unittest.TestCase):
             )
             creds = parse_env_file(env_path)
             self.assertEqual(creds.openai_api_key, "oa-key")
+            self.assertEqual(creds.openai_oauth_token, "oauth-token")
             self.assertEqual(creds.anthropic_api_key, "an-key")
             self.assertEqual(creds.openrouter_api_key, "or-key")
             self.assertEqual(creds.zai_api_key, "zai-key")
@@ -43,6 +45,7 @@ class CredentialTests(unittest.TestCase):
             store = CredentialStore(workspace=root, session_root_dir=".openplanter")
             creds = CredentialBundle(
                 openai_api_key="oa",
+                openai_oauth_token="oauth",
                 anthropic_api_key="an",
                 openrouter_api_key="or",
                 zai_api_key="zai",

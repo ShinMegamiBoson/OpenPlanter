@@ -66,6 +66,10 @@ describe("MODEL_ALIASES", () => {
     expect(MODEL_ALIASES["gpt5"]).toBe("azure-foundry/gpt-5.3-codex");
   });
 
+  it("gpt-5.4 alias", () => {
+    expect(MODEL_ALIASES["gpt-5.4"]).toBe("azure-foundry/gpt-5.4");
+  });
+
   it("zai alias", () => {
     expect(MODEL_ALIASES["zai"]).toBe("glm-5");
   });
