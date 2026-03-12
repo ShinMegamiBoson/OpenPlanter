@@ -101,6 +101,7 @@ pub fn merge_credentials_into_config(
     merge!(exa_api_key);
     merge!(firecrawl_api_key);
     merge!(brave_api_key);
+    merge!(tavily_api_key);
     merge!(voyage_api_key);
 }
 
@@ -428,6 +429,7 @@ mod tests {
         cfg.exa_api_key = None;
         cfg.firecrawl_api_key = None;
         cfg.brave_api_key = None;
+        cfg.tavily_api_key = None;
         cfg.voyage_api_key = None;
         cfg
     }
@@ -512,12 +514,13 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_includes_zai_firecrawl_brave_and_voyage() {
+    fn test_merge_includes_zai_firecrawl_brave_tavily_and_voyage() {
         let mut cfg = empty_cfg();
         let env_creds = CredentialBundle {
             zai_api_key: Some("zai-env".to_string()),
             firecrawl_api_key: Some("fc-env".to_string()),
             brave_api_key: Some("brave-env".to_string()),
+            tavily_api_key: Some("tavily-env".to_string()),
             voyage_api_key: Some("voyage-env".to_string()),
             ..Default::default()
         };
@@ -525,6 +528,7 @@ mod tests {
         assert_eq!(cfg.zai_api_key, Some("zai-env".to_string()));
         assert_eq!(cfg.firecrawl_api_key, Some("fc-env".to_string()));
         assert_eq!(cfg.brave_api_key, Some("brave-env".to_string()));
+        assert_eq!(cfg.tavily_api_key, Some("tavily-env".to_string()));
         assert_eq!(cfg.voyage_api_key, Some("voyage-env".to_string()));
     }
 

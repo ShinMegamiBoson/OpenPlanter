@@ -31,7 +31,7 @@ describe("handleWebSearchCommand", () => {
 
   it("switches provider for the current session", async () => {
     __setHandler("update_config", ({ partial }: { partial: Record<string, string> }) => {
-      expect(partial.web_search_provider).toBe("brave");
+      expect(partial.web_search_provider).toBe("tavily");
       return {
         provider: "anthropic",
         model: "claude-opus-4-6",
@@ -42,14 +42,14 @@ describe("handleWebSearchCommand", () => {
         max_depth: 4,
         max_steps_per_call: 100,
         reasoning_effort: "high",
-        web_search_provider: "brave",
+        web_search_provider: "tavily",
         demo: false,
       };
     });
 
-    const result = await handleWebSearchCommand("brave");
-    expect(result.lines).toContain("Web search provider set to: brave");
-    expect(appState.get().webSearchProvider).toBe("brave");
+    const result = await handleWebSearchCommand("tavily");
+    expect(result.lines).toContain("Web search provider set to: tavily");
+    expect(appState.get().webSearchProvider).toBe("tavily");
   });
 
   it("save persists the selected provider", async () => {
@@ -63,14 +63,14 @@ describe("handleWebSearchCommand", () => {
       max_depth: 4,
       max_steps_per_call: 100,
       reasoning_effort: "high",
-      web_search_provider: "brave",
+      web_search_provider: "tavily",
       demo: false,
     }));
     __setHandler("save_settings", ({ settings }: { settings: Record<string, string> }) => {
-      expect(settings.web_search_provider).toBe("brave");
+      expect(settings.web_search_provider).toBe("tavily");
     });
 
-    const result = await handleWebSearchCommand("brave --save");
+    const result = await handleWebSearchCommand("tavily --save");
     expect(result.lines).toContain("(Settings saved)");
   });
 });

@@ -127,6 +127,7 @@ describe("invoke wrappers", () => {
       exa: false,
       firecrawl: true,
       brave: false,
+      tavily: true,
       voyage: true,
     }));
     const status = await getCredentialsStatus();
@@ -135,6 +136,7 @@ describe("invoke wrappers", () => {
     expect(status.zai).toBe(true);
     expect(status.firecrawl).toBe(true);
     expect(status.brave).toBe(false);
+    expect(status.tavily).toBe(true);
     expect(status.voyage).toBe(true);
   });
 

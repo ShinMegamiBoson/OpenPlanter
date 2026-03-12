@@ -124,6 +124,8 @@ class WorkspaceTools:
     firecrawl_base_url: str = "https://api.firecrawl.dev/v1"
     brave_api_key: str | None = None
     brave_base_url: str = "https://api.search.brave.com/res/v1"
+    tavily_api_key: str | None = None
+    tavily_base_url: str = "https://api.tavily.com"
 
     def __post_init__(self) -> None:
         self.root = self.root.expanduser().resolve()
@@ -938,6 +940,38 @@ class WorkspaceTools:
             raise ToolError(f"Brave API returned non-object response: {type(parsed)!r}")
         return parsed
 
+    def _tavily_request(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if not (self.tavily_api_key and self.tavily_api_key.strip()):
+            raise ToolError("TAVILY_API_KEY not configured")
+        url = self.tavily_base_url.rstrip("/") + endpoint
+        req = urllib.request.Request(
+            url=url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {self.tavily_api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.command_timeout_sec) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise ToolError(f"Tavily API HTTP {exc.code}: {body}") from exc
+        except urllib.error.URLError as exc:
+            raise ToolError(f"Tavily API connection error: {exc}") from exc
+        except OSError as exc:
+            raise ToolError(f"Tavily API network error: {exc}") from exc
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ToolError(f"Tavily API returned non-JSON payload: {raw[:500]}") from exc
+        if not isinstance(parsed, dict):
+            raise ToolError(f"Tavily API returned non-object response: {type(parsed)!r}")
+        return parsed
+
     def _fetch_url_direct(self, url: str) -> dict[str, str]:
         req = urllib.request.Request(
             url=url,
@@ -993,7 +1027,7 @@ class WorkspaceTools:
             return "web_search requires non-empty query"
         clamped_results = max(1, min(int(num_results), 20))
         provider = (self.web_search_provider or "exa").strip().lower()
-        if provider not in {"exa", "firecrawl", "brave"}:
+        if provider not in {"exa", "firecrawl", "brave", "tavily"}:
             provider = "exa"
 
         if provider == "firecrawl":
@@ -1097,6 +1131,43 @@ class WorkspaceTools:
             }
             return self._clip(json.dumps(output, indent=2, ensure_ascii=True), self.max_file_chars)
 
+        if provider == "tavily":
+            payload = {
+                "query": query,
+                "max_results": clamped_results,
+            }
+            if include_text:
+                payload["include_raw_content"] = "markdown"
+
+            try:
+                parsed = self._tavily_request("/search", payload)
+            except Exception as exc:
+                return f"Web search failed: {exc}"
+
+            rows = parsed.get("results")
+            out_results: list[dict[str, Any]] = []
+            for row in rows if isinstance(rows, list) else []:
+                if not isinstance(row, dict):
+                    continue
+                snippet = str(row.get("content", "") or row.get("snippet", ""))
+                text_value = row.get("raw_content") or row.get("content") or ""
+                item: dict[str, Any] = {
+                    "url": str(row.get("url", "")),
+                    "title": str(row.get("title", "")),
+                    "snippet": snippet,
+                }
+                if include_text and isinstance(text_value, str) and text_value:
+                    item["text"] = self._clip(text_value, 4000)
+                out_results.append(item)
+
+            output = {
+                "query": query,
+                "provider": provider,
+                "results": out_results,
+                "total": len(out_results),
+            }
+            return self._clip(json.dumps(output, indent=2, ensure_ascii=True), self.max_file_chars)
+
         payload: dict[str, Any] = {
             "query": query,
             "numResults": clamped_results,
@@ -1144,7 +1215,7 @@ class WorkspaceTools:
             return "fetch_url requires at least one valid URL"
         normalized = normalized[:10]
         provider = (self.web_search_provider or "exa").strip().lower()
-        if provider not in {"exa", "firecrawl", "brave"}:
+        if provider not in {"exa", "firecrawl", "brave", "tavily"}:
             provider = "exa"
 
         if provider == "firecrawl":
@@ -1182,6 +1253,37 @@ class WorkspaceTools:
 
         if provider == "brave":
             pages = [self._fetch_url_direct(url) for url in normalized]
+            output = {
+                "provider": provider,
+                "pages": pages,
+                "total": len(pages),
+            }
+            return self._clip(json.dumps(output, indent=2, ensure_ascii=True), self.max_file_chars)
+
+        if provider == "tavily":
+            payload = {
+                "urls": normalized,
+                "extract_depth": "basic",
+                "include_images": False,
+            }
+            try:
+                parsed = self._tavily_request("/extract", payload)
+            except Exception as exc:
+                return f"Fetch URL failed: {exc}"
+
+            pages: list[dict[str, Any]] = []
+            rows = parsed.get("results")
+            for row in rows if isinstance(rows, list) else []:
+                if not isinstance(row, dict):
+                    continue
+                text = row.get("raw_content") or row.get("content") or ""
+                pages.append(
+                    {
+                        "url": str(row.get("url", "")),
+                        "title": str(row.get("title", "") or ""),
+                        "text": self._clip(str(text), 8000),
+                    }
+                )
             output = {
                 "provider": provider,
                 "pages": pages,

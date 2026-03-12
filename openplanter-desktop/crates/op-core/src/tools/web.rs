@@ -1,6 +1,6 @@
-/// Web tools: Exa / Firecrawl / Brave search and fetch_url.
-use std::time::Duration;
 use std::sync::LazyLock;
+/// Web tools: Exa / Firecrawl / Brave / Tavily search and fetch_url.
+use std::time::Duration;
 
 use regex::Regex;
 use serde_json::json;
@@ -161,6 +161,40 @@ async fn brave_request(
         .map_err(|e| format!("Brave API returned non-JSON payload: {e}"))
 }
 
+async fn tavily_request(
+    api_key: Option<&str>,
+    tavily_base_url: &str,
+    endpoint: &str,
+    payload: &serde_json::Value,
+    timeout_sec: u64,
+) -> Result<serde_json::Value, String> {
+    let api_key = match api_key {
+        Some(value) if !value.trim().is_empty() => value,
+        _ => return Err("TAVILY_API_KEY not configured".into()),
+    };
+
+    let url = format!("{}{}", tavily_base_url.trim_end_matches('/'), endpoint);
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Content-Type", "application/json")
+        .timeout(Duration::from_secs(timeout_sec))
+        .json(payload)
+        .send()
+        .await
+        .map_err(|e| format!("Tavily API request failed: {e}"))?;
+
+    let response = response
+        .error_for_status()
+        .map_err(|e| format!("Tavily API request failed: {e}"))?;
+
+    response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| format!("Tavily API returned non-JSON payload: {e}"))
+}
+
 async fn fetch_direct_page(url: &str, timeout_sec: u64) -> serde_json::Value {
     let client = reqwest::Client::new();
     let response = match client
@@ -240,6 +274,8 @@ pub async fn web_search(
     firecrawl_base_url: &str,
     brave_api_key: Option<&str>,
     brave_base_url: &str,
+    tavily_api_key: Option<&str>,
+    tavily_base_url: &str,
     query: &str,
     num_results: i64,
     include_text: bool,
@@ -333,10 +369,7 @@ pub async fn web_search(
             Err(error) => return ToolResult::error(format!("Web search failed: {error}")),
         }
     } else if provider == "brave" {
-        let mut params = vec![
-            ("q", query.to_string()),
-            ("count", clamped.to_string()),
-        ];
+        let mut params = vec![("q", query.to_string()), ("count", clamped.to_string())];
         if include_text {
             params.push(("extra_snippets", "true".to_string()));
         }
@@ -411,6 +444,62 @@ pub async fn web_search(
             }
             Err(error) => return ToolResult::error(format!("Web search failed: {error}")),
         }
+    } else if provider == "tavily" {
+        let mut payload = json!({
+            "query": query,
+            "max_results": clamped,
+        });
+        if include_text {
+            payload["include_raw_content"] = json!("markdown");
+        }
+
+        match tavily_request(
+            tavily_api_key,
+            tavily_base_url,
+            "/search",
+            &payload,
+            timeout_sec,
+        )
+        .await
+        {
+            Ok(body) => {
+                let mut results: Vec<serde_json::Value> = Vec::new();
+                if let Some(rows) = body.get("results").and_then(|value| value.as_array()) {
+                    for row in rows {
+                        let snippet = row
+                            .get("content")
+                            .and_then(|value| value.as_str())
+                            .or_else(|| row.get("snippet").and_then(|value| value.as_str()))
+                            .unwrap_or("");
+                        let mut item = json!({
+                            "url": row.get("url").and_then(|value| value.as_str()).unwrap_or(""),
+                            "title": row.get("title").and_then(|value| value.as_str()).unwrap_or(""),
+                            "snippet": snippet,
+                        });
+                        if include_text {
+                            if let Some(text) = row
+                                .get("raw_content")
+                                .and_then(|value| value.as_str())
+                                .or_else(|| row.get("content").and_then(|value| value.as_str()))
+                            {
+                                if !text.is_empty() {
+                                    item["text"] = json!(clip(text, 4_000));
+                                }
+                            }
+                        }
+                        results.push(item);
+                    }
+                }
+
+                json!({
+                    "query": query,
+                    "provider": provider,
+                    "results": results,
+                    "total": results.len(),
+                })
+            }
+            Err(error) => return ToolResult::error(format!("Web search failed: {error}")),
+        }
     } else {
         let mut payload = json!({
             "query": query,
@@ -468,6 +557,10 @@ pub async fn fetch_url(
     exa_base_url: &str,
     firecrawl_api_key: Option<&str>,
     firecrawl_base_url: &str,
+    brave_api_key: Option<&str>,
+    brave_base_url: &str,
+    tavily_api_key: Option<&str>,
+    tavily_base_url: &str,
     urls: &[String],
     max_file_chars: usize,
     timeout_sec: u64,
@@ -534,6 +627,8 @@ pub async fn fetch_url(
             "total": pages.len(),
         })
     } else if provider == "brave" {
+        let _ = brave_api_key;
+        let _ = brave_base_url;
         let mut pages: Vec<serde_json::Value> = Vec::new();
         for url in &normalized {
             pages.push(fetch_direct_page(url, timeout_sec).await);
@@ -544,6 +639,48 @@ pub async fn fetch_url(
             "pages": pages,
             "total": pages.len(),
         })
+    } else if provider == "tavily" {
+        let payload = json!({
+            "urls": normalized,
+            "extract_depth": "basic",
+            "include_images": false,
+        });
+
+        match tavily_request(
+            tavily_api_key,
+            tavily_base_url,
+            "/extract",
+            &payload,
+            timeout_sec,
+        )
+        .await
+        {
+            Ok(body) => {
+                let mut pages: Vec<serde_json::Value> = Vec::new();
+                if let Some(rows) = body.get("results").and_then(|value| value.as_array()) {
+                    for row in rows {
+                        pages.push(json!({
+                            "url": row.get("url").and_then(|value| value.as_str()).unwrap_or(""),
+                            "title": row.get("title").and_then(|value| value.as_str()).unwrap_or(""),
+                            "text": clip(
+                                row.get("raw_content")
+                                    .and_then(|value| value.as_str())
+                                    .or_else(|| row.get("content").and_then(|value| value.as_str()))
+                                    .unwrap_or(""),
+                                8_000,
+                            ),
+                        }));
+                    }
+                }
+
+                json!({
+                    "provider": provider,
+                    "pages": pages,
+                    "total": pages.len(),
+                })
+            }
+            Err(error) => return ToolResult::error(format!("Fetch URL failed: {error}")),
+        }
     } else {
         let payload = json!({
             "ids": normalized,
@@ -705,6 +842,8 @@ mod tests {
             "https://api.firecrawl.dev/v1",
             None,
             "https://api.search.brave.com/res/v1",
+            None,
+            "https://api.tavily.com",
             "example query",
             5,
             true,
@@ -746,6 +885,8 @@ mod tests {
             &format!("http://{addr}"),
             None,
             "https://api.search.brave.com/res/v1",
+            None,
+            "https://api.tavily.com",
             "example query",
             5,
             true,
@@ -781,6 +922,10 @@ mod tests {
             "https://api.exa.ai",
             Some("fc-key"),
             &format!("http://{addr}"),
+            None,
+            "https://api.search.brave.com/res/v1",
+            None,
+            "https://api.tavily.com",
             &[String::from("https://example.com/article")],
             20_000,
             5,
@@ -821,6 +966,8 @@ mod tests {
             "https://api.firecrawl.dev/v1",
             Some("brave-key"),
             &format!("http://{addr}"),
+            None,
+            "https://api.tavily.com",
             "example query",
             5,
             true,
@@ -833,7 +980,12 @@ mod tests {
         let parsed: Value = serde_json::from_str(&result.content).unwrap();
         assert_eq!(parsed["provider"], "brave");
         assert_eq!(parsed["results"][0]["title"], "Brave Title");
-        assert!(parsed["results"][0]["text"].as_str().unwrap().contains("Extra context"));
+        assert!(
+            parsed["results"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("Extra context")
+        );
     }
 
     #[tokio::test]
@@ -851,6 +1003,10 @@ mod tests {
             "https://api.exa.ai",
             None,
             "https://api.firecrawl.dev/v1",
+            None,
+            "https://api.search.brave.com/res/v1",
+            None,
+            "https://api.tavily.com",
             &[format!("http://{addr}/page")],
             20_000,
             5,
@@ -861,7 +1017,12 @@ mod tests {
         let parsed: Value = serde_json::from_str(&result.content).unwrap();
         assert_eq!(parsed["provider"], "brave");
         assert_eq!(parsed["pages"][0]["title"], "Brave Page");
-        assert!(parsed["pages"][0]["text"].as_str().unwrap().contains("Hello Brave"));
+        assert!(
+            parsed["pages"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("Hello Brave")
+        );
     }
 
     #[tokio::test]
@@ -874,6 +1035,8 @@ mod tests {
             "https://api.firecrawl.dev/v1",
             None,
             "https://api.search.brave.com/res/v1",
+            None,
+            "https://api.tavily.com",
             "example query",
             5,
             false,
@@ -896,6 +1059,8 @@ mod tests {
             "https://api.firecrawl.dev/v1",
             None,
             "https://api.search.brave.com/res/v1",
+            None,
+            "https://api.tavily.com",
             "example query",
             5,
             false,
@@ -906,6 +1071,112 @@ mod tests {
 
         assert!(result.is_error);
         assert!(result.content.contains("BRAVE_API_KEY"));
+    }
+
+    #[tokio::test]
+    async fn test_web_search_tavily_output_shape() {
+        let addr = start_json_server(
+            "/search",
+            json!({
+                "results": [
+                    {
+                        "url": "https://example.com/tavily",
+                        "title": "Tavily Title",
+                        "content": "Tavily snippet",
+                        "raw_content": "Tavily raw content"
+                    }
+                ]
+            }),
+        )
+        .await;
+
+        let result = web_search(
+            "tavily",
+            None,
+            "https://api.exa.ai",
+            None,
+            "https://api.firecrawl.dev/v1",
+            None,
+            "https://api.search.brave.com/res/v1",
+            Some("tavily-key"),
+            &format!("http://{addr}"),
+            "example query",
+            5,
+            true,
+            20_000,
+            5,
+        )
+        .await;
+
+        assert!(!result.is_error);
+        let parsed: Value = serde_json::from_str(&result.content).unwrap();
+        assert_eq!(parsed["provider"], "tavily");
+        assert_eq!(parsed["results"][0]["title"], "Tavily Title");
+        assert_eq!(parsed["results"][0]["snippet"], "Tavily snippet");
+        assert_eq!(parsed["results"][0]["text"], "Tavily raw content");
+    }
+
+    #[tokio::test]
+    async fn test_fetch_url_tavily_output_shape() {
+        let addr = start_json_server(
+            "/extract",
+            json!({
+                "results": [
+                    {
+                        "url": "https://example.com/article",
+                        "title": "Tavily Article",
+                        "raw_content": "Article body"
+                    }
+                ]
+            }),
+        )
+        .await;
+
+        let result = fetch_url(
+            "tavily",
+            None,
+            "https://api.exa.ai",
+            None,
+            "https://api.firecrawl.dev/v1",
+            None,
+            "https://api.search.brave.com/res/v1",
+            Some("tavily-key"),
+            &format!("http://{addr}"),
+            &[String::from("https://example.com/article")],
+            20_000,
+            5,
+        )
+        .await;
+
+        assert!(!result.is_error);
+        let parsed: Value = serde_json::from_str(&result.content).unwrap();
+        assert_eq!(parsed["provider"], "tavily");
+        assert_eq!(parsed["pages"][0]["title"], "Tavily Article");
+        assert_eq!(parsed["pages"][0]["text"], "Article body");
+    }
+
+    #[tokio::test]
+    async fn test_missing_tavily_key_errors() {
+        let result = web_search(
+            "tavily",
+            None,
+            "https://api.exa.ai",
+            None,
+            "https://api.firecrawl.dev/v1",
+            None,
+            "https://api.search.brave.com/res/v1",
+            None,
+            "https://api.tavily.com",
+            "example query",
+            5,
+            false,
+            20_000,
+            5,
+        )
+        .await;
+
+        assert!(result.is_error);
+        assert!(result.content.contains("TAVILY_API_KEY"));
     }
 
     #[tokio::test]
@@ -920,6 +1191,8 @@ mod tests {
             "https://api.firecrawl.dev/v1",
             None,
             "https://api.search.brave.com/res/v1",
+            None,
+            "https://api.tavily.com",
             "example query",
             5,
             false,

@@ -3,7 +3,7 @@ import { saveSettings, updateConfig } from "../api/invoke";
 import { appState } from "../state/store";
 import type { CommandResult } from "./model";
 
-const VALID_WEB_SEARCH_PROVIDERS = ["exa", "firecrawl", "brave"];
+const VALID_WEB_SEARCH_PROVIDERS = ["exa", "firecrawl", "brave", "tavily"];
 
 /** Handle /web-search [provider] [--save]. */
 export async function handleWebSearchCommand(args: string): Promise<CommandResult> {

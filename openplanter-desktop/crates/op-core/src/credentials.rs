@@ -21,6 +21,7 @@ pub struct CredentialBundle {
     pub exa_api_key: Option<String>,
     pub firecrawl_api_key: Option<String>,
     pub brave_api_key: Option<String>,
+    pub tavily_api_key: Option<String>,
     pub voyage_api_key: Option<String>,
 }
 
@@ -37,6 +38,7 @@ impl CredentialBundle {
             &self.exa_api_key,
             &self.firecrawl_api_key,
             &self.brave_api_key,
+            &self.tavily_api_key,
             &self.voyage_api_key,
         ];
         keys.iter()
@@ -61,6 +63,7 @@ impl CredentialBundle {
         fill!(exa_api_key);
         fill!(firecrawl_api_key);
         fill!(brave_api_key);
+        fill!(tavily_api_key);
         fill!(voyage_api_key);
     }
 
@@ -83,6 +86,7 @@ impl CredentialBundle {
         add!(exa_api_key, "exa_api_key");
         add!(firecrawl_api_key, "firecrawl_api_key");
         add!(brave_api_key, "brave_api_key");
+        add!(tavily_api_key, "tavily_api_key");
         add!(voyage_api_key, "voyage_api_key");
         out
     }
@@ -105,6 +109,7 @@ impl CredentialBundle {
             exa_api_key: get_str(payload, "exa_api_key"),
             firecrawl_api_key: get_str(payload, "firecrawl_api_key"),
             brave_api_key: get_str(payload, "brave_api_key"),
+            tavily_api_key: get_str(payload, "tavily_api_key"),
             voyage_api_key: get_str(payload, "voyage_api_key"),
         }
     }
@@ -177,6 +182,7 @@ pub fn parse_env_file(path: &Path) -> CredentialBundle {
             "OPENPLANTER_FIRECRAWL_API_KEY",
         ),
         brave_api_key: get_key(&env_map, "BRAVE_API_KEY", "OPENPLANTER_BRAVE_API_KEY"),
+        tavily_api_key: get_key(&env_map, "TAVILY_API_KEY", "OPENPLANTER_TAVILY_API_KEY"),
         voyage_api_key: get_key(&env_map, "VOYAGE_API_KEY", "OPENPLANTER_VOYAGE_API_KEY"),
     }
 }
@@ -201,6 +207,7 @@ pub fn credentials_from_env() -> CredentialBundle {
         exa_api_key: env_key("OPENPLANTER_EXA_API_KEY", "EXA_API_KEY"),
         firecrawl_api_key: env_key("OPENPLANTER_FIRECRAWL_API_KEY", "FIRECRAWL_API_KEY"),
         brave_api_key: env_key("OPENPLANTER_BRAVE_API_KEY", "BRAVE_API_KEY"),
+        tavily_api_key: env_key("OPENPLANTER_TAVILY_API_KEY", "TAVILY_API_KEY"),
         voyage_api_key: env_key("OPENPLANTER_VOYAGE_API_KEY", "VOYAGE_API_KEY"),
     }
 }
@@ -383,6 +390,7 @@ mod tests {
             openrouter_api_key: Some("or-456".into()),
             firecrawl_api_key: Some("fc-789".into()),
             brave_api_key: Some("brave-101".into()),
+            tavily_api_key: Some("tavily-202".into()),
             ..Default::default()
         };
         let json = bundle.to_json();
@@ -391,6 +399,7 @@ mod tests {
         assert_eq!(json.get("openrouter_api_key").unwrap(), "or-456");
         assert_eq!(json.get("firecrawl_api_key").unwrap(), "fc-789");
         assert_eq!(json.get("brave_api_key").unwrap(), "brave-101");
+        assert_eq!(json.get("tavily_api_key").unwrap(), "tavily-202");
     }
 
     #[test]
@@ -407,6 +416,7 @@ EXA_API_KEY="exa-quoted"
 ZAI_API_KEY=zai-from-env
 OPENPLANTER_FIRECRAWL_API_KEY="firecrawl-quoted"
 BRAVE_API_KEY=brave-from-env
+OPENPLANTER_TAVILY_API_KEY=tavily-from-env
 UNRELATED_VAR=foo
 "#,
         )
@@ -419,6 +429,7 @@ UNRELATED_VAR=foo
         assert_eq!(bundle.zai_api_key, Some("zai-from-env".into()));
         assert_eq!(bundle.firecrawl_api_key, Some("firecrawl-quoted".into()));
         assert_eq!(bundle.brave_api_key, Some("brave-from-env".into()));
+        assert_eq!(bundle.tavily_api_key, Some("tavily-from-env".into()));
         assert!(bundle.cerebras_api_key.is_none());
     }
 
@@ -431,6 +442,7 @@ UNRELATED_VAR=foo
             anthropic_api_key: Some("ant-test".into()),
             zai_api_key: Some("zai-test".into()),
             brave_api_key: Some("brave-test".into()),
+            tavily_api_key: Some("tavily-test".into()),
             ..Default::default()
         };
         store.save(&bundle).unwrap();
@@ -439,6 +451,7 @@ UNRELATED_VAR=foo
         assert_eq!(loaded.anthropic_api_key, Some("ant-test".into()));
         assert_eq!(loaded.zai_api_key, Some("zai-test".into()));
         assert_eq!(loaded.brave_api_key, Some("brave-test".into()));
+        assert_eq!(loaded.tavily_api_key, Some("tavily-test".into()));
     }
 
     #[test]

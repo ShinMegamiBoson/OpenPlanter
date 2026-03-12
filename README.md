@@ -150,9 +150,10 @@ export OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC=120.0
 export OPENPLANTER_ZAI_STREAM_MAX_RETRIES=10
 ```
 
-Additional service keys: `EXA_API_KEY`, `FIRECRAWL_API_KEY`, `BRAVE_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings).
+Additional service keys: `EXA_API_KEY`, `FIRECRAWL_API_KEY`, `BRAVE_API_KEY`, `TAVILY_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings).
 
 All keys can also be set with an `OPENPLANTER_` prefix (e.g. `OPENPLANTER_OPENAI_API_KEY`), via `.env` files in the workspace, or via CLI flags.
+Provider base URLs can also be overridden with `OPENPLANTER_*_BASE_URL`, including `OPENPLANTER_TAVILY_BASE_URL`.
 
 ## Agent Tools
 
@@ -162,7 +163,7 @@ The agent has access to 19 tools, organized around its investigation workflow:
 
 **Shell execution** — `run_shell`, `run_shell_bg`, `check_shell_bg`, `kill_shell_bg` — run analysis scripts, data pipelines, and validation checks.
 
-**Web** — `web_search` (Exa, Firecrawl, or Brave), `fetch_url` — pull public records, verify entities, and retrieve supplementary data.
+**Web** — `web_search` (Exa, Firecrawl, Brave, or Tavily), `fetch_url` — pull public records, verify entities, and retrieve supplementary data.
 
 **Planning & delegation** — `think`, `subtask`, `execute`, `list_artifacts`, `read_artifact` — decompose investigations into focused sub-tasks, each with acceptance criteria and independent verification.
 
