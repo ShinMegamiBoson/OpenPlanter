@@ -350,8 +350,12 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
         cfg.provider = args.provider
     cfg.provider = _resolve_provider(cfg.provider, creds)
 
-    effective_openai_key = creds.openai_api_key or creds.openai_oauth_token
-    cfg.openai_api_key = resolve_openai_api_key(effective_openai_key, cfg.openai_base_url)
+    cfg.openai_oauth_token = (creds.openai_oauth_token or "").strip() or None
+    cfg.openai_api_key = resolve_openai_api_key(
+        creds.openai_api_key,
+        cfg.openai_base_url,
+        cfg.openai_oauth_token,
+    )
     cfg.anthropic_api_key = resolve_anthropic_api_key(
         creds.anthropic_api_key,
         cfg.anthropic_base_url,
@@ -387,12 +391,20 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
             cfg.ollama_base_url = args.base_url
         cfg.base_url = args.base_url
 
-    cfg.openai_api_key = resolve_openai_api_key(cfg.openai_api_key, cfg.openai_base_url)
+    cfg.openai_api_key = resolve_openai_api_key(
+        cfg.openai_api_key,
+        cfg.openai_base_url,
+        cfg.openai_oauth_token,
+    )
     cfg.anthropic_api_key = resolve_anthropic_api_key(
         cfg.anthropic_api_key,
         cfg.anthropic_base_url,
     )
-    cfg.api_key = resolve_openai_api_key(cfg.api_key, cfg.base_url)
+    cfg.api_key = resolve_openai_api_key(
+        cfg.api_key,
+        cfg.base_url,
+        cfg.openai_oauth_token,
+    )
 
     if args.model:
         cfg.model = args.model

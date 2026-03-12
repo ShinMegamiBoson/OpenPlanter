@@ -249,6 +249,23 @@ class AgentConfigFromEnvTests(unittest.TestCase):
         self.assertEqual(cfg.openrouter_api_key, "or")
         self.assertEqual(cfg.exa_api_key, "exa")
 
+    def test_openai_oauth_token_from_env_without_api_key(self) -> None:
+        env = {"OPENAI_OAUTH_TOKEN": "oauth-token"}
+        with patch.dict(os.environ, env, clear=True):
+            cfg = AgentConfig.from_env("/tmp/test-ws")
+        self.assertEqual(cfg.openai_oauth_token, "oauth-token")
+        self.assertEqual(cfg.openai_api_key, "oauth-token")
+
+    def test_openai_api_key_beats_oauth_token(self) -> None:
+        env = {
+            "OPENAI_API_KEY": "oa",
+            "OPENAI_OAUTH_TOKEN": "oauth-token",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            cfg = AgentConfig.from_env("/tmp/test-ws")
+        self.assertEqual(cfg.openai_oauth_token, "oauth-token")
+        self.assertEqual(cfg.openai_api_key, "oa")
+
     def test_foundry_placeholder_keys_disabled_for_public_endpoints(self) -> None:
         env = {
             "OPENPLANTER_OPENAI_BASE_URL": "https://api.openai.com/v1",
@@ -333,7 +350,7 @@ class ResolveModelNameTests(unittest.TestCase):
 
     def test_empty_model_uses_provider_default(self) -> None:
         cfg = AgentConfig(workspace=Path("/tmp"), provider="openai", model="")
-        self.assertEqual(_resolve_model_name(cfg), "azure-foundry/gpt-5.3-codex")
+        self.assertEqual(_resolve_model_name(cfg), "azure-foundry/gpt-5.4")
 
     def test_empty_model_anthropic_default(self) -> None:
         cfg = AgentConfig(workspace=Path("/tmp"), provider="anthropic", model="")
@@ -367,7 +384,7 @@ class BuildEngineTests(unittest.TestCase):
             cfg = AgentConfig(
                 workspace=Path(tmpdir),
                 provider="openai",
-                model="azure-foundry/gpt-5.3-codex",
+                model="azure-foundry/gpt-5.4",
                 openai_api_key="test-key",
             )
             engine = build_engine(cfg)
@@ -389,7 +406,7 @@ class BuildEngineTests(unittest.TestCase):
             cfg = AgentConfig(
                 workspace=Path(tmpdir),
                 provider="openai",
-                model="azure-foundry/gpt-5.3-codex",
+                model="azure-foundry/gpt-5.4",
                 openai_base_url="https://api.openai.com/v1",
                 openai_api_key=None,
                 )

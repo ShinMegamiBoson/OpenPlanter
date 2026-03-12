@@ -17,7 +17,7 @@ describe("inferProvider", () => {
 
   it("gpt returns openai", () => {
     expect(inferProvider("gpt-5.2")).toBe("openai");
-    expect(inferProvider("azure-foundry/gpt-5.3-codex")).toBe("openai");
+    expect(inferProvider("azure-foundry/gpt-5.4")).toBe("openai");
   });
 
   it("o1 returns openai", () => {
@@ -63,11 +63,23 @@ describe("MODEL_ALIASES", () => {
   });
 
   it("gpt5 alias", () => {
-    expect(MODEL_ALIASES["gpt5"]).toBe("azure-foundry/gpt-5.3-codex");
+    expect(MODEL_ALIASES["gpt5"]).toBe("azure-foundry/gpt-5.4");
+  });
+
+  it("gpt-5 alias", () => {
+    expect(MODEL_ALIASES["gpt-5"]).toBe("azure-foundry/gpt-5.4");
+  });
+
+  it("gpt-5.3 alias", () => {
+    expect(MODEL_ALIASES["gpt-5.3"]).toBe("azure-foundry/gpt-5.3-codex");
   });
 
   it("gpt-5.4 alias", () => {
     expect(MODEL_ALIASES["gpt-5.4"]).toBe("azure-foundry/gpt-5.4");
+  });
+
+  it("gpt5.4 alias", () => {
+    expect(MODEL_ALIASES["gpt5.4"]).toBe("azure-foundry/gpt-5.4");
   });
 
   it("zai alias", () => {
@@ -140,5 +152,30 @@ describe("handleModelCommand", () => {
     expect(appState.get().provider).toBe("zai");
     expect(appState.get().model).toBe("glm-5");
     expect(appState.get().zaiPlan).toBe("coding");
+  });
+
+  it("gpt5 alias switches to gpt-5.4", async () => {
+    __setHandler("update_config", ({ partial }: { partial: Record<string, string> }) => {
+      expect(partial.model).toBe("azure-foundry/gpt-5.4");
+      expect(partial.provider).toBe("openai");
+      return {
+        provider: "openai",
+        model: "azure-foundry/gpt-5.4",
+        zai_plan: "paygo",
+        workspace: ".",
+        session_id: null,
+        recursive: true,
+        max_depth: 4,
+        max_steps_per_call: 100,
+        reasoning_effort: "high",
+        web_search_provider: "exa",
+        demo: false,
+      };
+    });
+
+    const result = await handleModelCommand("gpt5");
+    expect(result.lines).toContain("Switched to openai/azure-foundry/gpt-5.4");
+    expect(appState.get().provider).toBe("openai");
+    expect(appState.get().model).toBe("azure-foundry/gpt-5.4");
   });
 });

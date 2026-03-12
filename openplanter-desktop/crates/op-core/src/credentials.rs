@@ -148,7 +148,11 @@ pub fn parse_env_file(path: &Path) -> CredentialBundle {
 
     CredentialBundle {
         openai_api_key: get_key(&env_map, "OPENAI_API_KEY", "OPENPLANTER_OPENAI_API_KEY"),
-        openai_oauth_token: get_key(&env_map, "OPENAI_OAUTH_TOKEN", "OPENPLANTER_OPENAI_OAUTH_TOKEN"),
+        openai_oauth_token: get_key(
+            &env_map,
+            "OPENAI_OAUTH_TOKEN",
+            "OPENPLANTER_OPENAI_OAUTH_TOKEN",
+        ),
         anthropic_api_key: get_key(
             &env_map,
             "ANTHROPIC_API_KEY",

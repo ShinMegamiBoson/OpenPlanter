@@ -170,10 +170,11 @@ pub fn resolve_endpoint(cfg: &AgentConfig, provider: &str) -> Result<(String, St
             let key = resolve_openai_api_key(
                 cfg.openai_api_key.clone().or_else(|| cfg.api_key.clone()),
                 &cfg.openai_base_url,
+                cfg.openai_oauth_token.clone(),
             )
             .ok_or_else(|| {
                 ModelError::Message(
-                    "No OpenAI API key. Set OPENAI_API_KEY or OPENPLANTER_OPENAI_API_KEY.".into(),
+                    "No OpenAI auth configured. Set OPENAI_API_KEY, OPENPLANTER_OPENAI_API_KEY, OPENAI_OAUTH_TOKEN, or OPENPLANTER_OPENAI_OAUTH_TOKEN.".into(),
                 )
             })?;
             Ok((cfg.openai_base_url.clone(), key))
@@ -303,7 +304,7 @@ mod tests {
     fn test_infer_openai() {
         assert_eq!(infer_provider_for_model("gpt-5.2"), Some("openai"));
         assert_eq!(
-            infer_provider_for_model("azure-foundry/gpt-5.3-codex"),
+            infer_provider_for_model("azure-foundry/gpt-5.4"),
             Some("openai")
         );
         assert_eq!(infer_provider_for_model("o1-preview"), Some("openai"));
@@ -382,14 +383,11 @@ mod tests {
     #[test]
     fn test_resolve_model_name_explicit() {
         let cfg = AgentConfig {
-            model: "azure-foundry/gpt-5.3-codex".into(),
+            model: "azure-foundry/gpt-5.4".into(),
             provider: "openai".into(),
             ..Default::default()
         };
-        assert_eq!(
-            resolve_model_name(&cfg).unwrap(),
-            "azure-foundry/gpt-5.3-codex"
-        );
+        assert_eq!(resolve_model_name(&cfg).unwrap(), "azure-foundry/gpt-5.4");
     }
 
     #[test]
@@ -399,10 +397,7 @@ mod tests {
             provider: "openai".into(),
             ..Default::default()
         };
-        assert_eq!(
-            resolve_model_name(&cfg).unwrap(),
-            "azure-foundry/gpt-5.3-codex"
-        );
+        assert_eq!(resolve_model_name(&cfg).unwrap(), "azure-foundry/gpt-5.4");
     }
 
     // ── resolve_provider ──
@@ -528,6 +523,17 @@ mod tests {
         let (url, key) = resolve_endpoint(&cfg, "openai").unwrap();
         assert_eq!(url, crate::config::FOUNDRY_OPENAI_BASE_URL);
         assert_eq!(key, "sk-openai");
+    }
+
+    #[test]
+    fn test_resolve_endpoint_openai_uses_oauth_token_when_api_key_missing() {
+        let cfg = AgentConfig {
+            openai_api_key: Some(crate::config::FOUNDRY_OPENAI_API_KEY_PLACEHOLDER.into()),
+            openai_oauth_token: Some("oauth-token".into()),
+            ..Default::default()
+        };
+        let (_, key) = resolve_endpoint(&cfg, "openai").unwrap();
+        assert_eq!(key, "oauth-token");
     }
 
     #[test]

@@ -1007,7 +1007,7 @@ async fn test_solve_missing_key_emits_error() {
         api_key: None,
         openai_api_key: None,
         demo: false,
-        // No API key set
+        // No OpenAI auth set
         ..Default::default()
     };
 
@@ -1016,8 +1016,8 @@ async fn test_solve_missing_key_emits_error() {
 
     let recorded = errors.lock().unwrap().clone();
     assert!(
-        recorded.iter().any(|e| e.contains("API key")),
-        "should emit error about missing API key, got: {:?}",
+        recorded.iter().any(|e| e.contains("OpenAI auth")),
+        "should emit error about missing OpenAI auth, got: {:?}",
         recorded
     );
 }

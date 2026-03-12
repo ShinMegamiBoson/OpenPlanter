@@ -762,7 +762,7 @@ mod tests {
     fn test_reasoning_model_gpt5() {
         assert!(make_model("gpt-5.2", None).is_reasoning_model());
         assert!(make_model("gpt-5", None).is_reasoning_model());
-        assert!(make_model("azure-foundry/gpt-5.3-codex", None).is_reasoning_model());
+        assert!(make_model("azure-foundry/gpt-5.4", None).is_reasoning_model());
     }
 
     #[test]
@@ -848,12 +848,12 @@ mod tests {
 
     #[test]
     fn test_payload_strips_foundry_prefix() {
-        let model = make_model("azure-foundry/gpt-5.3-codex", Some("high"));
+        let model = make_model("azure-foundry/gpt-5.4", Some("high"));
         let msgs = vec![Message::User {
             content: "Hi".to_string(),
         }];
         let payload = model.build_payload(&msgs, &[], true);
-        assert_eq!(payload["model"], "gpt-5.3-codex");
+        assert_eq!(payload["model"], "gpt-5.4");
     }
 
     #[test]

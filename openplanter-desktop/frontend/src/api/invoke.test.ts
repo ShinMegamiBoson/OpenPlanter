@@ -66,10 +66,10 @@ describe("invoke wrappers", () => {
 
   it("updateConfig sends partial and returns config", async () => {
     __setHandler("update_config", ({ partial }: any) => {
-      expect(partial.model).toBe("azure-foundry/gpt-5.3-codex");
+      expect(partial.model).toBe("azure-foundry/gpt-5.4");
       return {
         provider: "openai",
-        model: "azure-foundry/gpt-5.3-codex",
+        model: "azure-foundry/gpt-5.4",
         zai_plan: "coding",
         workspace: ".",
         session_id: null,
@@ -81,8 +81,8 @@ describe("invoke wrappers", () => {
         demo: false,
       };
     });
-    const config = await updateConfig({ model: "azure-foundry/gpt-5.3-codex" });
-    expect(config.model).toBe("azure-foundry/gpt-5.3-codex");
+    const config = await updateConfig({ model: "azure-foundry/gpt-5.4" });
+    expect(config.model).toBe("azure-foundry/gpt-5.4");
     expect(config.zai_plan).toBe("coding");
     expect(config.web_search_provider).toBe("firecrawl");
   });
@@ -92,15 +92,15 @@ describe("invoke wrappers", () => {
       expect(provider).toBe("openai");
       return [
         {
-          id: "azure-foundry/gpt-5.3-codex",
-          name: "GPT-5.3 Codex (Foundry)",
+          id: "azure-foundry/gpt-5.4",
+          name: "GPT-5.4 (Foundry)",
           provider: "openai",
         },
       ];
     });
     const models = await listModels("openai");
     expect(models).toHaveLength(1);
-    expect(models[0].id).toBe("azure-foundry/gpt-5.3-codex");
+    expect(models[0].id).toBe("azure-foundry/gpt-5.4");
   });
 
   it("saveSettings sends settings object", async () => {

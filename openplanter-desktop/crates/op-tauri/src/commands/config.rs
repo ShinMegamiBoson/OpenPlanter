@@ -1,5 +1,7 @@
 use crate::state::AppState;
-use op_core::config::{normalize_web_search_provider, normalize_zai_plan, resolve_zai_base_url};
+use op_core::config::{
+    has_openai_auth, normalize_web_search_provider, normalize_zai_plan, resolve_zai_base_url,
+};
 use op_core::credentials::credentials_from_env;
 use op_core::events::{ConfigView, ModelInfo, PartialConfig};
 use op_core::settings::{PersistentSettings, SettingsStore};
@@ -101,8 +103,8 @@ pub async fn update_config(
 fn known_models_for_provider(provider: &str) -> Vec<ModelInfo> {
     let models: Vec<(&str, &str)> = match provider {
         "openai" => vec![
-            ("azure-foundry/gpt-5.3-codex", "GPT-5.3 Codex (Foundry)"),
             ("azure-foundry/gpt-5.4", "GPT-5.4 (Foundry)"),
+            ("azure-foundry/gpt-5.3-codex", "GPT-5.3 Codex (Foundry)"),
             ("azure-foundry/Kimi-K2.5", "Kimi K2.5 (Foundry)"),
         ],
         "anthropic" => vec![
@@ -193,7 +195,13 @@ pub async fn save_settings(
 /// Build credential status from config: which providers/services have API keys configured.
 pub fn build_credential_status(cfg: &op_core::config::AgentConfig) -> HashMap<String, bool> {
     let mut status = HashMap::new();
-    status.insert("openai".to_string(), cfg.openai_api_key.is_some());
+    status.insert(
+        "openai".to_string(),
+        has_openai_auth(
+            cfg.openai_api_key.as_deref(),
+            cfg.openai_oauth_token.as_deref(),
+        ),
+    );
     status.insert("anthropic".to_string(), cfg.anthropic_api_key.is_some());
     status.insert("openrouter".to_string(), cfg.openrouter_api_key.is_some());
     status.insert("cerebras".to_string(), cfg.cerebras_api_key.is_some());
@@ -215,9 +223,13 @@ pub async fn get_credentials_status(
     let mut status = HashMap::new();
     status.insert(
         "openai".to_string(),
-        cfg.openai_api_key.is_some()
-            || env_creds.openai_api_key.is_some()
-            || env_creds.openai_oauth_token.is_some(),
+        has_openai_auth(
+            cfg.openai_api_key.as_deref(),
+            cfg.openai_oauth_token.as_deref(),
+        ) || has_openai_auth(
+            env_creds.openai_api_key.as_deref(),
+            env_creds.openai_oauth_token.as_deref(),
+        ),
     );
     status.insert(
         "anthropic".to_string(),
@@ -342,6 +354,7 @@ mod tests {
         // Force all keys to None
         let mut cfg = cfg;
         cfg.openai_api_key = None;
+        cfg.openai_oauth_token = None;
         cfg.anthropic_api_key = None;
         cfg.openrouter_api_key = None;
         cfg.cerebras_api_key = None;
@@ -361,6 +374,7 @@ mod tests {
     fn test_cred_status_openai_set() {
         let mut cfg = op_core::config::AgentConfig::from_env("/nonexistent");
         cfg.openai_api_key = Some("sk-test".to_string());
+        cfg.openai_oauth_token = None;
         cfg.anthropic_api_key = None;
         cfg.openrouter_api_key = None;
         cfg.cerebras_api_key = None;
@@ -374,6 +388,7 @@ mod tests {
     fn test_cred_status_anthropic_set() {
         let mut cfg = op_core::config::AgentConfig::from_env("/nonexistent");
         cfg.openai_api_key = None;
+        cfg.openai_oauth_token = None;
         cfg.anthropic_api_key = Some("sk-ant-test".to_string());
         cfg.openrouter_api_key = None;
         cfg.cerebras_api_key = None;
@@ -386,6 +401,7 @@ mod tests {
     fn test_cred_status_ollama_always_true() {
         let mut cfg = op_core::config::AgentConfig::from_env("/nonexistent");
         cfg.openai_api_key = None;
+        cfg.openai_oauth_token = None;
         cfg.anthropic_api_key = None;
         cfg.openrouter_api_key = None;
         cfg.cerebras_api_key = None;
@@ -398,6 +414,7 @@ mod tests {
     fn test_cred_status_all_set() {
         let mut cfg = op_core::config::AgentConfig::from_env("/nonexistent");
         cfg.openai_api_key = Some("k1".to_string());
+        cfg.openai_oauth_token = Some("oauth-token".to_string());
         cfg.anthropic_api_key = Some("k2".to_string());
         cfg.openrouter_api_key = Some("k3".to_string());
         cfg.cerebras_api_key = Some("k4".to_string());
@@ -419,5 +436,23 @@ mod tests {
             8,
             "should have 8 entries (6 providers + 2 web services)"
         );
+    }
+
+    #[test]
+    fn test_cred_status_openai_oauth_counts_as_configured() {
+        let mut cfg = op_core::config::AgentConfig::from_env("/nonexistent");
+        cfg.openai_api_key = None;
+        cfg.openai_oauth_token = Some("oauth-token".to_string());
+        let status = build_credential_status(&cfg);
+        assert_eq!(status["openai"], true);
+    }
+
+    #[test]
+    fn test_cred_status_openai_placeholder_does_not_count() {
+        let mut cfg = op_core::config::AgentConfig::from_env("/nonexistent");
+        cfg.openai_api_key = Some(op_core::config::FOUNDRY_OPENAI_API_KEY_PLACEHOLDER.to_string());
+        cfg.openai_oauth_token = None;
+        let status = build_credential_status(&cfg);
+        assert_eq!(status["openai"], false);
     }
 }

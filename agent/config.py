@@ -14,7 +14,7 @@ ZAI_PAYGO_BASE_URL = "https://api.z.ai/api/paas/v4"
 ZAI_CODING_BASE_URL = "https://api.z.ai/api/coding/paas/v4"
 
 PROVIDER_DEFAULT_MODELS: dict[str, str] = {
-    "openai": "azure-foundry/gpt-5.3-codex",
+    "openai": "azure-foundry/gpt-5.4",
     "anthropic": "anthropic-foundry/claude-opus-4-6",
     "openrouter": "anthropic/claude-sonnet-4-5",
     "cerebras": "qwen-3-235b-a22b-instruct-2507",
@@ -50,12 +50,19 @@ def is_foundry_anthropic_base_url(url: str) -> bool:
     return _normalize_base_url(url) == FOUNDRY_ANTHROPIC_BASE_URL
 
 
-def resolve_openai_api_key(api_key: str | None, base_url: str) -> str | None:
+def resolve_openai_api_key(
+    api_key: str | None,
+    base_url: str,
+    openai_oauth_token: str | None = None,
+) -> str | None:
     key = (api_key or "").strip() or None
-    if key == FOUNDRY_OPENAI_API_KEY_PLACEHOLDER and not is_foundry_openai_base_url(base_url):
-        return None
+    if key == FOUNDRY_OPENAI_API_KEY_PLACEHOLDER:
+        key = None
     if key:
         return key
+    token = (openai_oauth_token or "").strip() or None
+    if token:
+        return token
     if is_foundry_openai_base_url(base_url):
         return FOUNDRY_OPENAI_API_KEY_PLACEHOLDER
     return None
@@ -105,6 +112,7 @@ class AgentConfig:
     exa_base_url: str = "https://api.exa.ai"
     firecrawl_base_url: str = "https://api.firecrawl.dev/v1"
     openai_api_key: str | None = None
+    openai_oauth_token: str | None = None
     anthropic_api_key: str | None = None
     openrouter_api_key: str | None = None
     cerebras_api_key: str | None = None
@@ -138,11 +146,19 @@ class AgentConfig:
     demo: bool = False
 
     def __post_init__(self) -> None:
-        self.openai_api_key = resolve_openai_api_key(self.openai_api_key, self.openai_base_url)
+        self.openai_api_key = resolve_openai_api_key(
+            self.openai_api_key,
+            self.openai_base_url,
+            self.openai_oauth_token,
+        )
         self.anthropic_api_key = resolve_anthropic_api_key(
             self.anthropic_api_key, self.anthropic_base_url
         )
-        self.api_key = resolve_openai_api_key(self.api_key, self.base_url)
+        self.api_key = resolve_openai_api_key(
+            self.api_key,
+            self.base_url,
+            self.openai_oauth_token,
+        )
 
     @classmethod
     def from_env(cls, workspace: str | Path) -> "AgentConfig":
@@ -150,6 +166,10 @@ class AgentConfig:
         openai_api_key = (
             os.getenv("OPENPLANTER_OPENAI_API_KEY")
             or os.getenv("OPENAI_API_KEY")
+        )
+        openai_oauth_token = (
+            os.getenv("OPENPLANTER_OPENAI_OAUTH_TOKEN")
+            or os.getenv("OPENAI_OAUTH_TOKEN")
         )
         anthropic_api_key = os.getenv("OPENPLANTER_ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
         openrouter_api_key = os.getenv("OPENPLANTER_OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
@@ -166,7 +186,11 @@ class AgentConfig:
             "OPENPLANTER_ANTHROPIC_BASE_URL",
             FOUNDRY_ANTHROPIC_BASE_URL,
         )
-        openai_api_key = resolve_openai_api_key(openai_api_key, openai_base_url)
+        openai_api_key = resolve_openai_api_key(
+            openai_api_key,
+            openai_base_url,
+            openai_oauth_token,
+        )
         anthropic_api_key = resolve_anthropic_api_key(anthropic_api_key, anthropic_base_url)
         zai_plan = normalize_zai_plan(os.getenv("OPENPLANTER_ZAI_PLAN", "paygo"))
         zai_paygo_base_url = os.getenv("OPENPLANTER_ZAI_PAYGO_BASE_URL", ZAI_PAYGO_BASE_URL)
@@ -202,6 +226,7 @@ class AgentConfig:
             exa_base_url=os.getenv("OPENPLANTER_EXA_BASE_URL", "https://api.exa.ai"),
             firecrawl_base_url=os.getenv("OPENPLANTER_FIRECRAWL_BASE_URL", "https://api.firecrawl.dev/v1"),
             openai_api_key=openai_api_key,
+            openai_oauth_token=(openai_oauth_token or "").strip() or None,
             anthropic_api_key=anthropic_api_key,
             openrouter_api_key=openrouter_api_key,
             cerebras_api_key=cerebras_api_key,

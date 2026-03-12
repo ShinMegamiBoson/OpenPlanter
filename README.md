@@ -84,7 +84,7 @@ The container mounts `./workspace` as the agent's working directory.
 
 | Provider | Default Model | Env Var |
 |----------|---------------|---------|
-| OpenAI | `azure-foundry/gpt-5.3-codex` | `OPENAI_API_KEY` or `OPENAI_OAUTH_TOKEN` |
+| OpenAI | `azure-foundry/gpt-5.4` | `OPENAI_API_KEY` or `OPENAI_OAUTH_TOKEN` |
 | Anthropic | `anthropic-foundry/claude-opus-4-6` | `ANTHROPIC_API_KEY` |
 | OpenRouter | `anthropic/claude-sonnet-4-5` | `OPENROUTER_API_KEY` |
 | Cerebras | `qwen-3-235b-a22b-instruct-2507` | `CEREBRAS_API_KEY` |
@@ -189,6 +189,7 @@ openplanter-agent [options]
 |------|-------------|
 | `--provider NAME` | `auto`, `openai`, `anthropic`, `openrouter`, `cerebras`, `zai`, `ollama` |
 | `--model NAME` | Model name or `newest` to auto-select |
+| `--openai-oauth-token TOKEN` | ChatGPT Plus/Teams/Pro OAuth bearer token for OpenAI-compatible models |
 | `--zai-plan PLAN` | Z.AI endpoint plan: `paygo` or `coding` |
 | `--reasoning-effort LEVEL` | `low`, `medium`, `high`, or `none` |
 | `--list-models` | Fetch available models from the provider API |

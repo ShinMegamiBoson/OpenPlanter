@@ -55,14 +55,14 @@ class ModelPayloadTests(unittest.TestCase):
 
         with patch("agent.model._http_stream_sse", mock_openai_stream(fake_http_json)):
             model = OpenAICompatibleModel(
-                model="azure-foundry/gpt-5.3-codex",
+                model="azure-foundry/gpt-5.4",
                 api_key="k",
                 reasoning_effort="high",
             )
             conv = model.create_conversation("system", "user msg")
             turn = model.complete(conv)
             self.assertEqual(turn.text, "ok")
-            self.assertEqual(captured["payload"]["model"], "gpt-5.3-codex")
+            self.assertEqual(captured["payload"]["model"], "gpt-5.4")
 
     def test_openai_payload_includes_thinking_type(self) -> None:
         captured: dict = {}
