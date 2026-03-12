@@ -27,7 +27,7 @@ pub struct CredentialBundle {
 impl CredentialBundle {
     /// Returns `true` if any key has a non-empty value.
     pub fn has_any(&self) -> bool {
-        let keys: [&Option<String>; 9] = [
+        let keys = [
             &self.openai_api_key,
             &self.openai_oauth_token,
             &self.anthropic_api_key,
@@ -337,6 +337,24 @@ mod tests {
         let mut bundle = CredentialBundle::default();
         bundle.openai_api_key = Some("sk-test".into());
         assert!(bundle.has_any());
+    }
+
+    #[test]
+    fn test_credential_bundle_has_any_with_voyage_key() {
+        let bundle = CredentialBundle {
+            voyage_api_key: Some("voyage-test".into()),
+            ..Default::default()
+        };
+        assert!(bundle.has_any());
+    }
+
+    #[test]
+    fn test_credential_bundle_whitespace_only_values_do_not_count() {
+        let bundle = CredentialBundle {
+            voyage_api_key: Some("   ".into()),
+            ..Default::default()
+        };
+        assert!(!bundle.has_any());
     }
 
     #[test]

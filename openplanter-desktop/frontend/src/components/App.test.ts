@@ -48,7 +48,7 @@ describe("createApp", () => {
     __setHandler("list_sessions", () => [SESSION_B, SESSION_A]);
     __setHandler("get_credentials_status", () => ({
       openai: true, anthropic: true, openrouter: false,
-      cerebras: false, zai: true, ollama: true, exa: false, firecrawl: true, brave: false,
+      cerebras: false, zai: true, ollama: true, exa: false, firecrawl: true, brave: false, voyage: true,
     }));
     __setHandler("open_session", () => ({
       id: "20260227-120000-cccc3333",
@@ -103,7 +103,7 @@ describe("createApp", () => {
 
     await vi.waitFor(() => {
       const creds = root.querySelector(".cred-status");
-      expect(creds!.children.length).toBe(9);
+      expect(creds!.children.length).toBe(10);
       expect(creds!.querySelector(".cred-ok")!.textContent).toContain("openai");
       expect(creds!.querySelector(".cred-missing")!.textContent).toContain("openrouter");
     });

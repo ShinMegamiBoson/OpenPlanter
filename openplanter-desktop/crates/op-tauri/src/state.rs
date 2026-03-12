@@ -512,18 +512,20 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_includes_zai_firecrawl_and_brave() {
+    fn test_merge_includes_zai_firecrawl_brave_and_voyage() {
         let mut cfg = empty_cfg();
         let env_creds = CredentialBundle {
             zai_api_key: Some("zai-env".to_string()),
             firecrawl_api_key: Some("fc-env".to_string()),
             brave_api_key: Some("brave-env".to_string()),
+            voyage_api_key: Some("voyage-env".to_string()),
             ..Default::default()
         };
         merge_credentials_into_config(&mut cfg, &env_creds, &CredentialBundle::default());
         assert_eq!(cfg.zai_api_key, Some("zai-env".to_string()));
         assert_eq!(cfg.firecrawl_api_key, Some("fc-env".to_string()));
         assert_eq!(cfg.brave_api_key, Some("brave-env".to_string()));
+        assert_eq!(cfg.voyage_api_key, Some("voyage-env".to_string()));
     }
 
     #[test]
