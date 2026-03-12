@@ -81,13 +81,13 @@ describe("completionRegistry", () => {
     expect(childValues).toEqual(["low", "medium", "high", "off"]);
   });
 
-  it("/web-search has exa, firecrawl, and brave children", () => {
+  it("/web-search has exa, firecrawl, brave, and tavily children", () => {
     const webSearchCmd = COMMAND_COMPLETIONS.find((c) => c.value === "/web-search");
     expect(webSearchCmd).toBeDefined();
     expect(webSearchCmd!.children).toBeDefined();
 
     const childValues = webSearchCmd!.children!.map((c) => c.value);
-    expect(childValues).toEqual(["exa", "firecrawl", "brave"]);
+    expect(childValues).toEqual(["exa", "firecrawl", "brave", "tavily"]);
     expect(webSearchCmd!.children![0].children?.[0].value).toBe("--save");
   });
 

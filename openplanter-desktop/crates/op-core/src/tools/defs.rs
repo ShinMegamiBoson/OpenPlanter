@@ -176,7 +176,7 @@ fn mvp_tool_defs() -> Vec<ToolDef> {
         // ── Web ──
         ToolDef {
             name: "web_search",
-            description: "Search the web using the configured Exa, Firecrawl, or Brave backend. Returns URLs, titles, snippets, and optional page text.",
+            description: "Search the web using the configured Exa, Firecrawl, Brave, or Tavily backend. Returns URLs, titles, snippets, and optional page text.",
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -199,7 +199,7 @@ fn mvp_tool_defs() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "fetch_url",
-            description: "Fetch and return the text content of one or more URLs using the configured Exa, Firecrawl, or Brave backend.",
+            description: "Fetch and return the text content of one or more URLs using the configured Exa, Firecrawl, Brave, or Tavily backend.",
             parameters: json!({
                 "type": "object",
                 "properties": {

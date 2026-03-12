@@ -40,6 +40,7 @@ const WEB_SEARCH_PROVIDERS: CompletionItem[] = [
   { value: "exa", description: "Use Exa for web search", children: SAVE_FLAG },
   { value: "firecrawl", description: "Use Firecrawl for web search", children: SAVE_FLAG },
   { value: "brave", description: "Use Brave Search for web search", children: SAVE_FLAG },
+  { value: "tavily", description: "Use Tavily for web search", children: SAVE_FLAG },
 ];
 
 const ZAI_PLANS: CompletionItem[] = [

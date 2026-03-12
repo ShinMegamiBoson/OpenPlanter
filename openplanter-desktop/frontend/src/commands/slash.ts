@@ -34,7 +34,7 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
           "  /zai-plan <plan>   Set Z.AI endpoint family (paygo, coding)",
           "  /zai-plan <plan> --save  Set and persist",
           "  /web-search        Show current web search provider",
-          "  /web-search <provider>  Set web search provider (exa, firecrawl, brave)",
+          "  /web-search <provider>  Set web search provider (exa, firecrawl, brave, tavily)",
           "  /web-search <provider> --save  Set and persist",
           "  /reasoning          Show/set reasoning effort",
           "  /reasoning <level>  Set level (low, medium, high, off)",

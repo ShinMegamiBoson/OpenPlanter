@@ -63,7 +63,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "web_search",
-        "description": "Search the web using the configured provider (Exa, Firecrawl, or Brave). Returns URLs, titles, and optional page text.",
+        "description": "Search the web using the configured provider (Exa, Firecrawl, Brave, or Tavily). Returns URLs, titles, and optional page text.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -86,7 +86,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "fetch_url",
-        "description": "Fetch and return the text content of one or more URLs.",
+        "description": "Fetch and return the text content of one or more URLs using the configured provider backend (Exa, Firecrawl, Brave, or Tavily).",
         "parameters": {
             "type": "object",
             "properties": {
