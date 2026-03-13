@@ -58,6 +58,7 @@ impl ReplayLogger {
 
     /// Append an entry to the replay log.
     pub async fn append(&mut self, mut entry: ReplayEntry) -> std::io::Result<()> {
+        self.seq = self.seq.max(Self::max_seq_from_file(&self.path).await?);
         self.seq += 1;
         entry.seq = self.seq;
         if entry.timestamp.is_empty() {
@@ -75,6 +76,29 @@ impl ReplayLogger {
         file.write_all(line.as_bytes()).await?;
         file.flush().await?;
         Ok(())
+    }
+
+    async fn max_seq_from_file(path: &Path) -> std::io::Result<u64> {
+        if !path.exists() {
+            return Ok(0);
+        }
+        let content = fs::read_to_string(path).await?;
+        let mut max_seq = 0_u64;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<ReplayEntry>(trimmed) {
+                Ok(entry) => {
+                    max_seq = max_seq.max(entry.seq);
+                }
+                Err(e) => {
+                    eprintln!("[replay] skipping malformed line: {e}");
+                }
+            }
+        }
+        Ok(max_seq)
     }
 
     /// Read all entries from a session's replay log.
@@ -291,5 +315,118 @@ mod tests {
         assert!(!content.contains("tool_name"));
         assert!(!content.contains("step_number"));
         assert!(!content.contains("step_tool_calls"));
+    }
+
+    #[tokio::test]
+    async fn test_append_continues_seq_from_existing_file() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("replay.jsonl");
+        let content = format!(
+            "{}\n{}\n",
+            serde_json::to_string(&ReplayEntry {
+                seq: 4,
+                timestamp: "2026-01-01T00:00:00Z".into(),
+                role: "user".into(),
+                content: "first".into(),
+                tool_name: None,
+                is_rendered: None,
+                step_number: None,
+                step_tokens_in: None,
+                step_tokens_out: None,
+                step_elapsed: None,
+                step_model_preview: None,
+                step_tool_calls: None,
+            })
+            .unwrap(),
+            serde_json::to_string(&ReplayEntry {
+                seq: 6,
+                timestamp: "2026-01-01T00:01:00Z".into(),
+                role: "assistant".into(),
+                content: "second".into(),
+                tool_name: None,
+                is_rendered: None,
+                step_number: None,
+                step_tokens_in: None,
+                step_tokens_out: None,
+                step_elapsed: None,
+                step_model_preview: None,
+                step_tool_calls: None,
+            })
+            .unwrap(),
+        );
+        fs::write(&path, content).await.unwrap();
+
+        let mut logger = ReplayLogger::new(tmp.path());
+        logger
+            .append(ReplayEntry {
+                seq: 0,
+                timestamp: String::new(),
+                role: "user".into(),
+                content: "third".into(),
+                tool_name: None,
+                is_rendered: None,
+                step_number: None,
+                step_tokens_in: None,
+                step_tokens_out: None,
+                step_elapsed: None,
+                step_model_preview: None,
+                step_tool_calls: None,
+            })
+            .await
+            .unwrap();
+
+        let entries = ReplayLogger::read_all(tmp.path()).await.unwrap();
+        assert_eq!(entries.last().unwrap().seq, 7);
+    }
+
+    #[tokio::test]
+    async fn test_append_ignores_malformed_lines_when_scanning_seq() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("replay.jsonl");
+        fs::write(
+            &path,
+            format!(
+                "{}\nnot json\n",
+                serde_json::to_string(&ReplayEntry {
+                    seq: 2,
+                    timestamp: "2026-01-01T00:00:00Z".into(),
+                    role: "user".into(),
+                    content: "first".into(),
+                    tool_name: None,
+                    is_rendered: None,
+                    step_number: None,
+                    step_tokens_in: None,
+                    step_tokens_out: None,
+                    step_elapsed: None,
+                    step_model_preview: None,
+                    step_tool_calls: None,
+                })
+                .unwrap()
+            ),
+        )
+        .await
+        .unwrap();
+
+        let mut logger = ReplayLogger::new(tmp.path());
+        logger
+            .append(ReplayEntry {
+                seq: 0,
+                timestamp: String::new(),
+                role: "assistant".into(),
+                content: "next".into(),
+                tool_name: None,
+                is_rendered: None,
+                step_number: None,
+                step_tokens_in: None,
+                step_tokens_out: None,
+                step_elapsed: None,
+                step_model_preview: None,
+                step_tool_calls: None,
+            })
+            .await
+            .unwrap();
+
+        let entries = ReplayLogger::read_all(tmp.path()).await.unwrap();
+        assert_eq!(entries.last().unwrap().seq, 3);
     }
 }

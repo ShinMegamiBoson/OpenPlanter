@@ -174,7 +174,7 @@ class ReplayLoggerUnitTests(unittest.TestCase):
             self.assertEqual(records[2]["conversation_id"], "root/d0s2")
             self.assertEqual(records[2]["model"], "m-child")
             self.assertEqual(records[3]["conversation_id"], "root/d0s2")
-            self.assertEqual(records[3]["seq"], 0)
+            self.assertEqual(records[3]["seq"], 1)
             self.assertIn("messages_snapshot", records[3])
 
     def test_creates_parent_dirs(self) -> None:
@@ -186,6 +186,45 @@ class ReplayLoggerUnitTests(unittest.TestCase):
                 tool_defs=[],
             )
             self.assertTrue(p.exists())
+
+    def test_initializes_seq_from_existing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "replay.jsonl"
+            p.write_text(
+                "\n".join([
+                    json.dumps({"type": "header", "conversation_id": "root"}),
+                    json.dumps({"type": "call", "conversation_id": "root", "seq": 3, "messages_snapshot": [{"role": "user", "content": "hi"}]}),
+                    "{malformed",
+                    json.dumps({"type": "call", "conversation_id": "other", "seq": 8, "messages_snapshot": [{"role": "user", "content": "x"}]}),
+                ])
+                + "\n",
+                encoding="utf-8",
+            )
+
+            logger = ReplayLogger(path=p)
+            logger.log_call(
+                depth=0,
+                step=2,
+                messages=[
+                    {"role": "user", "content": "hi"},
+                    {"role": "assistant", "content": "hello"},
+                ],
+                response={"r": 1},
+            )
+
+            records = []
+            for line in p.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+            calls = [r for r in records if r.get("type") == "call" and r.get("conversation_id") == "root"]
+            self.assertEqual(calls[-1]["seq"], 9)
+            self.assertIn("messages_delta", calls[-1])
+            self.assertEqual(calls[-1]["messages_delta"], [{"role": "assistant", "content": "hello"}])
 
 
 class ReplayLoggerIntegrationTests(unittest.TestCase):

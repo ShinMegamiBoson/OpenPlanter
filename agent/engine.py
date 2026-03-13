@@ -355,7 +355,7 @@ class RLMEngine:
 
         conversation = model.create_conversation(self.system_prompt, initial_message)
 
-        if replay_logger and replay_logger._seq == 0:
+        if replay_logger and replay_logger.needs_header:
             replay_logger.write_header(
                 provider=type(model).__name__,
                 model=getattr(model, "model", "(unknown)"),
