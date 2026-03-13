@@ -325,6 +325,188 @@ impl InvestigationState {
     }
 }
 
+pub fn build_question_reasoning_packet(
+    state: &InvestigationState,
+    max_questions: usize,
+    max_evidence_per_item: usize,
+) -> Value {
+    let mut unresolved_questions: Vec<Value> = state
+        .questions
+        .iter()
+        .filter_map(|(question_id, raw_question)| {
+            let question = raw_question.as_object()?;
+            let status = question
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("open")
+                .to_ascii_lowercase();
+            if matches!(
+                status.as_str(),
+                "resolved" | "closed" | "wont_fix" | "won't_fix"
+            ) {
+                return None;
+            }
+
+            Some(serde_json::json!({
+                "id": question.get("id").and_then(Value::as_str).unwrap_or(question_id),
+                "question": question
+                    .get("question_text")
+                    .and_then(Value::as_str)
+                    .or_else(|| question.get("question").and_then(Value::as_str))
+                    .unwrap_or_default(),
+                "status": status,
+                "priority": question
+                    .get("priority")
+                    .and_then(Value::as_str)
+                    .unwrap_or("medium")
+                    .to_ascii_lowercase(),
+                "claim_ids": id_list(question.get("claim_ids").or_else(|| question.get("claims"))),
+                "evidence_ids": limit_ids(question.get("evidence_ids"), max_evidence_per_item),
+                "triggers": id_list(question.get("trigger").or_else(|| question.get("triggers"))),
+                "updated_at": question
+                    .get("updated_at")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            }))
+        })
+        .collect();
+    unresolved_questions.sort_by(question_priority_sort_key);
+    unresolved_questions.truncate(std::cmp::max(1, max_questions));
+
+    let mut supported = Vec::new();
+    let mut contested = Vec::new();
+    let mut unresolved = Vec::new();
+    let mut contradictions = Vec::new();
+
+    for (claim_id, raw_claim) in &state.claims {
+        let Some(claim) = raw_claim.as_object() else {
+            continue;
+        };
+        let claim_status = claim
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("unresolved")
+            .to_ascii_lowercase();
+        let support_ids = limit_ids(
+            claim
+                .get("support_evidence_ids")
+                .or_else(|| claim.get("evidence_ids")),
+            max_evidence_per_item,
+        );
+        let contradiction_ids = limit_ids(
+            claim
+                .get("contradiction_evidence_ids")
+                .or_else(|| claim.get("contradict_evidence_ids")),
+            max_evidence_per_item,
+        );
+        let has_contradictions = !contradiction_ids.is_empty();
+        let confidence = claim
+            .get("confidence")
+            .cloned()
+            .or_else(|| claim.get("confidence_score").cloned())
+            .unwrap_or(Value::Null);
+        let claim_summary = serde_json::json!({
+            "id": claim.get("id").and_then(Value::as_str).unwrap_or(claim_id),
+            "claim": claim
+                .get("claim_text")
+                .and_then(Value::as_str)
+                .or_else(|| claim.get("text").and_then(Value::as_str))
+                .unwrap_or_default(),
+            "status": claim_status,
+            "confidence": confidence,
+            "support_evidence_ids": support_ids,
+            "contradiction_evidence_ids": contradiction_ids,
+        });
+
+        if has_contradictions {
+            contradictions.push(serde_json::json!({
+                "claim_id": claim.get("id").and_then(Value::as_str).unwrap_or(claim_id),
+                "support_evidence_ids": claim_summary["support_evidence_ids"].clone(),
+                "contradiction_evidence_ids": claim_summary["contradiction_evidence_ids"].clone(),
+            }));
+        }
+
+        if claim_status == "supported" {
+            supported.push(claim_summary);
+        } else if claim_status == "contested" || has_contradictions {
+            contested.push(claim_summary);
+        } else {
+            unresolved.push(claim_summary);
+        }
+    }
+
+    let mut evidence_index = Map::new();
+    for evidence_id in
+        collect_evidence_ids(&[&unresolved_questions, &supported, &contested, &unresolved])
+    {
+        let Some(record) = state.evidence.get(&evidence_id).and_then(Value::as_object) else {
+            continue;
+        };
+        evidence_index.insert(
+            evidence_id.clone(),
+            serde_json::json!({
+                "evidence_type": record.get("evidence_type").cloned().unwrap_or(Value::Null),
+                "provenance_ids": id_list(record.get("provenance_ids")),
+                "source_uri": record.get("source_uri").cloned().unwrap_or(Value::Null),
+                "confidence_id": record.get("confidence_id").cloned().unwrap_or(Value::Null),
+            }),
+        );
+    }
+
+    serde_json::json!({
+        "reasoning_mode": "question_centric",
+        "loop": [
+            "select_unresolved_question",
+            "gather_discriminating_evidence",
+            "update_claim_status_and_confidence",
+            "record_contradictions",
+            "synthesize_supported_contested_unresolved",
+        ],
+        "focus_question_ids": unresolved_questions
+            .iter()
+            .filter_map(|item| item.get("id").and_then(Value::as_str).map(ToString::to_string))
+            .collect::<Vec<_>>(),
+        "unresolved_questions": unresolved_questions,
+        "findings": {
+            "supported": supported,
+            "contested": contested,
+            "unresolved": unresolved,
+        },
+        "contradictions": contradictions,
+        "evidence_index": evidence_index,
+    })
+}
+
+pub fn has_reasoning_content(packet: &Value) -> bool {
+    let Some(obj) = packet.as_object() else {
+        return false;
+    };
+    if obj
+        .get("focus_question_ids")
+        .and_then(Value::as_array)
+        .is_some_and(|items| !items.is_empty())
+    {
+        return true;
+    }
+    if obj
+        .get("contradictions")
+        .and_then(Value::as_array)
+        .is_some_and(|items| !items.is_empty())
+    {
+        return true;
+    }
+    obj.get("findings")
+        .and_then(Value::as_object)
+        .is_some_and(|findings| {
+            ["supported", "contested", "unresolved"].iter().any(|key| {
+                findings
+                    .get(*key)
+                    .and_then(Value::as_array)
+                    .is_some_and(|items| !items.is_empty())
+            })
+        })
+}
+
 fn default_schema_version() -> String {
     SCHEMA_VERSION.to_string()
 }
@@ -374,6 +556,81 @@ fn is_legacy_evidence(evidence_id: &str, record: &Value) -> bool {
         .and_then(|normalization| normalization.get("kind"))
         .and_then(Value::as_str)
         == Some("legacy_observation")
+}
+
+fn id_list(value: Option<&Value>) -> Vec<String> {
+    value
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter(|item| !item.is_null())
+                .map(stringify_value)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn limit_ids(value: Option<&Value>, max_items: usize) -> Vec<String> {
+    let mut ids = id_list(value);
+    ids.truncate(max_items);
+    ids
+}
+
+fn stringify_value(value: &Value) -> String {
+    value
+        .as_str()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| value.to_string())
+}
+
+fn question_priority_sort_key(left: &Value, right: &Value) -> std::cmp::Ordering {
+    let left_rank = question_priority_rank(left.get("priority").and_then(Value::as_str));
+    let right_rank = question_priority_rank(right.get("priority").and_then(Value::as_str));
+    left_rank.cmp(&right_rank).then_with(|| {
+        left.get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .cmp(right.get("id").and_then(Value::as_str).unwrap_or_default())
+    })
+}
+
+fn question_priority_rank(priority: Option<&str>) -> u8 {
+    match priority.unwrap_or("medium").to_ascii_lowercase().as_str() {
+        "critical" => 0,
+        "high" => 1,
+        "medium" => 2,
+        "low" => 3,
+        _ => 9,
+    }
+}
+
+fn collect_evidence_ids(collections: &[&Vec<Value>]) -> Vec<String> {
+    let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
+    for collection in collections {
+        for item in *collection {
+            let Some(obj) = item.as_object() else {
+                continue;
+            };
+            for key in [
+                "evidence_ids",
+                "support_evidence_ids",
+                "contradiction_evidence_ids",
+            ] {
+                let Some(values) = obj.get(key).and_then(Value::as_array) else {
+                    continue;
+                };
+                for value in values {
+                    let evidence_id = stringify_value(value);
+                    if seen.insert(evidence_id.clone()) {
+                        out.push(evidence_id);
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -444,5 +701,126 @@ mod tests {
             state.legacy.extra_fields.get("custom_field"),
             Some(&Value::String("after".to_string()))
         );
+    }
+
+    #[test]
+    fn build_question_reasoning_packet_groups_findings_and_contradictions() {
+        let mut state = InvestigationState::new("sid");
+        state.questions.insert(
+            "q_2".to_string(),
+            serde_json::json!({
+                "id": "q_2",
+                "question_text": "Is claim 2 true?",
+                "status": "open",
+                "priority": "high",
+                "claim_ids": ["cl_2"],
+                "evidence_ids": ["ev_2"],
+            }),
+        );
+        state.questions.insert(
+            "q_1".to_string(),
+            serde_json::json!({
+                "id": "q_1",
+                "question_text": "Is claim 1 true?",
+                "status": "open",
+                "priority": "critical",
+                "claim_ids": ["cl_1"],
+                "evidence_ids": ["ev_1", "ev_3"],
+            }),
+        );
+        state.questions.insert(
+            "q_done".to_string(),
+            serde_json::json!({
+                "id": "q_done",
+                "question_text": "Ignore",
+                "status": "resolved",
+            }),
+        );
+        state.claims.insert(
+            "cl_1".to_string(),
+            serde_json::json!({
+                "claim_text": "Claim supported",
+                "status": "supported",
+                "support_evidence_ids": ["ev_1"],
+                "confidence": 0.91,
+            }),
+        );
+        state.claims.insert(
+            "cl_2".to_string(),
+            serde_json::json!({
+                "claim_text": "Claim contested",
+                "status": "contested",
+                "support_evidence_ids": ["ev_2"],
+                "contradiction_evidence_ids": ["ev_3"],
+                "confidence_score": 0.4,
+            }),
+        );
+        state.claims.insert(
+            "cl_3".to_string(),
+            serde_json::json!({
+                "claim_text": "Claim unresolved",
+                "status": "unresolved",
+                "evidence_ids": ["ev_4"],
+            }),
+        );
+        state.evidence.insert(
+            "ev_1".to_string(),
+            serde_json::json!({"evidence_type": "doc", "provenance_ids": ["pv_1"], "source_uri": "s1"}),
+        );
+        state.evidence.insert(
+            "ev_2".to_string(),
+            serde_json::json!({"evidence_type": "doc", "provenance_ids": ["pv_2"], "source_uri": "s2"}),
+        );
+        state.evidence.insert(
+            "ev_3".to_string(),
+            serde_json::json!({"evidence_type": "doc", "provenance_ids": ["pv_3"], "source_uri": "s3"}),
+        );
+        state.evidence.insert(
+            "ev_4".to_string(),
+            serde_json::json!({"evidence_type": "doc", "provenance_ids": ["pv_4"], "source_uri": "s4"}),
+        );
+
+        let packet = build_question_reasoning_packet(&state, 8, 6);
+
+        assert_eq!(
+            packet["reasoning_mode"],
+            Value::String("question_centric".to_string())
+        );
+        assert_eq!(
+            packet["focus_question_ids"],
+            serde_json::json!(["q_1", "q_2"])
+        );
+        assert_eq!(
+            packet["findings"]["supported"][0]["id"],
+            Value::String("cl_1".to_string())
+        );
+        assert_eq!(
+            packet["findings"]["contested"][0]["id"],
+            Value::String("cl_2".to_string())
+        );
+        assert_eq!(
+            packet["findings"]["unresolved"][0]["id"],
+            Value::String("cl_3".to_string())
+        );
+        assert_eq!(
+            packet["contradictions"][0]["claim_id"],
+            Value::String("cl_2".to_string())
+        );
+        assert!(packet["evidence_index"].get("ev_3").is_some());
+        assert!(has_reasoning_content(&packet));
+    }
+
+    #[test]
+    fn has_reasoning_content_returns_false_for_empty_packet() {
+        let packet = serde_json::json!({
+            "focus_question_ids": [],
+            "findings": {
+                "supported": [],
+                "contested": [],
+                "unresolved": [],
+            },
+            "contradictions": [],
+        });
+        assert!(!has_reasoning_content(&packet));
     }
 }

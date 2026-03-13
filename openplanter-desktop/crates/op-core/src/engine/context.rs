@@ -108,7 +108,7 @@ impl ExternalContext {
         let typed_path = session_dir.join("investigation_state.json");
         let legacy_path = session_dir.join("state.json");
 
-        let mut typed_state = load_existing_investigation_state(session_dir, session_id).await?;
+        let mut typed_state = load_or_migrate_investigation_state(session_dir).await?;
         if typed_state.session_id.is_empty() {
             typed_state.session_id = session_id.to_string();
         }
@@ -133,6 +133,16 @@ impl Default for ExternalContext {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub async fn load_or_migrate_investigation_state(
+    session_dir: &Path,
+) -> std::io::Result<InvestigationState> {
+    let session_id = session_dir
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    load_existing_investigation_state(session_dir, session_id).await
 }
 
 async fn load_existing_investigation_state(
@@ -269,6 +279,49 @@ mod tests {
         assert_eq!(ctx.observations.len(), 2);
         assert_eq!(ctx.observations[0].content, "one");
         assert_eq!(ctx.observations[1].content, "two");
+    }
+
+    #[tokio::test]
+    async fn test_load_or_migrate_investigation_state_prefers_typed_state() {
+        let tmp = tempdir().unwrap();
+        fs::write(
+            tmp.path().join("investigation_state.json"),
+            r#"{"schema_version":"1.0.0","session_id":"sid","questions":{"q_1":{"id":"q_1","question_text":"keep me"}}}"#,
+        )
+        .await
+        .unwrap();
+        fs::write(
+            tmp.path().join("state.json"),
+            r#"{"session_id":"sid","external_observations":["legacy"]}"#,
+        )
+        .await
+        .unwrap();
+
+        let state = load_or_migrate_investigation_state(tmp.path())
+            .await
+            .unwrap();
+        assert!(state.questions.contains_key("q_1"));
+        assert!(state.legacy.external_observations.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_load_or_migrate_investigation_state_migrates_legacy_state() {
+        let tmp = tempdir().unwrap();
+        fs::write(
+            tmp.path().join("state.json"),
+            r#"{"session_id":"sid","external_observations":["legacy one"]}"#,
+        )
+        .await
+        .unwrap();
+
+        let state = load_or_migrate_investigation_state(tmp.path())
+            .await
+            .unwrap();
+        assert_eq!(state.legacy.external_observations, vec!["legacy one"]);
+        assert_eq!(
+            state.evidence["ev_legacy_000001"]["content"],
+            Value::String("legacy one".to_string())
+        );
     }
 
     #[tokio::test]

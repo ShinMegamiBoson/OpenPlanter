@@ -657,6 +657,7 @@ class RLMEngine:
 
             if parallel and final_answer is None:
                 group_id = f"d{depth}-s{step}-{time.monotonic_ns()}"
+                use_parallel_owner = len(parallel) > 1
                 begin_group = getattr(self.tools, "begin_parallel_write_group", None)
                 end_group = getattr(self.tools, "end_parallel_write_group", None)
                 if callable(begin_group):
@@ -671,7 +672,7 @@ class RLMEngine:
                                 deadline=deadline, current_model=model,
                                 replay_logger=replay_logger,
                                 parallel_group_id=group_id,
-                                parallel_owner=f"{tc.id or 'tc'}:{idx}",
+                                parallel_owner=(f"{tc.id or 'tc'}:{idx}" if use_parallel_owner else None),
                             ): idx
                             for idx, tc in parallel
                         }
@@ -834,6 +835,7 @@ class RLMEngine:
                     current_model=current_model,
                     replay_logger=replay_logger,
                     step=step,
+                    child_conversation_owner=parallel_owner,
                 )
             except Exception as exc:
                 observation = f"Tool {tc.name} crashed: {type(exc).__name__}: {exc}"
@@ -881,6 +883,7 @@ class RLMEngine:
         current_model: BaseModel | None = None,
         replay_logger: ReplayLogger | None = None,
         step: int = 0,
+        child_conversation_owner: str | None = None,
     ) -> tuple[bool, str]:
         name = tool_call.name
         args = tool_call.arguments
@@ -1048,7 +1051,10 @@ class RLMEngine:
                     subtask_model = self._model_cache[cache_key]
 
             self._emit(f"[d{depth}] >> entering subtask: {objective}", on_event)
-            child_logger = replay_logger.child(depth, step) if replay_logger else None
+            child_logger = (
+                replay_logger.child(depth, step, owner=child_conversation_owner)
+                if replay_logger else None
+            )
             subtask_result = self._solve_recursive(
                 objective=objective,
                 depth=depth + 1,
@@ -1104,7 +1110,10 @@ class RLMEngine:
                 cur.tool_defs = get_tool_definitions(include_subtask=False, include_acceptance_criteria=self.config.acceptance_criteria)
 
             self._emit(f"[d{depth}] >> executing leaf: {objective}", on_event)
-            child_logger = replay_logger.child(depth, step) if replay_logger else None
+            child_logger = (
+                replay_logger.child(depth, step, owner=child_conversation_owner)
+                if replay_logger else None
+            )
             exec_result = self._solve_recursive(
                 objective=objective,
                 depth=depth + 1,

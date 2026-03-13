@@ -11,6 +11,8 @@ pub mod judge;
 use std::time::Duration;
 
 use anyhow::anyhow;
+use chrono::Utc;
+use serde_json::{Map, Value};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -24,6 +26,13 @@ use crate::tools::WorkspaceTools;
 use crate::tools::defs::build_tool_defs;
 
 use self::curator::{CuratorResult, extract_step_context, run_curator};
+
+#[derive(Debug, Clone, Default)]
+pub struct SolveInitialContext {
+    pub session_id: Option<String>,
+    pub session_dir: Option<String>,
+    pub question_reasoning_packet: Option<Value>,
+}
 
 /// Outcome from a background curator task (success or error).
 enum CuratorOutcome {
@@ -330,6 +339,56 @@ fn safe_prefix(text: &str, max_chars: usize) -> &str {
     &text[..end]
 }
 
+fn build_initial_user_message(
+    objective: &str,
+    config: &AgentConfig,
+    initial_context: Option<&SolveInitialContext>,
+) -> Result<String, serde_json::Error> {
+    let Some(initial_context) = initial_context else {
+        return Ok(objective.to_string());
+    };
+
+    let mut payload = Map::new();
+    payload.insert(
+        "timestamp".to_string(),
+        Value::String(Utc::now().to_rfc3339()),
+    );
+    payload.insert(
+        "objective".to_string(),
+        Value::String(objective.to_string()),
+    );
+    payload.insert(
+        "max_steps_per_call".to_string(),
+        Value::from(config.max_steps_per_call),
+    );
+    payload.insert(
+        "workspace".to_string(),
+        Value::String(config.workspace.display().to_string()),
+    );
+    if let Some(session_id) = initial_context
+        .session_id
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        payload.insert("session_id".to_string(), Value::String(session_id.clone()));
+    }
+    if let Some(session_dir) = initial_context
+        .session_dir
+        .as_ref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        payload.insert(
+            "session_dir".to_string(),
+            Value::String(session_dir.clone()),
+        );
+    }
+    if let Some(packet) = initial_context.question_reasoning_packet.clone() {
+        payload.insert("question_reasoning_packet".to_string(), packet);
+    }
+
+    serde_json::to_string(&payload)
+}
+
 /// Compact conversation context when it grows too large.
 ///
 /// Keeps the system prompt, user objective, and the most recent messages
@@ -561,6 +620,17 @@ pub async fn solve(
     emitter: &dyn SolveEmitter,
     cancel: CancellationToken,
 ) {
+    solve_with_initial_context(objective, config, emitter, cancel, None).await;
+}
+
+/// Real solve flow with optional initial structured context.
+pub async fn solve_with_initial_context(
+    objective: &str,
+    config: &AgentConfig,
+    emitter: &dyn SolveEmitter,
+    cancel: CancellationToken,
+    initial_context: Option<SolveInitialContext>,
+) {
     if config.demo {
         return demo_solve(objective, emitter, cancel).await;
     }
@@ -583,12 +653,25 @@ pub async fn solve(
 
     let system_prompt =
         build_system_prompt(config.recursive, config.acceptance_criteria, config.demo);
+    let initial_user_message = match build_initial_user_message(
+        objective,
+        config,
+        initial_context.as_ref(),
+    ) {
+        Ok(message) => message,
+        Err(err) => {
+            emitter.emit_trace(&format!(
+                "[solve] failed to serialize initial context; falling back to plain objective: {err}"
+            ));
+            objective.to_string()
+        }
+    };
     let mut messages = vec![
         Message::System {
             content: system_prompt,
         },
         Message::User {
-            content: objective.to_string(),
+            content: initial_user_message,
         },
     ];
 
@@ -1164,6 +1247,80 @@ mod tests {
         let tokens = estimate_tokens(&messages);
         // (13 + 5 + 4000) / 4 = 1004
         assert_eq!(tokens, 1004);
+    }
+
+    #[test]
+    fn test_build_initial_user_message_preserves_plain_objective_without_context() {
+        let config = AgentConfig::default();
+        let message = build_initial_user_message("just objective", &config, None).unwrap();
+        assert_eq!(message, "just objective");
+    }
+
+    #[test]
+    fn test_build_initial_user_message_includes_context_payload() {
+        let config = AgentConfig::default();
+        let message = build_initial_user_message(
+            "investigate",
+            &config,
+            Some(&SolveInitialContext {
+                session_id: Some("session-1".to_string()),
+                session_dir: Some("/tmp/session-1".to_string()),
+                question_reasoning_packet: Some(serde_json::json!({
+                    "reasoning_mode": "question_centric",
+                    "focus_question_ids": ["q_1"],
+                    "findings": {
+                        "supported": [],
+                        "contested": [],
+                        "unresolved": [],
+                    },
+                    "contradictions": [],
+                    "evidence_index": {},
+                })),
+            }),
+        )
+        .unwrap();
+
+        let parsed: Value = serde_json::from_str(&message).unwrap();
+        assert_eq!(
+            parsed["objective"],
+            Value::String("investigate".to_string())
+        );
+        assert_eq!(parsed["session_id"], Value::String("session-1".to_string()));
+        assert_eq!(
+            parsed["session_dir"],
+            Value::String("/tmp/session-1".to_string())
+        );
+        assert_eq!(
+            parsed["question_reasoning_packet"]["focus_question_ids"],
+            serde_json::json!(["q_1"])
+        );
+        assert!(parsed.get("timestamp").is_some());
+        assert_eq!(
+            parsed["max_steps_per_call"],
+            Value::from(config.max_steps_per_call)
+        );
+    }
+
+    #[test]
+    fn test_build_initial_user_message_omits_packet_when_empty() {
+        let config = AgentConfig::default();
+        let message = build_initial_user_message(
+            "investigate",
+            &config,
+            Some(&SolveInitialContext {
+                session_id: Some("session-1".to_string()),
+                session_dir: Some("/tmp/session-1".to_string()),
+                question_reasoning_packet: None,
+            }),
+        )
+        .unwrap();
+
+        let parsed: Value = serde_json::from_str(&message).unwrap();
+        assert!(parsed.get("question_reasoning_packet").is_none());
+        assert_eq!(
+            parsed["objective"],
+            Value::String("investigate".to_string())
+        );
     }
 
     #[test]

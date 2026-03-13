@@ -2,12 +2,28 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, ClassVar
+
+_OWNER_SLUG_MAX_CHARS = 24
+
+
+def _normalize_owner_slug(owner: str) -> str:
+    normalized = re.sub(r"[^A-Za-z0-9._-]+", "_", owner.strip())
+    normalized = re.sub(r"_+", "_", normalized).strip("._-")
+    if not normalized:
+        return "anon"
+    return normalized[:_OWNER_SLUG_MAX_CHARS]
+
+
+def _owner_hash(owner: str) -> str:
+    return hashlib.sha1(owner.encode("utf-8")).hexdigest()[:8]
 
 
 @dataclass
@@ -60,9 +76,11 @@ class ReplayLogger:
         with self._file_state.lock:
             return self._ensure_next_seq_locked()
 
-    def child(self, depth: int, step: int) -> "ReplayLogger":
+    def child(self, depth: int, step: int, owner: str | None = None) -> "ReplayLogger":
         """Create a child logger for a subtask conversation."""
         child_id = f"{self.conversation_id}/d{depth}s{step}"
+        if owner is not None:
+            child_id = f"{child_id}/o{_normalize_owner_slug(owner)}_{_owner_hash(owner)}"
         return ReplayLogger(
             path=self.path,
             conversation_id=child_id,
