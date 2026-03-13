@@ -228,6 +228,7 @@ class SessionRuntime:
     max_persisted_observations: int = 400
     turn_history: list[TurnSummary] | None = None
     max_turn_summaries: int = 50
+    loop_metrics: dict[str, Any] | None = None
 
     @classmethod
     def bootstrap(
@@ -265,6 +266,19 @@ class SessionRuntime:
                     except (KeyError, TypeError):
                         pass
         max_turns = max(1, config.max_turn_summaries)
+        raw_loop_metrics = state.get("loop_metrics", {})
+        loop_metrics: dict[str, Any] = raw_loop_metrics if isinstance(raw_loop_metrics, dict) else {}
+        loop_metrics.setdefault("turns", 0)
+        loop_metrics.setdefault("steps", 0)
+        loop_metrics.setdefault("model_turns", 0)
+        loop_metrics.setdefault("tool_calls", 0)
+        loop_metrics.setdefault("guardrail_warnings", 0)
+        loop_metrics.setdefault("final_rejections", 0)
+        loop_metrics.setdefault("phase_counts", {})
+        if not isinstance(loop_metrics["phase_counts"], dict):
+            loop_metrics["phase_counts"] = {}
+        for phase in ("investigate", "build", "iterate", "finalize"):
+            loop_metrics["phase_counts"].setdefault(phase, 0)
 
         runtime = cls(
             engine=engine,
@@ -274,6 +288,7 @@ class SessionRuntime:
             max_persisted_observations=max_obs,
             turn_history=turn_history[-max_turns:],
             max_turn_summaries=max_turns,
+            loop_metrics=loop_metrics,
         )
         try:
             runtime.store.append_event(
@@ -373,6 +388,34 @@ class SessionRuntime:
         )
         self.context = updated_context
 
+        latest_loop_metrics = self.engine.last_loop_metrics if isinstance(self.engine.last_loop_metrics, dict) else {}
+        if self.loop_metrics is None:
+            self.loop_metrics = {
+                "turns": 0,
+                "steps": 0,
+                "model_turns": 0,
+                "tool_calls": 0,
+                "guardrail_warnings": 0,
+                "final_rejections": 0,
+                "phase_counts": {"investigate": 0, "build": 0, "iterate": 0, "finalize": 0},
+            }
+        self.loop_metrics["turns"] = int(self.loop_metrics.get("turns", 0)) + 1
+        self.loop_metrics["steps"] = int(self.loop_metrics.get("steps", 0)) + int(latest_loop_metrics.get("steps", 0))
+        self.loop_metrics["model_turns"] = int(self.loop_metrics.get("model_turns", 0)) + int(latest_loop_metrics.get("model_turns", 0))
+        self.loop_metrics["tool_calls"] = int(self.loop_metrics.get("tool_calls", 0)) + int(latest_loop_metrics.get("tool_calls", 0))
+        self.loop_metrics["guardrail_warnings"] = int(self.loop_metrics.get("guardrail_warnings", 0)) + int(latest_loop_metrics.get("guardrail_warnings", 0))
+        self.loop_metrics["final_rejections"] = int(self.loop_metrics.get("final_rejections", 0)) + int(latest_loop_metrics.get("final_rejections", 0))
+        phase_counts = self.loop_metrics.setdefault("phase_counts", {})
+        latest_phase_counts = latest_loop_metrics.get("phase_counts", {})
+        if not isinstance(phase_counts, dict):
+            phase_counts = {}
+            self.loop_metrics["phase_counts"] = phase_counts
+        if not isinstance(latest_phase_counts, dict):
+            latest_phase_counts = {}
+        for phase in ("investigate", "build", "iterate", "finalize"):
+            phase_counts[phase] = int(phase_counts.get(phase, 0)) + int(latest_phase_counts.get(phase, 0))
+        self.loop_metrics["last_turn"] = latest_loop_metrics
+
         # Generate turn summary
         if self.turn_history is None:
             self.turn_history = []
@@ -414,5 +457,6 @@ class SessionRuntime:
         }
         if self.turn_history:
             state["turn_history"] = [t.to_dict() for t in self.turn_history]
+        if self.loop_metrics:
+            state["loop_metrics"] = self.loop_metrics
         self.store.save_state(self.session_id, state)
-
