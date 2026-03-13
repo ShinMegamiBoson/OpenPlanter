@@ -47,7 +47,19 @@ export function createStatusBar(): HTMLElement {
     sessionEl.textContent = s.sessionId ? `session ${s.sessionId.slice(0, 8)}` : "";
 
     if (s.isRunning && s.currentStep > 0) {
-      sessionEl.textContent = `step ${s.currentStep} depth ${s.currentDepth}`;
+      const health = s.loopHealth;
+      if (health) {
+        const guardrailText =
+          health.metrics.guardrail_warnings > 0
+            ? ` guard:${health.metrics.guardrail_warnings}`
+            : "";
+        sessionEl.textContent =
+          `step ${s.currentStep} depth ${s.currentDepth} ` +
+          `${health.phase} recon:${health.metrics.recon_streak} ` +
+          `reject:${health.metrics.final_rejections}${guardrailText}`;
+      } else {
+        sessionEl.textContent = `step ${s.currentStep} depth ${s.currentDepth}`;
+      }
     }
 
     const inK = (s.inputTokens / 1000).toFixed(1);

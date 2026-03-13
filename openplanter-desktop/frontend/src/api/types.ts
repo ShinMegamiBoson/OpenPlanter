@@ -9,6 +9,22 @@ export interface TraceEvent {
   message: string;
 }
 
+export type LoopPhase = "investigate" | "build" | "iterate" | "finalize";
+
+export interface LoopMetrics {
+  steps: number;
+  model_turns: number;
+  tool_calls: number;
+  investigate_steps: number;
+  build_steps: number;
+  iterate_steps: number;
+  finalize_steps: number;
+  recon_streak: number;
+  max_recon_streak: number;
+  guardrail_warnings: number;
+  final_rejections: number;
+}
+
 export interface StepEvent {
   depth: number;
   step: number;
@@ -16,6 +32,8 @@ export interface StepEvent {
   tokens: TokenUsage;
   elapsed_ms: number;
   is_final: boolean;
+  loop_phase?: LoopPhase;
+  loop_metrics?: LoopMetrics;
 }
 
 export type DeltaKind = "text" | "thinking" | "tool_call_start" | "tool_call_args";
@@ -27,6 +45,15 @@ export interface DeltaEvent {
 
 export interface CompleteEvent {
   result: string;
+  loop_metrics?: LoopMetrics;
+}
+
+export interface LoopHealthEvent {
+  depth: number;
+  step: number;
+  phase: LoopPhase;
+  metrics: LoopMetrics;
+  is_final: boolean;
 }
 
 export interface ErrorEvent {
@@ -213,8 +240,19 @@ export interface ReplayEntry {
 
 export type AgentEvent =
   | { type: "trace"; message: string }
-  | { type: "step"; depth: number; step: number; tool_name: string | null; tokens: TokenUsage; elapsed_ms: number; is_final: boolean }
+  | {
+      type: "step";
+      depth: number;
+      step: number;
+      tool_name: string | null;
+      tokens: TokenUsage;
+      elapsed_ms: number;
+      is_final: boolean;
+      loop_phase?: LoopPhase;
+      loop_metrics?: LoopMetrics;
+    }
   | { type: "delta"; kind: DeltaKind; text: string }
-  | { type: "complete"; result: string }
+  | { type: "complete"; result: string; loop_metrics?: LoopMetrics }
   | { type: "error"; message: string }
-  | { type: "wiki_updated"; nodes: GraphNode[]; edges: GraphEdge[] };
+  | { type: "wiki_updated"; nodes: GraphNode[]; edges: GraphEdge[] }
+  | { type: "loop_health"; depth: number; step: number; phase: LoopPhase; metrics: LoopMetrics; is_final: boolean };

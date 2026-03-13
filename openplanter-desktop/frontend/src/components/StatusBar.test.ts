@@ -97,6 +97,38 @@ describe("createStatusBar", () => {
     expect(bar.querySelector(".session")!.textContent).toBe("step 3 depth 1");
   });
 
+  it("shows loop health details when telemetry is present", () => {
+    appState.update((s) => ({
+      ...s,
+      isRunning: true,
+      currentStep: 4,
+      currentDepth: 0,
+      loopHealth: {
+        depth: 0,
+        step: 4,
+        phase: "investigate",
+        metrics: {
+          steps: 4,
+          model_turns: 4,
+          tool_calls: 2,
+          investigate_steps: 3,
+          build_steps: 0,
+          iterate_steps: 0,
+          finalize_steps: 0,
+          recon_streak: 3,
+          max_recon_streak: 3,
+          guardrail_warnings: 1,
+          final_rejections: 2,
+        },
+        is_final: false,
+      },
+    }));
+    const bar = createStatusBar();
+    expect(bar.querySelector(".session")!.textContent).toBe(
+      "step 4 depth 0 investigate recon:3 reject:2 guard:1"
+    );
+  });
+
   it("renders token counts", () => {
     appState.update((s) => ({ ...s, inputTokens: 5000, outputTokens: 2500 }));
     const bar = createStatusBar();

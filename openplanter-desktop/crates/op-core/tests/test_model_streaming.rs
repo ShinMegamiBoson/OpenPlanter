@@ -549,7 +549,7 @@ async fn test_solve_with_mock_anthropic() {
         fn emit_step(&self, event: StepEvent) {
             self.events.lock().unwrap().push(Ev::Step(event));
         }
-        fn emit_complete(&self, result: &str) {
+        fn emit_complete(&self, result: &str, _loop_metrics: Option<op_core::events::LoopMetrics>) {
             self.events
                 .lock()
                 .unwrap()
@@ -657,7 +657,7 @@ async fn test_solve_with_mock_openai() {
         fn emit_step(&self, event: StepEvent) {
             self.events.lock().unwrap().push(Ev2::Step(event));
         }
-        fn emit_complete(&self, result: &str) {
+        fn emit_complete(&self, result: &str, _loop_metrics: Option<op_core::events::LoopMetrics>) {
             self.events
                 .lock()
                 .unwrap()
@@ -754,7 +754,7 @@ async fn test_solve_http_error_emits_error() {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, _: &str) {}
+        fn emit_complete(&self, _: &str, _: Option<op_core::events::LoopMetrics>) {}
         fn emit_error(&self, msg: &str) {
             self.errors.lock().unwrap().push(msg.to_string());
         }
@@ -812,7 +812,7 @@ async fn test_solve_rate_limit_retry_eventually_completes() {
 
         fn emit_step(&self, _: StepEvent) {}
 
-        fn emit_complete(&self, result: &str) {
+        fn emit_complete(&self, result: &str, _loop_metrics: Option<op_core::events::LoopMetrics>) {
             self.events
                 .lock()
                 .unwrap()
@@ -902,7 +902,7 @@ async fn test_solve_cancel_emits_cancelled() {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, _: &str) {}
+        fn emit_complete(&self, _: &str, _: Option<op_core::events::LoopMetrics>) {}
         fn emit_error(&self, msg: &str) {
             self.events.lock().unwrap().push(msg.to_string());
         }
@@ -947,7 +947,7 @@ async fn test_solve_demo_mode_bypasses_llm() {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, result: &str) {
+        fn emit_complete(&self, result: &str, _loop_metrics: Option<op_core::events::LoopMetrics>) {
             self.events.lock().unwrap().push(result.to_string());
         }
         fn emit_error(&self, msg: &str) {
@@ -988,7 +988,7 @@ async fn test_solve_missing_key_emits_error() {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, _: &str) {}
+        fn emit_complete(&self, _: &str, _: Option<op_core::events::LoopMetrics>) {}
         fn emit_error(&self, msg: &str) {
             self.errors.lock().unwrap().push(msg.to_string());
         }
@@ -1089,7 +1089,7 @@ async fn start_stateful_mock_server(responses: Vec<&'static str>) -> SocketAddr 
 async fn test_solve_multi_step_agentic_loop() {
     use op_core::config::AgentConfig;
     use op_core::engine::{SolveEmitter, solve};
-    use op_core::events::StepEvent;
+    use op_core::events::{LoopMetrics, LoopPhase, StepEvent};
 
     // Mock server: first call → tool call, second call → final answer
     let addr =
@@ -1101,7 +1101,10 @@ async fn test_solve_multi_step_agentic_loop() {
         Trace(String),
         Delta(DeltaEvent),
         Step(StepEvent),
-        Complete(String),
+        Complete {
+            result: String,
+            loop_metrics: Option<LoopMetrics>,
+        },
         Error(String),
     }
 
@@ -1121,11 +1124,11 @@ async fn test_solve_multi_step_agentic_loop() {
         fn emit_step(&self, event: StepEvent) {
             self.events.lock().unwrap().push(Ev3::Step(event));
         }
-        fn emit_complete(&self, result: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev3::Complete(result.to_string()));
+        fn emit_complete(&self, result: &str, loop_metrics: Option<op_core::events::LoopMetrics>) {
+            self.events.lock().unwrap().push(Ev3::Complete {
+                result: result.to_string(),
+                loop_metrics,
+            });
         }
         fn emit_error(&self, message: &str) {
             self.events
@@ -1185,9 +1188,34 @@ async fn test_solve_multi_step_agentic_loop() {
         Some("list_files"),
         "first step should show list_files tool"
     );
+    assert_eq!(steps[0].loop_phase, Some(LoopPhase::Investigate));
+    assert_eq!(
+        steps[0]
+            .loop_metrics
+            .as_ref()
+            .map(|metrics| metrics.tool_calls),
+        Some(1)
+    );
+    assert_eq!(
+        steps[0]
+            .loop_metrics
+            .as_ref()
+            .map(|metrics| metrics.recon_streak),
+        Some(1)
+    );
 
     // Last step should be final
     assert!(steps.last().unwrap().is_final, "last step should be final");
+    assert_eq!(steps.last().unwrap().loop_phase, Some(LoopPhase::Finalize));
+    assert_eq!(
+        steps
+            .last()
+            .unwrap()
+            .loop_metrics
+            .as_ref()
+            .map(|metrics| metrics.tool_calls),
+        Some(1)
+    );
 
     // Should have tool execution trace
     let has_tool_trace = recorded
@@ -1217,9 +1245,12 @@ async fn test_solve_multi_step_agentic_loop() {
 
     // Should complete with the final answer text
     assert!(
-        recorded
-            .iter()
-            .any(|e| matches!(e, Ev3::Complete(t) if t.contains("Here is the answer"))),
+        recorded.iter().any(|e| matches!(
+            e,
+            Ev3::Complete { result, loop_metrics }
+                if result.contains("Here is the answer")
+                    && loop_metrics.as_ref().map(|metrics| metrics.tool_calls) == Some(1)
+        )),
         "should complete with the final answer"
     );
 
@@ -1235,5 +1266,137 @@ async fn test_solve_multi_step_agentic_loop() {
         errors.is_empty(),
         "should not have any errors, got: {:?}",
         errors
+    );
+}
+
+const ANTHROPIC_SSE_META_FINAL: &str = "\
+event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_meta_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":40}}}\n\n\
+event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Here is my plan for finishing the task.\"}}\n\n\
+event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
+event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":9}}\n\n\
+event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+
+const ANTHROPIC_SSE_CONCRETE_FINAL: &str = "\
+event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_meta_2\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":55}}}\n\n\
+event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
+event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Completed the task and produced the requested answer.\"}}\n\n\
+event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
+event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":11}}\n\n\
+event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+
+#[tokio::test]
+async fn test_solve_rejects_meta_final_until_concrete_completion() {
+    use op_core::config::AgentConfig;
+    use op_core::engine::{SolveEmitter, solve};
+    use op_core::events::{LoopMetrics, StepEvent};
+
+    let addr =
+        start_stateful_mock_server(vec![ANTHROPIC_SSE_META_FINAL, ANTHROPIC_SSE_CONCRETE_FINAL])
+            .await;
+
+    #[derive(Debug, Clone)]
+    #[allow(dead_code)]
+    enum Ev4 {
+        Trace(String),
+        Step(StepEvent),
+        Complete {
+            result: String,
+            loop_metrics: Option<LoopMetrics>,
+        },
+        Error(String),
+    }
+
+    struct TestEmitter4 {
+        events: Arc<Mutex<Vec<Ev4>>>,
+    }
+
+    impl SolveEmitter for TestEmitter4 {
+        fn emit_trace(&self, message: &str) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev4::Trace(message.to_string()));
+        }
+
+        fn emit_delta(&self, _: DeltaEvent) {}
+
+        fn emit_step(&self, event: StepEvent) {
+            self.events.lock().unwrap().push(Ev4::Step(event));
+        }
+
+        fn emit_complete(&self, result: &str, loop_metrics: Option<LoopMetrics>) {
+            self.events.lock().unwrap().push(Ev4::Complete {
+                result: result.to_string(),
+                loop_metrics,
+            });
+        }
+
+        fn emit_error(&self, message: &str) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev4::Error(message.to_string()));
+        }
+    }
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let emitter = TestEmitter4 {
+        events: events.clone(),
+    };
+
+    let cfg = AgentConfig {
+        provider: "anthropic".into(),
+        model: "claude-sonnet-4-5".into(),
+        anthropic_api_key: Some("test-key".into()),
+        anthropic_base_url: format!("http://{addr}"),
+        demo: false,
+        ..Default::default()
+    };
+
+    let cancel = CancellationToken::new();
+    solve("Produce the final answer directly", &cfg, &emitter, cancel).await;
+
+    let recorded = events.lock().unwrap().clone();
+    assert!(
+        recorded.iter().any(|event| matches!(
+            event,
+            Ev4::Trace(message) if message.contains("rejected meta final answer")
+        )),
+        "expected a meta-final rejection trace, got: {recorded:?}"
+    );
+
+    let steps: Vec<&StepEvent> = recorded
+        .iter()
+        .filter_map(|event| match event {
+            Ev4::Step(step) => Some(step),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(steps.len(), 1, "only the concrete final should emit a step");
+    assert!(
+        steps[0].is_final,
+        "the emitted step should be the concrete final"
+    );
+    assert_eq!(
+        steps[0]
+            .loop_metrics
+            .as_ref()
+            .map(|metrics| metrics.final_rejections),
+        Some(1)
+    );
+
+    assert!(
+        recorded.iter().any(|event| matches!(
+            event,
+            Ev4::Complete { result, loop_metrics }
+                if result.contains("Completed the task")
+                    && loop_metrics.as_ref().map(|metrics| metrics.final_rejections) == Some(1)
+        )),
+        "expected completion after the rejection loop, got: {recorded:?}"
+    );
+    assert!(
+        !recorded.iter().any(|event| matches!(event, Ev4::Error(_))),
+        "did not expect errors, got: {recorded:?}"
     );
 }

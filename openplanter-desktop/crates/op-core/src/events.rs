@@ -18,6 +18,37 @@ pub struct StepEvent {
     pub tokens: TokenUsage,
     pub elapsed_ms: u64,
     pub is_final: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loop_phase: Option<LoopPhase>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loop_metrics: Option<LoopMetrics>,
+}
+
+/// High-level phase classification for the current loop step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoopPhase {
+    Investigate,
+    Build,
+    Iterate,
+    Finalize,
+}
+
+/// Cumulative loop telemetry for health and governance UX.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LoopMetrics {
+    pub steps: u32,
+    pub model_turns: u32,
+    pub tool_calls: u32,
+    pub investigate_steps: u32,
+    pub build_steps: u32,
+    pub iterate_steps: u32,
+    pub finalize_steps: u32,
+    pub recon_streak: u32,
+    pub max_recon_streak: u32,
+    pub guardrail_warnings: u32,
+    pub final_rejections: u32,
 }
 
 /// Token usage counters.
@@ -48,6 +79,18 @@ pub enum DeltaKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompleteEvent {
     pub result: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loop_metrics: Option<LoopMetrics>,
+}
+
+/// Periodic loop health telemetry event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoopHealthEvent {
+    pub depth: u32,
+    pub step: u32,
+    pub phase: LoopPhase,
+    pub metrics: LoopMetrics,
+    pub is_final: bool,
 }
 
 /// Agent encountered an error.
@@ -112,6 +155,7 @@ pub enum AgentEvent {
     Complete(CompleteEvent),
     Error(ErrorEvent),
     WikiUpdated(GraphData),
+    LoopHealth(LoopHealthEvent),
 }
 
 /// Configuration view sent to the frontend.
@@ -364,6 +408,8 @@ mod tests {
             },
             elapsed_ms: 2345,
             is_final: false,
+            loop_phase: None,
+            loop_metrics: None,
         };
         let json = serde_json::to_string(&step).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -371,6 +417,42 @@ mod tests {
         assert_eq!(parsed["step"], 3);
         assert_eq!(parsed["tool_name"], "read_file");
         assert_eq!(parsed["tokens"]["input_tokens"], 1234);
+    }
+
+    #[test]
+    fn test_loop_metrics_deserialize_backfills_new_fields() {
+        let parsed: LoopMetrics = serde_json::from_str(
+            r#"{
+                "steps": 2,
+                "model_turns": 2,
+                "tool_calls": 1,
+                "investigate_steps": 1,
+                "build_steps": 0,
+                "iterate_steps": 0,
+                "finalize_steps": 1,
+                "recon_streak": 0,
+                "max_recon_streak": 1,
+                "final_rejections": 1
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            parsed,
+            LoopMetrics {
+                steps: 2,
+                model_turns: 2,
+                tool_calls: 1,
+                investigate_steps: 1,
+                build_steps: 0,
+                iterate_steps: 0,
+                finalize_steps: 1,
+                recon_streak: 0,
+                max_recon_streak: 1,
+                guardrail_warnings: 0,
+                final_rejections: 1,
+            }
+        );
     }
 
     #[test]

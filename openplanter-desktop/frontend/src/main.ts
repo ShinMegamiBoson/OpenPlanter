@@ -3,11 +3,12 @@ import { getConfig, getInitStatus } from "./api/invoke";
 import {
   onAgentTrace,
   onAgentDelta,
-  onAgentComplete,
+  onAgentCompleteEvent,
   onAgentError,
   onAgentStep,
   onWikiUpdated,
   onCuratorUpdate,
+  onLoopHealth,
   onMigrationProgress,
 } from "./api/events";
 import { appState } from "./state/store";
@@ -113,6 +114,7 @@ async function init() {
       outputTokens: s.outputTokens + event.tokens.output_tokens,
       currentStep: event.step,
       currentDepth: event.depth,
+      lastLoopMetrics: event.loop_metrics ?? s.lastLoopMetrics,
     }));
 
     // Dispatch to ChatPane for rich step summary rendering
@@ -126,18 +128,20 @@ async function init() {
     window.dispatchEvent(detail);
   });
 
-  await onAgentComplete((result) => {
+  await onAgentCompleteEvent((event) => {
     appState.update((s) => ({
       ...s,
       isRunning: false,
       currentStep: 0,
       currentDepth: 0,
+      loopHealth: null,
+      lastLoopMetrics: event.loop_metrics ?? s.lastLoopMetrics,
       messages: [
         ...s.messages,
         {
           id: crypto.randomUUID(),
           role: "assistant" as const,
-          content: result,
+          content: event.result,
           timestamp: Date.now(),
           isRendered: true,
         },
@@ -154,6 +158,7 @@ async function init() {
       isRunning: false,
       currentStep: 0,
       currentDepth: 0,
+      loopHealth: null,
       messages: [
         ...s.messages,
         {
@@ -190,6 +195,15 @@ async function init() {
 
     // Notify graph pane to refresh with curator's wiki changes
     window.dispatchEvent(new CustomEvent("curator-done"));
+  });
+
+
+  await onLoopHealth((event) => {
+    appState.update((s) => ({
+      ...s,
+      loopHealth: event,
+      lastLoopMetrics: event.metrics,
+    }));
   });
 
   await onMigrationProgress((event) => {

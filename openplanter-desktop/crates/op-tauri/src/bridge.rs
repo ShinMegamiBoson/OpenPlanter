@@ -11,7 +11,8 @@ use tauri::{AppHandle, Emitter};
 
 use op_core::engine::SolveEmitter;
 use op_core::events::{
-    CompleteEvent, CuratorUpdateEvent, DeltaEvent, DeltaKind, ErrorEvent, StepEvent, TraceEvent,
+    CompleteEvent, CuratorUpdateEvent, DeltaEvent, DeltaKind, ErrorEvent, LoopHealthEvent,
+    LoopMetrics, LoopPhase, StepEvent, TraceEvent,
 };
 use op_core::session::replay::{ReplayEntry, ReplayLogger, StepToolCallEntry};
 
@@ -107,12 +108,13 @@ impl SolveEmitter for TauriEmitter {
         let _ = self.handle.emit("agent:step", event);
     }
 
-    fn emit_complete(&self, result: &str) {
+    fn emit_complete(&self, result: &str, loop_metrics: Option<LoopMetrics>) {
         eprintln!("[bridge] complete: {result}");
         let _ = self.handle.emit(
             "agent:complete",
             CompleteEvent {
                 result: result.to_string(),
+                loop_metrics,
             },
         );
     }
@@ -123,6 +125,26 @@ impl SolveEmitter for TauriEmitter {
             "agent:error",
             ErrorEvent {
                 message: message.to_string(),
+            },
+        );
+    }
+
+    fn emit_loop_health(
+        &self,
+        depth: u32,
+        step: u32,
+        phase: LoopPhase,
+        metrics: LoopMetrics,
+        is_final: bool,
+    ) {
+        let _ = self.handle.emit(
+            "agent:loop-health",
+            LoopHealthEvent {
+                depth,
+                step,
+                phase,
+                metrics,
+                is_final,
             },
         );
     }
@@ -308,7 +330,7 @@ impl<E: SolveEmitter> SolveEmitter for LoggingEmitter<E> {
         self.inner.emit_step(event);
     }
 
-    fn emit_complete(&self, result: &str) {
+    fn emit_complete(&self, result: &str, loop_metrics: Option<LoopMetrics>) {
         let entry = ReplayEntry {
             seq: 0,
             timestamp: String::new(),
@@ -334,11 +356,23 @@ impl<E: SolveEmitter> SolveEmitter for LoggingEmitter<E> {
             });
         });
 
-        self.inner.emit_complete(result);
+        self.inner.emit_complete(result, loop_metrics);
     }
 
     fn emit_error(&self, message: &str) {
         self.inner.emit_error(message);
+    }
+
+    fn emit_loop_health(
+        &self,
+        depth: u32,
+        step: u32,
+        phase: LoopPhase,
+        metrics: LoopMetrics,
+        is_final: bool,
+    ) {
+        self.inner
+            .emit_loop_health(depth, step, phase, metrics, is_final);
     }
 
     fn emit_curator_update(&self, summary: &str, files_changed: u32) {
@@ -386,7 +420,7 @@ mod tests {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, _: &str) {}
+        fn emit_complete(&self, _: &str, _: Option<LoopMetrics>) {}
         fn emit_error(&self, _: &str) {}
     }
 
@@ -503,7 +537,7 @@ mod tests {
             self.deltas.lock().unwrap().push(event);
         }
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, _: &str) {}
+        fn emit_complete(&self, _: &str, _: Option<LoopMetrics>) {}
         fn emit_error(&self, _: &str) {}
     }
 
@@ -527,6 +561,8 @@ mod tests {
             tokens: Default::default(),
             elapsed_ms: 1,
             is_final: false,
+            loop_phase: None,
+            loop_metrics: None,
         });
 
         let entries = ReplayLogger::read_all(tmp.path()).await.unwrap();
@@ -575,6 +611,8 @@ mod tests {
             tokens: Default::default(),
             elapsed_ms: 1,
             is_final: false,
+            loop_phase: None,
+            loop_metrics: None,
         });
 
         let entries = ReplayLogger::read_all(tmp.path()).await.unwrap();

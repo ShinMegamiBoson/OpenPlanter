@@ -56,6 +56,8 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
           outputTokens: 0,
           currentStep: 0,
           currentDepth: 0,
+          loopHealth: null,
+          lastLoopMetrics: null,
           inputQueue: [],
         }));
         window.dispatchEvent(new CustomEvent("session-changed", { detail: { isNew: true } }));

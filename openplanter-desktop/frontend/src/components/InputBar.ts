@@ -112,6 +112,10 @@ export function createInputBar(): HTMLElement {
     appState.update((s) => ({
       ...s,
       isRunning: true,
+      currentStep: 0,
+      currentDepth: 0,
+      loopHealth: null,
+      lastLoopMetrics: null,
       messages: [
         ...s.messages,
         {
@@ -240,6 +244,10 @@ export function createInputBar(): HTMLElement {
     appState.update((s) => ({
       ...s,
       isRunning: true,
+      currentStep: 0,
+      currentDepth: 0,
+      loopHealth: null,
+      lastLoopMetrics: null,
       messages: [
         ...s.messages,
         {

@@ -1,6 +1,8 @@
 /** Simple observable state store. */
 import type {
   InitStatusView,
+  LoopMetrics,
+  LoopHealthEvent,
   MigrationInitResultView,
   MigrationProgressEvent,
 } from "../api/types";
@@ -81,6 +83,8 @@ export interface AppState {
   maxStepsPerCall: number;
   currentStep: number;
   currentDepth: number;
+  loopHealth: LoopHealthEvent | null;
+  lastLoopMetrics: LoopMetrics | null;
   inputHistory: string[];
   inputQueue: string[];
   initGateState: "ready" | "requires_action" | "blocked";
@@ -109,6 +113,8 @@ export const appState = new Store<AppState>({
   maxStepsPerCall: 100,
   currentStep: 0,
   currentDepth: 0,
+  loopHealth: null,
+  lastLoopMetrics: null,
   inputHistory: [],
   inputQueue: [],
   initGateState: "ready",

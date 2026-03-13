@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::builder::build_model;
 use crate::config::AgentConfig;
-use crate::events::{DeltaEvent, DeltaKind, StepEvent, TokenUsage};
+use crate::events::{DeltaEvent, DeltaKind, LoopMetrics, LoopPhase, StepEvent, TokenUsage};
 use crate::model::{BaseModel, Message, ModelTurn, RateLimitError};
 use crate::prompts::build_system_prompt;
 use crate::tools::WorkspaceTools;
@@ -208,8 +208,17 @@ pub trait SolveEmitter: Send + Sync {
     fn emit_trace(&self, message: &str);
     fn emit_delta(&self, event: DeltaEvent);
     fn emit_step(&self, event: StepEvent);
-    fn emit_complete(&self, result: &str);
+    fn emit_complete(&self, result: &str, loop_metrics: Option<LoopMetrics>);
     fn emit_error(&self, message: &str);
+    fn emit_loop_health(
+        &self,
+        _depth: u32,
+        _step: u32,
+        _phase: LoopPhase,
+        _metrics: LoopMetrics,
+        _is_final: bool,
+    ) {
+    }
     /// Called when a background curator finishes updating wiki files.
     /// Default no-op — override in TauriEmitter/LoggingEmitter.
     fn emit_curator_update(&self, _summary: &str, _files_changed: u32) {}
@@ -256,6 +265,21 @@ pub async fn demo_solve(objective: &str, emitter: &dyn SolveEmitter, cancel: Can
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 
+    let loop_metrics = LoopMetrics {
+        steps: 1,
+        model_turns: 1,
+        tool_calls: 0,
+        investigate_steps: 0,
+        build_steps: 0,
+        iterate_steps: 0,
+        finalize_steps: 1,
+        recon_streak: 0,
+        max_recon_streak: 0,
+        guardrail_warnings: 0,
+        final_rejections: 0,
+    };
+    emitter.emit_loop_health(0, 1, LoopPhase::Finalize, loop_metrics.clone(), true);
+
     // Emit step summary
     emitter.emit_step(StepEvent {
         depth: 0,
@@ -267,9 +291,11 @@ pub async fn demo_solve(objective: &str, emitter: &dyn SolveEmitter, cancel: Can
         },
         elapsed_ms: 350,
         is_final: true,
+        loop_phase: Some(LoopPhase::Finalize),
+        loop_metrics: Some(loop_metrics.clone()),
     });
 
-    emitter.emit_complete(&response);
+    emitter.emit_complete(&response, Some(loop_metrics));
 }
 
 /// Rough token estimate: ~4 chars per token.
@@ -396,6 +422,102 @@ async fn chat_stream_with_rate_limit_retries(
     }
 }
 
+fn is_meta_final_text(text: &str) -> bool {
+    let stripped = text.trim();
+    if stripped.is_empty() {
+        return true;
+    }
+    let lower = stripped.to_ascii_lowercase();
+    let meta_starts = [
+        "here is my plan",
+        "here's my plan",
+        "here is the plan",
+        "here's the plan",
+        "here is my approach",
+        "here's my approach",
+        "here is the approach",
+        "here's the approach",
+        "here is my analysis",
+        "here's my analysis",
+        "here is the analysis",
+        "here's the analysis",
+        "let me",
+        "next, i will",
+        "next i will",
+    ];
+    if meta_starts.iter().any(|p| lower.starts_with(p)) {
+        return true;
+    }
+    if stripped.split_whitespace().count() < 5 {
+        return false;
+    }
+    let padded = format!(" {lower} ");
+    [
+        " i will ",
+        " i can ",
+        " i should ",
+        " i need to ",
+        " i want to ",
+        " i am going to ",
+        " plan to ",
+        " let me ",
+        " next, i will ",
+        " next i will ",
+        " i should start by ",
+    ]
+    .iter()
+    .any(|needle| padded.contains(needle))
+}
+
+fn is_recon_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "list_files"
+            | "search_files"
+            | "repo_map"
+            | "web_search"
+            | "fetch_url"
+            | "read_file"
+            | "read_image"
+            | "list_artifacts"
+            | "read_artifact"
+    )
+}
+
+fn is_artifact_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "write_file" | "apply_patch" | "edit_file" | "hashline_edit"
+    )
+}
+
+fn classify_loop_phase(tool_calls: &[crate::model::ToolCall], is_final: bool) -> LoopPhase {
+    if is_final {
+        return LoopPhase::Finalize;
+    }
+    if tool_calls.is_empty() {
+        return LoopPhase::Iterate;
+    }
+    let has_recon = tool_calls.iter().any(|tc| is_recon_tool(&tc.name));
+    let has_artifact = tool_calls.iter().any(|tc| is_artifact_tool(&tc.name));
+    if has_artifact {
+        LoopPhase::Build
+    } else if has_recon && tool_calls.iter().all(|tc| is_recon_tool(&tc.name)) {
+        LoopPhase::Investigate
+    } else {
+        LoopPhase::Iterate
+    }
+}
+
+fn increment_phase(metrics: &mut LoopMetrics, phase: &LoopPhase) {
+    match phase {
+        LoopPhase::Investigate => metrics.investigate_steps += 1,
+        LoopPhase::Build => metrics.build_steps += 1,
+        LoopPhase::Iterate => metrics.iterate_steps += 1,
+        LoopPhase::Finalize => metrics.finalize_steps += 1,
+    }
+}
+
 /// Real solve flow with a multi-step agentic loop.
 ///
 /// Calls the model with tool definitions. If the model returns tool calls,
@@ -441,6 +563,8 @@ pub async fn solve(
     ];
 
     let max_steps = config.max_steps_per_call as usize;
+    let mut loop_metrics = LoopMetrics::default();
+    let mut last_guardrail_streak = 0u32;
 
     // 3. Background curator channel
     let (curator_tx, mut curator_rx) = mpsc::unbounded_channel::<CuratorOutcome>();
@@ -500,6 +624,9 @@ pub async fn solve(
             }
         };
 
+        loop_metrics.steps = step as u32;
+        loop_metrics.model_turns += 1;
+
         // Append assistant message to conversation
         let tool_calls_opt = if turn.tool_calls.is_empty() {
             None
@@ -511,8 +638,30 @@ pub async fn solve(
             tool_calls: tool_calls_opt,
         });
 
-        // No tool calls → final answer
+        // No tool calls → final answer (unless rejected by governance)
         if turn.tool_calls.is_empty() {
+            if turn.text.trim().is_empty() {
+                emitter.emit_trace(&format!(
+                    "[d0/s{step}] empty model response, requesting tool use or concrete final answer"
+                ));
+                messages.push(Message::User {
+                    content: "No tool calls and no final answer were returned. Continue solving: use tools if needed or return the concrete final deliverable.".to_string(),
+                });
+                continue;
+            }
+            if is_meta_final_text(&turn.text) {
+                loop_metrics.final_rejections += 1;
+                emitter.emit_trace(&format!(
+                    "[d0/s{step}] rejected meta final answer; requesting concrete deliverable"
+                ));
+                messages.push(Message::User {
+                    content: "Your previous response was process/meta commentary rather than a concrete final answer. Continue solving: use tools if needed and return a direct final deliverable.".to_string(),
+                });
+                continue;
+            }
+            let phase = LoopPhase::Finalize;
+            increment_phase(&mut loop_metrics, &phase);
+            emitter.emit_loop_health(0, step as u32, phase.clone(), loop_metrics.clone(), true);
             let tool_name = None;
             emitter.emit_step(StepEvent {
                 depth: 0,
@@ -524,8 +673,10 @@ pub async fn solve(
                 },
                 elapsed_ms: step_start.elapsed().as_millis() as u64,
                 is_final: true,
+                loop_phase: Some(phase),
+                loop_metrics: Some(loop_metrics.clone()),
             });
-            emitter.emit_complete(&turn.text);
+            emitter.emit_complete(&turn.text, Some(loop_metrics.clone()));
             tools.cleanup();
             // Wait for in-flight curators before exiting
             finish_curators(
@@ -541,6 +692,8 @@ pub async fn solve(
             .await;
             return;
         }
+
+        loop_metrics.tool_calls += turn.tool_calls.len() as u32;
 
         // Execute each tool call and collect results
         for tc in &turn.tool_calls {
@@ -568,6 +721,30 @@ pub async fn solve(
             });
         }
 
+        let phase = classify_loop_phase(&turn.tool_calls, false);
+        if matches!(phase, LoopPhase::Investigate) {
+            loop_metrics.recon_streak += 1;
+        } else {
+            loop_metrics.recon_streak = 0;
+        }
+        loop_metrics.max_recon_streak =
+            loop_metrics.max_recon_streak.max(loop_metrics.recon_streak);
+        increment_phase(&mut loop_metrics, &phase);
+        if matches!(phase, LoopPhase::Investigate)
+            && loop_metrics.recon_streak >= 3
+            && loop_metrics.recon_streak != last_guardrail_streak
+        {
+            loop_metrics.guardrail_warnings += 1;
+            last_guardrail_streak = loop_metrics.recon_streak;
+            emitter.emit_trace(&format!(
+                "[d0/s{step}] soft guardrail: multiple consecutive recon steps without artifacts; nudging toward implementation"
+            ));
+            messages.push(Message::User {
+                content: "Soft guardrail: you've spent multiple consecutive steps in read/list/search mode without producing artifacts. Move to implementation now: edit files, run targeted validation, and return concrete outputs.".to_string(),
+            });
+        }
+        emitter.emit_loop_health(0, step as u32, phase.clone(), loop_metrics.clone(), false);
+
         // Emit step (non-final) AFTER tools execute so the frontend
         // can refresh the wiki graph with newly written files.
         let first_tool = turn.tool_calls.first().map(|tc| tc.name.clone());
@@ -581,6 +758,8 @@ pub async fn solve(
             },
             elapsed_ms: step_start.elapsed().as_millis() as u64,
             is_final: false,
+            loop_phase: Some(phase),
+            loop_metrics: Some(loop_metrics.clone()),
         });
 
         // Spawn background curator after each non-final step
@@ -640,6 +819,14 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
+    fn tool_call(name: &str) -> crate::model::ToolCall {
+        crate::model::ToolCall {
+            id: format!("call-{name}"),
+            name: name.to_string(),
+            arguments: "{}".to_string(),
+        }
+    }
+
     #[derive(Debug, Clone)]
     #[allow(dead_code)]
     enum RecordedEvent {
@@ -685,7 +872,7 @@ mod tests {
             self.events.lock().unwrap().push(RecordedEvent::Step(event));
         }
 
-        fn emit_complete(&self, result: &str) {
+        fn emit_complete(&self, result: &str, _loop_metrics: Option<LoopMetrics>) {
             self.events
                 .lock()
                 .unwrap()
@@ -1017,5 +1204,37 @@ mod tests {
         if let Message::Tool { content, .. } = last_tool {
             assert_eq!(content.len(), 8000, "recent tool result should be intact");
         }
+    }
+
+    #[test]
+    fn test_is_meta_final_text_rejects_empty_and_meta_prefixes() {
+        assert!(is_meta_final_text(""));
+        assert!(is_meta_final_text(
+            "Here is my plan for finishing the task."
+        ));
+        assert!(is_meta_final_text(
+            "I should start by checking the workspace layout."
+        ));
+        assert!(!is_meta_final_text(
+            "Completed the fix and updated the failing test."
+        ));
+    }
+
+    #[test]
+    fn test_classify_loop_phase_recon_only_is_investigate() {
+        let phase = classify_loop_phase(&[tool_call("read_file"), tool_call("list_files")], false);
+        assert_eq!(phase, LoopPhase::Investigate);
+    }
+
+    #[test]
+    fn test_classify_loop_phase_artifact_tools_are_build() {
+        let phase = classify_loop_phase(&[tool_call("read_file"), tool_call("write_file")], false);
+        assert_eq!(phase, LoopPhase::Build);
+    }
+
+    #[test]
+    fn test_classify_loop_phase_mixed_recon_and_non_recon_is_iterate() {
+        let phase = classify_loop_phase(&[tool_call("read_file"), tool_call("run_shell")], false);
+        assert_eq!(phase, LoopPhase::Iterate);
     }
 }
