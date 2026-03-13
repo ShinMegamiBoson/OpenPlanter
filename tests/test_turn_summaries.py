@@ -282,6 +282,75 @@ class TurnSummaryPersistenceTests(unittest.TestCase):
             self.assertEqual(len(rt.turn_history), 1)
             self.assertEqual(rt.turn_history[0].turn_number, 1)
 
+    def test_loop_metrics_persisted_and_loaded_additively(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = self._make_config(root)
+
+            model1 = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(tool_calls=[_tc("list_files")]),
+                    ModelTurn(text="done-1", stop_reason="end_turn"),
+                ]
+            )
+            engine1 = RLMEngine(model=model1, tools=WorkspaceTools(root=root), config=cfg)
+            rt1 = SessionRuntime.bootstrap(
+                engine=engine1, config=cfg, session_id="sess-loop", resume=False,
+            )
+            rt1.solve("first")
+
+            state_path = root / ".openplanter" / "sessions" / "sess-loop" / "state.json"
+            state_after_first = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertIn("loop_metrics", state_after_first)
+            self.assertEqual(state_after_first["loop_metrics"]["turns"], 1)
+
+            model2 = ScriptedModel(
+                scripted_turns=[ModelTurn(text="done-2", stop_reason="end_turn")]
+            )
+            engine2 = RLMEngine(model=model2, tools=WorkspaceTools(root=root), config=cfg)
+            rt2 = SessionRuntime.bootstrap(
+                engine=engine2, config=cfg, session_id="sess-loop", resume=True,
+            )
+            self.assertIn("turns", rt2.loop_metrics)
+            rt2.solve("second")
+
+            state_after_second = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state_after_second["loop_metrics"]["turns"], 2)
+            self.assertIn("last_turn", state_after_second["loop_metrics"])
+
+    def test_backward_compat_old_state_no_loop_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = self._make_config(root)
+
+            session_dir = root / ".openplanter" / "sessions" / "sess-no-loop"
+            session_dir.mkdir(parents=True)
+            (session_dir / "artifacts").mkdir()
+            (session_dir / "metadata.json").write_text(
+                json.dumps({"session_id": "sess-no-loop", "workspace": str(root)}),
+                encoding="utf-8",
+            )
+            (session_dir / "state.json").write_text(
+                json.dumps({
+                    "session_id": "sess-no-loop",
+                    "saved_at": "2026-01-01T00:00:00Z",
+                    "external_observations": [],
+                }),
+                encoding="utf-8",
+            )
+
+            model = ScriptedModel(
+                scripted_turns=[ModelTurn(text="resumed", stop_reason="end_turn")]
+            )
+            engine = RLMEngine(model=model, tools=WorkspaceTools(root=root), config=cfg)
+            rt = SessionRuntime.bootstrap(
+                engine=engine, config=cfg, session_id="sess-no-loop", resume=True,
+            )
+            self.assertIsNotNone(rt.loop_metrics)
+            self.assertEqual(rt.loop_metrics.get("turns"), 0)
+            rt.solve("new turn")
+            self.assertEqual(rt.loop_metrics.get("turns"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

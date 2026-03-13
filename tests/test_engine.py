@@ -136,6 +136,41 @@ class EngineTests(unittest.TestCase):
                 "expected policy block observation in context",
             )
 
+    def test_meta_text_not_accepted_as_final_answer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(workspace=root, max_depth=1, max_steps_per_call=4, acceptance_criteria=False)
+            tools = WorkspaceTools(root=root)
+            model = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(text="Here is my plan: I will inspect files and then implement.", stop_reason="end_turn"),
+                    ModelTurn(text="Concrete result delivered.", stop_reason="end_turn"),
+                ]
+            )
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            result = engine.solve("meta final rejection")
+            self.assertEqual(result, "Concrete result delivered.")
+            self.assertEqual(engine.last_loop_metrics.get("final_rejections"), 1)
+
+    def test_soft_guardrail_for_repeated_recon(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(workspace=root, max_depth=1, max_steps_per_call=6, acceptance_criteria=False)
+            tools = WorkspaceTools(root=root)
+            model = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(tool_calls=[_tc("list_files")]),
+                    ModelTurn(tool_calls=[_tc("search_files", query="x")]),
+                    ModelTurn(tool_calls=[_tc("repo_map")]),
+                    ModelTurn(text="done", stop_reason="end_turn"),
+                ]
+            )
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            result, ctx = engine.solve_with_context("trigger recon guardrail")
+            self.assertEqual(result, "done")
+            self.assertTrue(any("Soft guardrail" in obs for obs in ctx.observations))
+            self.assertGreaterEqual(int(engine.last_loop_metrics.get("guardrail_warnings", 0)), 1)
+
 
 class CustomSystemPromptTests(unittest.TestCase):
     def test_custom_system_prompt_override(self) -> None:

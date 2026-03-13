@@ -24,6 +24,30 @@ StepCallback = Callable[[dict[str, Any]], None]
 ContentDeltaCallback = Callable[[str, str], None]
 
 
+_RECON_TOOL_NAMES = {
+    "list_files",
+    "search_files",
+    "repo_map",
+    "web_search",
+    "fetch_url",
+    "read_file",
+    "read_image",
+    "list_artifacts",
+    "read_artifact",
+}
+_ARTIFACT_TOOL_NAMES = {
+    "write_file",
+    "apply_patch",
+    "edit_file",
+    "hashline_edit",
+}
+_META_FINAL_PATTERNS = (
+    re.compile(r"^\s*(here(?:'s| is)\s+(?:my|the)\s+(?:plan|approach|analysis))\b", re.I),
+    re.compile(r"\b(i\s+(?:will|can|should|need to|want to|am going to|plan to))\b", re.I),
+    re.compile(r"\b(let me|next,?\s+i\s+will|i\s+should\s+start\s+by)\b", re.I),
+)
+
+
 def _summarize_args(args: dict[str, Any], max_len: int = 120) -> str:
     """One-line summary of tool call arguments."""
     parts: list[str] = []
@@ -169,6 +193,7 @@ class RLMEngine:
     _shell_command_counts: dict[tuple[int, str], int] = field(default_factory=dict)
     _cancel: threading.Event = field(default_factory=threading.Event)
     _pending_image: threading.local = field(default_factory=threading.local)
+    last_loop_metrics: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.system_prompt:
@@ -300,6 +325,14 @@ class RLMEngine:
         except Exception as exc:
             return f"PASS\n(judge error: {exc})"
 
+    def _is_meta_final_text(self, text: str) -> bool:
+        stripped = text.strip()
+        if not stripped:
+            return True
+        if len(stripped.split()) < 5:
+            return False
+        return any(pattern.search(stripped) for pattern in _META_FINAL_PATTERNS)
+
     def _solve_recursive(
         self,
         objective: str,
@@ -355,6 +388,20 @@ class RLMEngine:
 
         conversation = model.create_conversation(self.system_prompt, initial_message)
 
+        loop_metrics: dict[str, Any] = {
+            "steps": 0,
+            "model_turns": 0,
+            "tool_calls": 0,
+            "phase_counts": {"investigate": 0, "build": 0, "iterate": 0, "finalize": 0},
+            "recon_streak": 0,
+            "max_recon_streak": 0,
+            "guardrail_warnings": 0,
+            "final_rejections": 0,
+            "last_guardrail_streak": 0,
+        }
+
+        self.last_loop_metrics = loop_metrics
+
         if replay_logger and replay_logger._seq == 0:
             replay_logger.write_header(
                 provider=type(model).__name__,
@@ -369,9 +416,11 @@ class RLMEngine:
         for step in range(1, self.config.max_steps_per_call + 1):
             if self._cancel.is_set():
                 self._emit(f"[d{depth}] cancelled by user", on_event)
+                self.last_loop_metrics = loop_metrics
                 return "Task cancelled."
             if deadline and time.monotonic() > deadline:
                 self._emit(f"[d{depth}] wall-clock limit reached", on_event)
+                self.last_loop_metrics = loop_metrics
                 return "Time limit exceeded. Try a more focused objective."
             self._emit(f"[d{depth}/s{step}] calling model...", on_event)
             t0 = time.monotonic()
@@ -383,6 +432,7 @@ class RLMEngine:
                 while True:
                     if self._cancel.is_set():
                         self._emit(f"[d{depth}] cancelled by user", on_event)
+                        self.last_loop_metrics = loop_metrics
                         return "Task cancelled."
                     try:
                         turn = model.complete(conversation)
@@ -390,6 +440,7 @@ class RLMEngine:
                     except RateLimitError as exc:
                         if rate_limit_retries >= self.config.rate_limit_max_retries:
                             self._emit(f"[d{depth}/s{step}] model error: {exc}", on_event)
+                            self.last_loop_metrics = loop_metrics
                             return f"Model error at depth {depth}, step {step}: {exc}"
                         rate_limit_retries += 1
                         delay: float | None = None
@@ -404,6 +455,7 @@ class RLMEngine:
                         delay = min(delay, self.config.rate_limit_backoff_max_sec)
                         if deadline and (time.monotonic() + delay) > deadline:
                             self._emit(f"[d{depth}] wall-clock limit reached", on_event)
+                            self.last_loop_metrics = loop_metrics
                             return "Time limit exceeded. Try a more focused objective."
                         provider_code = f" ({exc.provider_code})" if exc.provider_code is not None else ""
                         self._emit(
@@ -415,11 +467,14 @@ class RLMEngine:
                             time.sleep(delay)
             except ModelError as exc:
                 self._emit(f"[d{depth}/s{step}] model error: {exc}", on_event)
+                self.last_loop_metrics = loop_metrics
                 return f"Model error at depth {depth}, step {step}: {exc}"
             finally:
                 if hasattr(model, "on_content_delta"):
                     model.on_content_delta = None
             elapsed = time.monotonic() - t0
+            loop_metrics["steps"] = step
+            loop_metrics["model_turns"] += 1
 
             if replay_logger:
                 try:
@@ -469,6 +524,7 @@ class RLMEngine:
                             "output_tokens": turn.output_tokens,
                             "elapsed_sec": round(elapsed, 2),
                             "is_final": False,
+                            "phase": "model",
                         }
                     )
                 except Exception:
@@ -476,11 +532,30 @@ class RLMEngine:
 
             # No tool calls + text present = final answer
             if not turn.tool_calls and turn.text:
+                if self._is_meta_final_text(turn.text):
+                    loop_metrics["final_rejections"] += 1
+                    self._emit(
+                        f"[d{depth}/s{step}] rejected meta final-answer text; requesting concrete completion",
+                        on_event,
+                    )
+                    rejection_result = ToolResult(
+                        tool_call_id="meta-final-reject",
+                        name="system",
+                        content=(
+                            "Final-answer candidate rejected: response is meta/process text. "
+                            "Provide a concrete completion summary (what was produced/changed) "
+                            "instead of describing what you will do next."
+                        ),
+                    )
+                    model.append_tool_results(conversation, [rejection_result])
+                    continue
+                loop_metrics["phase_counts"]["finalize"] += 1
                 preview = turn.text[:200] + "..." if len(turn.text) > 200 else turn.text
                 self._emit(
                     f"[d{depth}/s{step}] final answer ({len(turn.text)} chars, {elapsed:.1f}s): {preview}",
                     on_event,
                 )
+                self.last_loop_metrics = loop_metrics
                 if on_step:
                     try:
                         on_step(
@@ -491,6 +566,8 @@ class RLMEngine:
                                 "action": {"name": "final", "arguments": {"text": turn.text}},
                                 "observation": turn.text,
                                 "is_final": True,
+                                "phase": "finalize",
+                                "loop_metrics": dict(loop_metrics),
                             }
                         )
                     except Exception:
@@ -510,6 +587,21 @@ class RLMEngine:
 
             # Log tool calls from model
             tc_names = [tc.name for tc in turn.tool_calls]
+            loop_metrics["tool_calls"] += len(tc_names)
+            has_recon = any(name in _RECON_TOOL_NAMES for name in tc_names)
+            has_artifact = any(name in _ARTIFACT_TOOL_NAMES for name in tc_names)
+            if has_recon and not has_artifact and all(name in _RECON_TOOL_NAMES for name in tc_names):
+                loop_metrics["recon_streak"] += 1
+                loop_metrics["phase_counts"]["investigate"] += 1
+            elif has_artifact:
+                loop_metrics["recon_streak"] = 0
+                loop_metrics["phase_counts"]["build"] += 1
+            else:
+                loop_metrics["recon_streak"] = 0
+                loop_metrics["phase_counts"]["iterate"] += 1
+            loop_metrics["max_recon_streak"] = max(
+                int(loop_metrics["max_recon_streak"]), int(loop_metrics["recon_streak"])
+            )
             self._emit(
                 f"[d{depth}/s{step}] model returned {len(turn.tool_calls)} tool call(s) ({elapsed:.1f}s): {', '.join(tc_names)}",
                 on_event,
@@ -618,6 +710,26 @@ class RLMEngine:
                         image=rl.image,
                     )
 
+            if (
+                final_answer is None
+                and results
+                and int(loop_metrics["recon_streak"]) >= 3
+                and not has_artifact
+                and int(loop_metrics.get("last_guardrail_streak", 0)) != int(loop_metrics["recon_streak"])
+            ):
+                loop_metrics["guardrail_warnings"] += 1
+                loop_metrics["last_guardrail_streak"] = int(loop_metrics["recon_streak"])
+                soft_warning = ToolResult(
+                    "recon-guardrail",
+                    "system",
+                    (
+                        "Soft guardrail: you've spent multiple consecutive steps in read/list/search mode "
+                        "without producing artifacts. Move to implementation now (edit files, run targeted "
+                        "validation, and return concrete outputs)."
+                    ),
+                )
+                results.append(soft_warning)
+
             # Plan injection — find newest *.plan.md in session dir, append to last result
             if self.session_dir is not None and results and final_answer is None:
                 try:
@@ -650,11 +762,13 @@ class RLMEngine:
 
             if final_answer is not None:
                 self._emit(f"[d{depth}] completed in {step} step(s)", on_event)
+                self.last_loop_metrics = loop_metrics
                 return final_answer
 
             for r in results:
                 context.add(f"[depth {depth} step {step}]\n{r.content}")
 
+        self.last_loop_metrics = loop_metrics
         return (
             f"Step budget exhausted at depth {depth} for objective: {objective}\n"
             "Please try with a more specific task, higher step budget, or deeper recursion."
