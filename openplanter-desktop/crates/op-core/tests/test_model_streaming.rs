@@ -1412,7 +1412,7 @@ async fn test_solve_rejects_meta_final_until_concrete_completion() {
 #[tokio::test]
 async fn test_solve_allows_structural_meta_for_plan_objectives() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{solve, SolveEmitter};
+    use op_core::engine::{SolveEmitter, solve};
     use op_core::events::{LoopMetrics, StepEvent};
 
     let addr = start_stateful_mock_server(vec![ANTHROPIC_SSE_META_FINAL]).await;
@@ -1477,7 +1477,13 @@ async fn test_solve_allows_structural_meta_for_plan_objectives() {
     };
 
     let cancel = CancellationToken::new();
-    solve("Write a plan for finishing the task", &cfg, &emitter, cancel).await;
+    solve(
+        "Write a plan for finishing the task",
+        &cfg,
+        &emitter,
+        cancel,
+    )
+    .await;
 
     let recorded = events.lock().unwrap().clone();
     assert!(
@@ -1505,7 +1511,7 @@ async fn test_solve_allows_structural_meta_for_plan_objectives() {
 #[tokio::test]
 async fn test_solve_rejects_process_meta_even_for_plan_objectives() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{solve, SolveEmitter};
+    use op_core::engine::{SolveEmitter, solve};
     use op_core::events::{LoopMetrics, StepEvent};
 
     let addr = start_stateful_mock_server(vec![
@@ -1574,7 +1580,13 @@ async fn test_solve_rejects_process_meta_even_for_plan_objectives() {
     };
 
     let cancel = CancellationToken::new();
-    solve("Write a plan for finishing the task", &cfg, &emitter, cancel).await;
+    solve(
+        "Write a plan for finishing the task",
+        &cfg,
+        &emitter,
+        cancel,
+    )
+    .await;
 
     let recorded = events.lock().unwrap().clone();
     assert!(

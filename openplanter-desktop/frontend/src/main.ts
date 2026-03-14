@@ -118,9 +118,7 @@ async function init() {
     }));
 
     // Dispatch to ChatPane for rich step summary rendering
-    window.dispatchEvent(
-      new CustomEvent("agent-step", { detail: event })
-    );
+    window.dispatchEvent(new CustomEvent("agent-step", { detail: event }));
   });
 
   await onAgentDelta((event) => {
@@ -179,24 +177,10 @@ async function init() {
     window.dispatchEvent(detail);
   });
 
-  await onCuratorUpdate((event) => {
-    appState.update((s) => ({
-      ...s,
-      messages: [
-        ...s.messages,
-        {
-          id: crypto.randomUUID(),
-          role: "system" as const,
-          content: `[Wiki Curator] ${event.summary}`,
-          timestamp: Date.now(),
-        },
-      ],
-    }));
-
+  await onCuratorUpdate(() => {
     // Notify graph pane to refresh with curator's wiki changes
     window.dispatchEvent(new CustomEvent("curator-done"));
   });
-
 
   await onLoopHealth((event) => {
     appState.update((s) => ({
@@ -222,7 +206,7 @@ function processQueue() {
     appState.update((s) => ({ ...s, inputQueue: rest }));
     // Dispatch queued-submit event for InputBar to pick up
     window.dispatchEvent(
-      new CustomEvent("queued-submit", { detail: { text: next } })
+      new CustomEvent("queued-submit", { detail: { text: next } }),
     );
   }
 }

@@ -27,7 +27,7 @@ The desktop app (`openplanter-desktop/`) is a Tauri 2 application with a three-p
 - **Live knowledge graph** — Entities and connections render in real time as the agent works. Switch between force-directed, hierarchical, and circular layouts. Search and filter by category.
 - **Wiki source drawer** — Click any source node to read the full markdown document in a slide-out panel. Internal wiki links navigate between documents and focus the corresponding graph node.
 - **Session persistence** — Investigations are saved automatically. Resume previous sessions or start new ones from the sidebar.
-- **Background wiki curator** — A lightweight agent runs in the background to keep wiki documents consistent and cross-linked.
+- **Checkpointed wiki curator synthesizer** — A focused synthesizer runs at explicit loop phase boundaries and projects typed state deltas into concise, provenance-aware wiki updates.
 - **Multi-provider support** — Switch between OpenAI, Anthropic, OpenRouter, Cerebras, and Ollama (local) from the sidebar.
 
 ### Building from Source

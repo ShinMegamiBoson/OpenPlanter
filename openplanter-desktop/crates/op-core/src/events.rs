@@ -99,7 +99,7 @@ pub struct ErrorEvent {
     pub message: String,
 }
 
-/// Background wiki curator completed an update.
+/// Checkpointed wiki curator completed an update.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CuratorUpdateEvent {
     pub summary: String,

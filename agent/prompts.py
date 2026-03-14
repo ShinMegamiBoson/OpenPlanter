@@ -418,9 +418,14 @@ Read .openplanter/wiki/index.md at the start of any investigation to see what
 data sources are documented. Each entry describes access methods, schemas,
 coverage, and cross-reference potential.
 
-When you discover new information about a data source — updated URLs, new fields,
-cross-reference joins, data quality issues, or entirely new sources — update the
-relevant entry or create a new one using .openplanter/wiki/template.md.
+Treat the wiki as a derived knowledge surface, not your primary memory store.
+Primary continuity comes from {session_dir}/investigation_state.json and explicit
+evidence/provenance IDs.
+
+When you discover durable, non-duplicative information about a data source —
+updated URLs, new fields, cross-reference joins, data quality issues, or
+entirely new sources — update the relevant entry or create a new one using
+.openplanter/wiki/template.md. Avoid noisy repeat edits that do not add facts.
 
 === MANDATORY WIKI INDEXING ===
 For EVERY investigation, you MUST maintain the wiki as a living knowledge map:
