@@ -1318,7 +1318,10 @@ async fn test_solve_flushes_final_curator_checkpoint_before_complete() {
 
     impl SolveEmitter for TestEmitter {
         fn emit_trace(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev::Trace(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Trace(message.to_string()));
         }
 
         fn emit_delta(&self, _: DeltaEvent) {}
@@ -1326,11 +1329,17 @@ async fn test_solve_flushes_final_curator_checkpoint_before_complete() {
         fn emit_step(&self, _: op_core::events::StepEvent) {}
 
         fn emit_complete(&self, result: &str, _: Option<LoopMetrics>) {
-            self.events.lock().unwrap().push(Ev::Complete(result.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Complete(result.to_string()));
         }
 
         fn emit_error(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev::Error(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Error(message.to_string()));
         }
     }
 
@@ -1401,7 +1410,10 @@ async fn test_solve_flushes_cancelled_checkpoint_before_error() {
 
     impl SolveEmitter for TestEmitter {
         fn emit_trace(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev::Trace(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Trace(message.to_string()));
         }
 
         fn emit_delta(&self, _: DeltaEvent) {}
@@ -1415,7 +1427,10 @@ async fn test_solve_flushes_cancelled_checkpoint_before_error() {
         fn emit_complete(&self, _: &str, _: Option<LoopMetrics>) {}
 
         fn emit_error(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev::Error(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Error(message.to_string()));
         }
     }
 
@@ -1496,7 +1511,10 @@ async fn test_solve_flushes_model_error_checkpoint_before_error() {
 
     impl SolveEmitter for TestEmitter {
         fn emit_trace(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev::Trace(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Trace(message.to_string()));
         }
 
         fn emit_delta(&self, _: DeltaEvent) {}
@@ -1506,7 +1524,10 @@ async fn test_solve_flushes_model_error_checkpoint_before_error() {
         fn emit_complete(&self, _: &str, _: Option<LoopMetrics>) {}
 
         fn emit_error(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev::Error(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Error(message.to_string()));
         }
     }
 
@@ -1585,7 +1606,10 @@ async fn test_solve_flushes_tool_loop_cancel_checkpoint_before_error() {
                     self.cancel.cancel();
                 }
             }
-            self.events.lock().unwrap().push(Ev::Trace(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Trace(message.to_string()));
         }
 
         fn emit_delta(&self, _: DeltaEvent) {}
@@ -1595,7 +1619,10 @@ async fn test_solve_flushes_tool_loop_cancel_checkpoint_before_error() {
         fn emit_complete(&self, _: &str, _: Option<LoopMetrics>) {}
 
         fn emit_error(&self, message: &str) {
-            self.events.lock().unwrap().push(Ev::Error(message.to_string()));
+            self.events
+                .lock()
+                .unwrap()
+                .push(Ev::Error(message.to_string()));
         }
     }
 
