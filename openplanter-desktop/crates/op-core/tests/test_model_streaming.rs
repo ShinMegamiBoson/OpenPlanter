@@ -1073,13 +1073,20 @@ event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
 
 /// Start a stateful mock server that returns different SSE bodies on successive calls.
 async fn start_stateful_mock_server(responses: Vec<&'static str>) -> SocketAddr {
+    start_stateful_mock_server_with_counter(responses).await.0
+}
+
+async fn start_stateful_mock_server_with_counter(
+    responses: Vec<&'static str>,
+) -> (SocketAddr, Arc<Mutex<usize>>) {
     let counter = Arc::new(Mutex::new(0usize));
+    let counter_for_app = counter.clone();
     let responses = Arc::new(responses);
 
     let app = Router::new().route(
         "/{*path}",
         post(move || {
-            let counter = counter.clone();
+            let counter = counter_for_app.clone();
             let responses = responses.clone();
             async move {
                 let mut idx = counter.lock().unwrap();
@@ -1104,7 +1111,7 @@ async fn start_stateful_mock_server(responses: Vec<&'static str>) -> SocketAddr 
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    addr
+    (addr, counter)
 }
 
 #[tokio::test]
@@ -1393,8 +1400,11 @@ async fn test_solve_flushes_cancelled_checkpoint_before_error() {
     use op_core::engine::{SolveEmitter, solve};
     use op_core::events::{LoopMetrics, StepEvent};
 
-    let addr =
-        start_stateful_mock_server(vec![ANTHROPIC_SSE_TOOL_LIST, ANTHROPIC_SSE_CURATOR_NOOP]).await;
+    let (addr, request_count) = start_stateful_mock_server_with_counter(vec![
+        ANTHROPIC_SSE_TOOL_LIST,
+        ANTHROPIC_SSE_CURATOR_NOOP,
+    ])
+    .await;
 
     #[derive(Debug, Clone)]
     #[allow(dead_code)]
@@ -1467,6 +1477,11 @@ async fn test_solve_flushes_cancelled_checkpoint_before_error() {
     assert!(
         cancelled_trace < error,
         "cancelled checkpoint should flush before error: {recorded:?}"
+    );
+    assert_eq!(
+        *request_count.lock().unwrap(),
+        1,
+        "cancelled solve should not issue a curator model request"
     );
 }
 
@@ -1577,7 +1592,7 @@ async fn test_solve_flushes_tool_loop_cancel_checkpoint_before_error() {
     use op_core::engine::{SolveEmitter, solve};
     use op_core::events::LoopMetrics;
 
-    let addr = start_stateful_mock_server(vec![
+    let (addr, request_count) = start_stateful_mock_server_with_counter(vec![
         ANTHROPIC_SSE_TOOL_LIST,
         ANTHROPIC_SSE_TWO_TOOL_LIST,
         ANTHROPIC_SSE_CURATOR_NOOP,
@@ -1660,6 +1675,11 @@ async fn test_solve_flushes_tool_loop_cancel_checkpoint_before_error() {
     assert!(
         cancelled_trace < error,
         "tool-loop cancel checkpoint should flush before error: {recorded:?}"
+    );
+    assert_eq!(
+        *request_count.lock().unwrap(),
+        2,
+        "tool-loop cancellation should not issue a curator model request"
     );
 }
 

@@ -106,11 +106,11 @@ async fn flush_pending_curator_checkpoint(
     pending_deltas: &mut Vec<CuratorStateDelta>,
     boundary: &str,
     config: &AgentConfig,
+    cancel: &CancellationToken,
     emitter: &dyn SolveEmitter,
 ) {
     if let Some(checkpoint) = take_pending_curator_checkpoint(pending_deltas, boundary) {
-        let checkpoint_cancel = CancellationToken::new();
-        emit_curator_checkpoint(checkpoint, config, &checkpoint_cancel, emitter).await;
+        emit_curator_checkpoint(checkpoint, config, cancel, emitter).await;
     }
 }
 
@@ -593,6 +593,7 @@ pub async fn solve_with_initial_context(
                 &mut pending_curator_deltas,
                 "cancelled",
                 config,
+                &cancel,
                 emitter,
             )
             .await;
@@ -630,6 +631,7 @@ pub async fn solve_with_initial_context(
                         "model_error"
                     },
                     config,
+                    &cancel,
                     emitter,
                 )
                 .await;
@@ -698,6 +700,7 @@ pub async fn solve_with_initial_context(
                 &mut pending_curator_deltas,
                 "finalize",
                 config,
+                &cancel,
                 emitter,
             )
             .await;
@@ -717,6 +720,7 @@ pub async fn solve_with_initial_context(
                     &mut pending_curator_deltas,
                     "cancelled",
                     config,
+                    &cancel,
                     emitter,
                 )
                 .await;
@@ -823,6 +827,7 @@ pub async fn solve_with_initial_context(
         &mut pending_curator_deltas,
         "budget_exhausted",
         config,
+        &cancel,
         emitter,
     )
     .await;
