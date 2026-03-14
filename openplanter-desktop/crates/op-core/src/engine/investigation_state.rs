@@ -400,18 +400,8 @@ pub fn build_question_reasoning_packet(
             .and_then(Value::as_str)
             .unwrap_or("unresolved")
             .to_ascii_lowercase();
-        let support_ids = limit_ids(
-            claim
-                .get("support_evidence_ids")
-                .or_else(|| claim.get("evidence_ids")),
-            max_evidence_per_item,
-        );
-        let contradiction_ids = limit_ids(
-            claim
-                .get("contradiction_evidence_ids")
-                .or_else(|| claim.get("contradict_evidence_ids")),
-            max_evidence_per_item,
-        );
+        let support_ids = claim_support_evidence_ids(claim, max_evidence_per_item);
+        let contradiction_ids = claim_contradiction_evidence_ids(claim, max_evidence_per_item);
         let has_contradictions = !contradiction_ids.is_empty();
         let confidence = claim
             .get("confidence")
@@ -650,7 +640,7 @@ fn build_candidate_actions(
             continue;
         };
         let claim_status = claim_status(claim);
-        if claim_status == "retracted" {
+        if matches!(claim_status.as_str(), "retracted" | "resolved" | "closed") {
             continue;
         }
         let confidence = claim_confidence(claim);
@@ -861,22 +851,39 @@ fn claim_evidence_ids(
         return Vec::new();
     };
     dedupe_strings(
-        limit_ids(
-            claim
-                .get("support_evidence_ids")
-                .or_else(|| claim.get("evidence_support_ids"))
-                .or_else(|| claim.get("evidence_ids")),
-            max_evidence_per_item,
-        )
-        .into_iter()
-        .chain(limit_ids(
-            claim
-                .get("contradiction_evidence_ids")
-                .or_else(|| claim.get("evidence_contra_ids"))
-                .or_else(|| claim.get("contradict_evidence_ids")),
-            max_evidence_per_item,
-        ))
-        .collect(),
+        claim_support_evidence_ids(claim, max_evidence_per_item)
+            .into_iter()
+            .chain(claim_contradiction_evidence_ids(
+                claim,
+                max_evidence_per_item,
+            ))
+            .collect(),
+    )
+}
+
+fn claim_support_evidence_ids(
+    claim: &Map<String, Value>,
+    max_evidence_per_item: usize,
+) -> Vec<String> {
+    limit_ids(
+        claim
+            .get("support_evidence_ids")
+            .or_else(|| claim.get("evidence_support_ids"))
+            .or_else(|| claim.get("evidence_ids")),
+        max_evidence_per_item,
+    )
+}
+
+fn claim_contradiction_evidence_ids(
+    claim: &Map<String, Value>,
+    max_evidence_per_item: usize,
+) -> Vec<String> {
+    limit_ids(
+        claim
+            .get("contradiction_evidence_ids")
+            .or_else(|| claim.get("evidence_contra_ids"))
+            .or_else(|| claim.get("contradict_evidence_ids")),
+        max_evidence_per_item,
     )
 }
 
@@ -967,20 +974,8 @@ fn build_claim_gap_refs(
     let Some(claim) = state.claims.get(claim_id).and_then(Value::as_object) else {
         return Vec::new();
     };
-    let support_ids = limit_ids(
-        claim
-            .get("support_evidence_ids")
-            .or_else(|| claim.get("evidence_support_ids"))
-            .or_else(|| claim.get("evidence_ids")),
-        max_evidence_per_item,
-    );
-    let contradiction_ids = limit_ids(
-        claim
-            .get("contradiction_evidence_ids")
-            .or_else(|| claim.get("evidence_contra_ids"))
-            .or_else(|| claim.get("contradict_evidence_ids")),
-        max_evidence_per_item,
-    );
+    let support_ids = claim_support_evidence_ids(claim, max_evidence_per_item);
+    let contradiction_ids = claim_contradiction_evidence_ids(claim, max_evidence_per_item);
     let mut refs = Vec::new();
     if evidence_ids.is_empty() {
         refs.push(serde_json::json!({
@@ -997,7 +992,7 @@ fn build_claim_gap_refs(
     }
     if matches!(
         claim_status.to_ascii_lowercase().as_str(),
-        "unresolved" | "contested"
+        "unresolved" | "contested" | "proposed"
     ) && (!support_ids.is_empty() || !contradiction_ids.is_empty())
         && (support_ids.is_empty() || contradiction_ids.is_empty())
     {
@@ -1771,6 +1766,186 @@ mod tests {
                     .iter()
                     .any(|item| item.get("object_type")
                         == Some(&Value::String("entity".to_string()))))
+        );
+    }
+
+    #[test]
+    fn reasoning_packet_uses_canonical_claim_evidence_aliases_in_findings_and_sources() {
+        let mut state = InvestigationState::new("sid");
+        state.questions.insert(
+            "q_alias".to_string(),
+            serde_json::json!({
+                "id": "q_alias",
+                "question_text": "What evidence supports the alias-backed claim?",
+                "status": "open",
+                "priority": "high",
+                "claim_ids": ["cl_alias"],
+                "evidence_ids": [],
+            }),
+        );
+        state.claims.insert(
+            "cl_alias".to_string(),
+            serde_json::json!({
+                "id": "cl_alias",
+                "claim_text": "Alias-backed claim",
+                "status": "contested",
+                "evidence_support_ids": ["ev_support_alias"],
+                "evidence_contra_ids": ["ev_contra_alias"],
+                "confidence": 0.4,
+            }),
+        );
+        state.evidence.insert(
+            "ev_support_alias".to_string(),
+            serde_json::json!({
+                "evidence_type": "doc",
+                "source_uri": "https://support.test",
+            }),
+        );
+        state.evidence.insert(
+            "ev_contra_alias".to_string(),
+            serde_json::json!({
+                "evidence_type": "doc",
+                "source_uri": "https://contra.test",
+            }),
+        );
+
+        let packet = build_question_reasoning_packet(&state, 8, 6);
+
+        assert_eq!(
+            packet["findings"]["contested"][0]["support_evidence_ids"],
+            serde_json::json!(["ev_support_alias"])
+        );
+        assert_eq!(
+            packet["findings"]["contested"][0]["contradiction_evidence_ids"],
+            serde_json::json!(["ev_contra_alias"])
+        );
+        assert_eq!(
+            packet["contradictions"][0]["support_evidence_ids"],
+            serde_json::json!(["ev_support_alias"])
+        );
+        assert_eq!(
+            packet["contradictions"][0]["contradiction_evidence_ids"],
+            serde_json::json!(["ev_contra_alias"])
+        );
+        assert!(packet["evidence_index"].get("ev_support_alias").is_some());
+        assert!(packet["evidence_index"].get("ev_contra_alias").is_some());
+
+        let actions = packet["candidate_actions"]
+            .as_array()
+            .expect("candidate actions");
+        let question_action = actions
+            .iter()
+            .find(|action| action.get("id") == Some(&Value::String("ca_q_q_alias".to_string())))
+            .expect("question action");
+        let claim_action = actions
+            .iter()
+            .find(|action| action.get("id") == Some(&Value::String("ca_c_cl_alias".to_string())))
+            .expect("claim action");
+
+        assert_eq!(
+            question_action["required_sources"],
+            serde_json::json!(["https://contra.test", "https://support.test"])
+        );
+        assert_eq!(
+            claim_action["required_sources"],
+            serde_json::json!(["https://contra.test", "https://support.test"])
+        );
+    }
+
+    #[test]
+    fn candidate_actions_skip_resolved_and_closed_claims() {
+        let mut state = InvestigationState::new("sid");
+        state.claims.insert(
+            "cl_resolved".to_string(),
+            serde_json::json!({
+                "id": "cl_resolved",
+                "claim_text": "Resolved claim",
+                "status": "resolved",
+                "confidence": 0.2,
+                "support_evidence_ids": ["ev_resolved"],
+            }),
+        );
+        state.claims.insert(
+            "cl_closed".to_string(),
+            serde_json::json!({
+                "id": "cl_closed",
+                "claim_text": "Closed claim",
+                "status": "closed",
+                "support_evidence_ids": ["ev_closed"],
+            }),
+        );
+        state.claims.insert(
+            "cl_retracted".to_string(),
+            serde_json::json!({
+                "id": "cl_retracted",
+                "claim_text": "Retracted claim",
+                "status": "retracted",
+                "confidence": 0.1,
+            }),
+        );
+        state.claims.insert(
+            "cl_control".to_string(),
+            serde_json::json!({
+                "id": "cl_control",
+                "claim_text": "Low-confidence supported claim",
+                "status": "supported",
+                "confidence": 0.2,
+                "support_evidence_ids": ["ev_control"],
+            }),
+        );
+
+        let packet = build_question_reasoning_packet(&state, 8, 6);
+        let ids = packet["candidate_actions"]
+            .as_array()
+            .expect("candidate actions")
+            .iter()
+            .filter_map(|action| action.get("id").and_then(Value::as_str))
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
+        assert!(ids.contains(&"ca_c_cl_control".to_string()));
+        assert!(!ids.contains(&"ca_c_cl_resolved".to_string()));
+        assert!(!ids.contains(&"ca_c_cl_closed".to_string()));
+        assert!(!ids.contains(&"ca_c_cl_retracted".to_string()));
+    }
+
+    #[test]
+    fn proposed_claims_emit_missing_counter_evidence_gap() {
+        let mut state = InvestigationState::new("sid");
+        state.claims.insert(
+            "cl_proposed".to_string(),
+            serde_json::json!({
+                "id": "cl_proposed",
+                "claim_text": "Proposed claim",
+                "status": "proposed",
+                "support_evidence_ids": ["ev_proposed"],
+                "confidence": 0.2,
+            }),
+        );
+        state.evidence.insert(
+            "ev_proposed".to_string(),
+            serde_json::json!({
+                "evidence_type": "doc",
+                "source_uri": "https://proposed.test",
+            }),
+        );
+
+        let packet = build_question_reasoning_packet(&state, 8, 6);
+        let claim_action = packet["candidate_actions"]
+            .as_array()
+            .and_then(|items| {
+                items.iter().find(|item| {
+                    item.get("id") == Some(&Value::String("ca_c_cl_proposed".to_string()))
+                })
+            })
+            .expect("proposed claim action");
+
+        assert!(
+            claim_action["evidence_gap_refs"]
+                .as_array()
+                .is_some_and(|refs| refs.iter().any(|gap| {
+                    gap.get("kind") == Some(&Value::String("missing_counter_evidence".to_string()))
+                }))
         );
     }
 
