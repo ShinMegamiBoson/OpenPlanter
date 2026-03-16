@@ -1,6 +1,5 @@
 use crate::state::AppState;
 use op_core::config::{
-    normalize_chrome_mcp_browser_url, normalize_chrome_mcp_channel,
     normalize_web_search_provider, normalize_zai_plan, resolve_zai_base_url,
 };
 use op_core::credentials::credentials_from_env;
@@ -9,26 +8,13 @@ use op_core::settings::{PersistentSettings, SettingsStore};
 use std::collections::HashMap;
 use tauri::State;
 
-async fn make_config_view(
-    cfg: &op_core::config::AgentConfig,
-    session_id: Option<String>,
-    state: &AppState,
-) -> ConfigView {
-    let chrome_status = state.chrome_mcp_status(cfg).await;
+fn make_config_view(cfg: &op_core::config::AgentConfig, session_id: Option<String>) -> ConfigView {
     ConfigView {
         provider: cfg.provider.clone(),
         model: cfg.model.clone(),
         reasoning_effort: cfg.reasoning_effort.clone(),
         zai_plan: cfg.zai_plan.clone(),
         web_search_provider: cfg.web_search_provider.clone(),
-        chrome_mcp_enabled: cfg.chrome_mcp_enabled,
-        chrome_mcp_auto_connect: cfg.chrome_mcp_auto_connect,
-        chrome_mcp_browser_url: cfg.chrome_mcp_browser_url.clone(),
-        chrome_mcp_channel: cfg.chrome_mcp_channel.clone(),
-        chrome_mcp_connect_timeout_sec: cfg.chrome_mcp_connect_timeout_sec,
-        chrome_mcp_rpc_timeout_sec: cfg.chrome_mcp_rpc_timeout_sec,
-        chrome_mcp_status: chrome_status.status,
-        chrome_mcp_status_detail: chrome_status.detail,
         workspace: cfg.workspace.display().to_string(),
         session_id,
         recursive: cfg.recursive,
@@ -67,29 +53,15 @@ fn merge_settings(
         web_search_provider: incoming
             .web_search_provider
             .or(existing.web_search_provider),
-        chrome_mcp_enabled: incoming.chrome_mcp_enabled.or(existing.chrome_mcp_enabled),
-        chrome_mcp_auto_connect: incoming
-            .chrome_mcp_auto_connect
-            .or(existing.chrome_mcp_auto_connect),
-        chrome_mcp_browser_url: incoming
-            .chrome_mcp_browser_url
-            .or(existing.chrome_mcp_browser_url),
-        chrome_mcp_channel: incoming.chrome_mcp_channel.or(existing.chrome_mcp_channel),
-        chrome_mcp_connect_timeout_sec: incoming
-            .chrome_mcp_connect_timeout_sec
-            .or(existing.chrome_mcp_connect_timeout_sec),
-        chrome_mcp_rpc_timeout_sec: incoming
-            .chrome_mcp_rpc_timeout_sec
-            .or(existing.chrome_mcp_rpc_timeout_sec),
     }
 }
 
 /// Get the current configuration.
 #[tauri::command]
 pub async fn get_config(state: State<'_, AppState>) -> Result<ConfigView, String> {
-    let cfg = state.config.lock().await.clone();
-    let session_id = state.session_id.lock().await.clone();
-    Ok(make_config_view(&cfg, session_id, &state).await)
+    let cfg = state.config.lock().await;
+    let session_id = state.session_id.lock().await;
+    Ok(make_config_view(&cfg, session_id.clone()))
 }
 
 /// Update configuration fields.
@@ -123,29 +95,8 @@ pub async fn update_config(
     if let Some(provider) = partial.web_search_provider {
         cfg.web_search_provider = normalize_web_search_provider(Some(&provider));
     }
-    if let Some(enabled) = partial.chrome_mcp_enabled {
-        cfg.chrome_mcp_enabled = enabled;
-    }
-    if let Some(auto_connect) = partial.chrome_mcp_auto_connect {
-        cfg.chrome_mcp_auto_connect = auto_connect;
-    }
-    if let Some(browser_url) = partial.chrome_mcp_browser_url {
-        cfg.chrome_mcp_browser_url = normalize_chrome_mcp_browser_url(Some(&browser_url));
-    }
-    if let Some(channel) = partial.chrome_mcp_channel {
-        cfg.chrome_mcp_channel = normalize_chrome_mcp_channel(Some(&channel));
-    }
-    if let Some(timeout) = partial.chrome_mcp_connect_timeout_sec {
-        cfg.chrome_mcp_connect_timeout_sec = timeout.max(1);
-    }
-    if let Some(timeout) = partial.chrome_mcp_rpc_timeout_sec {
-        cfg.chrome_mcp_rpc_timeout_sec = timeout.max(1);
-    }
-    let cfg_snapshot = cfg.clone();
-    drop(cfg);
-    state.sync_chrome_mcp_config(&cfg_snapshot).await;
-    let session_id = state.session_id.lock().await.clone();
-    Ok(make_config_view(&cfg_snapshot, session_id, &state).await)
+    let session_id = state.session_id.lock().await;
+    Ok(make_config_view(&cfg, session_id.clone()))
 }
 
 /// Known models per provider for listing.

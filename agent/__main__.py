@@ -109,40 +109,6 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["exa", "firecrawl", "brave", "tavily"],
         help="Web search backend provider.",
     )
-    parser.add_argument(
-        "--chrome-mcp",
-        dest="chrome_mcp_enabled",
-        action="store_true",
-        help="Enable native Chrome DevTools MCP tools for this run.",
-    )
-    parser.add_argument(
-        "--no-chrome-mcp",
-        dest="chrome_mcp_enabled",
-        action="store_false",
-        help="Disable native Chrome DevTools MCP tools for this run.",
-    )
-    parser.add_argument(
-        "--chrome-auto-connect",
-        dest="chrome_auto_connect",
-        action="store_true",
-        help="Ask the Chrome DevTools MCP server to auto-connect to a running Chrome instance.",
-    )
-    parser.add_argument(
-        "--no-chrome-auto-connect",
-        dest="chrome_auto_connect",
-        action="store_false",
-        help="Disable Chrome MCP auto-connect and rely on --chrome-browser-url instead.",
-    )
-    parser.add_argument(
-        "--chrome-browser-url",
-        help="Remote debugging browser URL for Chrome DevTools MCP (preferred over auto-connect).",
-    )
-    parser.add_argument(
-        "--chrome-channel",
-        choices=["stable", "beta", "dev", "canary"],
-        help="Chrome channel to target when Chrome MCP auto-connect is used.",
-    )
-    parser.set_defaults(chrome_mcp_enabled=None, chrome_auto_connect=None)
     parser.add_argument("--voyage-api-key", help="Voyage API key override.")
     parser.add_argument(
         "--configure-keys",
@@ -450,16 +416,6 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
         cfg.web_search_provider = "exa"
     if args.reasoning_effort:
         cfg.reasoning_effort = None if args.reasoning_effort == "none" else args.reasoning_effort
-    if args.chrome_mcp_enabled is not None:
-        cfg.chrome_mcp_enabled = bool(args.chrome_mcp_enabled)
-    if args.chrome_auto_connect is not None:
-        cfg.chrome_mcp_auto_connect = bool(args.chrome_auto_connect)
-    if args.chrome_browser_url is not None:
-        cfg.chrome_mcp_browser_url = args.chrome_browser_url.strip() or None
-        if cfg.chrome_mcp_browser_url:
-            cfg.chrome_mcp_enabled = True
-    if args.chrome_channel:
-        cfg.chrome_mcp_channel = args.chrome_channel
     if args.recursive:
         cfg.recursive = True
     if args.acceptance_criteria:
@@ -553,40 +509,6 @@ def _apply_persistent_settings(
         and settings.default_reasoning_effort
     ):
         cfg.reasoning_effort = settings.default_reasoning_effort
-    if (
-        args.chrome_mcp_enabled is None
-        and os.getenv("OPENPLANTER_CHROME_MCP_ENABLED") is None
-        and settings.chrome_mcp_enabled is not None
-    ):
-        cfg.chrome_mcp_enabled = settings.chrome_mcp_enabled
-    if (
-        args.chrome_auto_connect is None
-        and os.getenv("OPENPLANTER_CHROME_MCP_AUTO_CONNECT") is None
-        and settings.chrome_mcp_auto_connect is not None
-    ):
-        cfg.chrome_mcp_auto_connect = settings.chrome_mcp_auto_connect
-    if (
-        args.chrome_browser_url is None
-        and os.getenv("OPENPLANTER_CHROME_MCP_BROWSER_URL") is None
-        and settings.chrome_mcp_browser_url
-    ):
-        cfg.chrome_mcp_browser_url = settings.chrome_mcp_browser_url
-    if (
-        args.chrome_channel is None
-        and os.getenv("OPENPLANTER_CHROME_MCP_CHANNEL") is None
-        and settings.chrome_mcp_channel
-    ):
-        cfg.chrome_mcp_channel = settings.chrome_mcp_channel
-    if (
-        os.getenv("OPENPLANTER_CHROME_MCP_CONNECT_TIMEOUT_SEC") is None
-        and settings.chrome_mcp_connect_timeout_sec is not None
-    ):
-        cfg.chrome_mcp_connect_timeout_sec = settings.chrome_mcp_connect_timeout_sec
-    if (
-        os.getenv("OPENPLANTER_CHROME_MCP_RPC_TIMEOUT_SEC") is None
-        and settings.chrome_mcp_rpc_timeout_sec is not None
-    ):
-        cfg.chrome_mcp_rpc_timeout_sec = settings.chrome_mcp_rpc_timeout_sec
 
     return settings
 
@@ -601,18 +523,6 @@ def _print_settings(settings: PersistentSettings) -> None:
     print(f"  default_model_cerebras: {settings.default_model_cerebras or '(unset)'}")
     print(f"  default_model_zai: {settings.default_model_zai or '(unset)'}")
     print(f"  default_model_ollama: {settings.default_model_ollama or '(unset)'}")
-    print(f"  chrome_mcp_enabled: {settings.chrome_mcp_enabled if settings.chrome_mcp_enabled is not None else '(unset)'}")
-    print(f"  chrome_mcp_auto_connect: {settings.chrome_mcp_auto_connect if settings.chrome_mcp_auto_connect is not None else '(unset)'}")
-    print(f"  chrome_mcp_browser_url: {settings.chrome_mcp_browser_url or '(unset)'}")
-    print(f"  chrome_mcp_channel: {settings.chrome_mcp_channel or '(unset)'}")
-    print(
-        "  chrome_mcp_connect_timeout_sec: "
-        f"{settings.chrome_mcp_connect_timeout_sec if settings.chrome_mcp_connect_timeout_sec is not None else '(unset)'}"
-    )
-    print(
-        "  chrome_mcp_rpc_timeout_sec: "
-        f"{settings.chrome_mcp_rpc_timeout_sec if settings.chrome_mcp_rpc_timeout_sec is not None else '(unset)'}"
-    )
 
 
 def _has_non_interactive_command(args: argparse.Namespace) -> bool:
@@ -755,7 +665,6 @@ def main() -> None:
 
     engine = build_engine(cfg)
     model_name = _get_model_display_name(engine)
-    chrome_status = engine.tools.chrome_mcp_status()
 
     try:
         runtime = SessionRuntime.bootstrap(
@@ -779,7 +688,6 @@ def main() -> None:
     if cfg.reasoning_effort:
         startup_info["Reasoning"] = cfg.reasoning_effort
     startup_info["Mode"] = "recursive" if cfg.recursive else "flat"
-    startup_info["ChromeMCP"] = f"{chrome_status.status}: {chrome_status.detail}"
     startup_info["Workspace"] = str(cfg.workspace)
     startup_info["WorkspaceSource"] = workspace_resolution.source
     if workspace_resolution.guardrail_action != "none":

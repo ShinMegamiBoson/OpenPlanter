@@ -48,13 +48,6 @@ const ZAI_PLANS: CompletionItem[] = [
   { value: "coding", description: "Use the Z.AI Coding Plan endpoint", children: SAVE_FLAG },
 ];
 
-const CHROME_CHANNELS: CompletionItem[] = [
-  { value: "stable", description: "Target Chrome Stable", children: SAVE_FLAG },
-  { value: "beta", description: "Target Chrome Beta", children: SAVE_FLAG },
-  { value: "dev", description: "Target Chrome Dev", children: SAVE_FLAG },
-  { value: "canary", description: "Target Chrome Canary", children: SAVE_FLAG },
-];
-
 export const COMMAND_COMPLETIONS: CompletionItem[] = [
   { value: "/help", description: "Show available commands" },
   { value: "/new", description: "Start a new session" },
@@ -84,32 +77,6 @@ export const COMMAND_COMPLETIONS: CompletionItem[] = [
     value: "/reasoning",
     description: "Set reasoning effort",
     children: REASONING_LEVELS,
-  },
-  {
-    value: "/chrome",
-    description: "Show or configure Chrome DevTools MCP",
-    children: [
-      { value: "status", description: "Show Chrome MCP status" },
-      { value: "on", description: "Enable Chrome MCP", children: SAVE_FLAG },
-      { value: "off", description: "Disable Chrome MCP", children: SAVE_FLAG },
-      { value: "auto", description: "Enable auto-connect mode", children: SAVE_FLAG },
-      {
-        value: "url",
-        description: "Set an explicit Chrome browser URL",
-        children: [
-          {
-            value: "<endpoint>",
-            description: "Remote debugging endpoint URL",
-            children: SAVE_FLAG,
-          },
-        ],
-      },
-      {
-        value: "channel",
-        description: "Set the Chrome release channel",
-        children: CHROME_CHANNELS,
-      },
-    ],
   },
   {
     value: "/init",

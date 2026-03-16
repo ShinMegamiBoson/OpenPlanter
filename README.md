@@ -50,8 +50,6 @@ cargo tauri build
 
 Requires: Rust stable, Node.js 20+, the Tauri CLI, and platform-specific Tauri dependencies ([see Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)).
 
-If you want the desktop app to control a live Chrome session through Chrome DevTools MCP, keep a local Node/npm install available at runtime. OpenPlanter shells out to `npx -y chrome-devtools-mcp@latest`; it does not bundle the server or launch Chrome for you.
-
 ## CLI Agent
 
 The Python CLI agent can be used independently of the desktop app.
@@ -77,8 +75,6 @@ Or run a single task headlessly:
 ```bash
 openplanter-agent --task "Cross-reference vendor payments against lobbying disclosures and flag overlaps" --workspace ./data
 ```
-
-Chrome DevTools MCP support in the CLI/TUI also uses local `npx`, so install Node.js 20+ if you want to enable Chrome tools there.
 
 ### Docker
 
@@ -223,53 +219,6 @@ The agent has access to 20 tools, organized around its investigation workflow:
 
 In **recursive mode** (the default), the agent spawns sub-agents via `subtask` and `execute` to parallelize entity resolution, cross-dataset linking, and evidence-chain construction across large investigations.
 
-When Chrome DevTools MCP is enabled, OpenPlanter discovers Chrome's published MCP tools at solve start and appends them natively to the built-in tool set for the main agent, recursive subtasks, and execute flows.
-
-## Chrome DevTools MCP
-
-OpenPlanter can attach to the official Chrome DevTools MCP server and reuse an active Chrome debugging session. The integration is native in both runtimes, but the server itself is still the upstream package started locally through `npx`.
-
-### Requirements
-
-- Node.js and npm available on your `PATH`
-- Chrome 144 or newer
-- Remote debugging enabled in Chrome at `chrome://inspect/#remote-debugging`
-
-### How OpenPlanter Connects
-
-- Auto-connect mode: OpenPlanter starts `chrome-devtools-mcp` with `--autoConnect` and reuses a running Chrome session after you approve Chrome's debugging prompt.
-- Browser URL mode: OpenPlanter passes `--browserUrl <endpoint>` to attach to an existing remote debugging endpoint. This takes precedence over auto-connect when configured.
-- Channel selection: `stable` is the default channel; you can switch to `beta`, `dev`, or `canary` when needed.
-
-If Chrome MCP cannot start because Node/npm is missing, Chrome remote debugging is disabled, or Chrome is not available, OpenPlanter keeps running with its built-in tools and reports Chrome MCP as `unavailable`.
-
-### Desktop Usage
-
-Use the desktop slash command:
-
-```text
-/chrome status
-/chrome on
-/chrome off
-/chrome auto --save
-/chrome url http://127.0.0.1:9222 --save
-/chrome channel beta --save
-```
-
-The sidebar and `/status` output both show the current Chrome MCP runtime state.
-
-### CLI Usage
-
-Use per-run flags:
-
-```bash
-openplanter-agent --chrome-mcp --chrome-auto-connect
-openplanter-agent --chrome-mcp --chrome-browser-url http://127.0.0.1:9222
-openplanter-agent --chrome-mcp --chrome-channel beta
-```
-
-The TUI also supports `/chrome status|on|off|auto|url <endpoint>|channel <stable|beta|dev|canary> [--save]`.
-
 ## CLI Reference
 
 ```
@@ -310,10 +259,6 @@ OPENPLANTER_WORKSPACE=workspace
 | `--model NAME` | Model name or `newest` to auto-select |
 | `--zai-plan PLAN` | Z.AI endpoint plan: `paygo` or `coding` |
 | `--reasoning-effort LEVEL` | `low`, `medium`, `high`, or `none` |
-| `--chrome-mcp` / `--no-chrome-mcp` | Enable or disable native Chrome DevTools MCP tools |
-| `--chrome-auto-connect` / `--no-chrome-auto-connect` | Use Chrome MCP auto-connect or require an explicit browser URL |
-| `--chrome-browser-url URL` | Attach Chrome MCP to an existing remote debugging browser URL |
-| `--chrome-channel CHANNEL` | Chrome release channel for auto-connect: `stable`, `beta`, `dev`, `canary` |
 | `--list-models` | Fetch available models from the provider API |
 
 ### Execution
@@ -337,7 +282,7 @@ OPENPLANTER_WORKSPACE=workspace
 
 ### Persistent Defaults
 
-Use `--default-model`, `--default-reasoning-effort`, Chrome MCP slash commands with `--save`, or per-provider variants like `--default-model-openai` to save workspace defaults to `.openplanter/settings.json`. View them with `--show-settings`.
+Use `--default-model`, `--default-reasoning-effort`, or per-provider variants like `--default-model-openai` to save workspace defaults to `.openplanter/settings.json`. View them with `--show-settings`.
 
 ## Configuration
 

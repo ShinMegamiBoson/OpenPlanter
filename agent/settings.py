@@ -6,7 +6,6 @@ from pathlib import Path
 
 
 VALID_REASONING_EFFORTS: set[str] = {"low", "medium", "high"}
-VALID_CHROME_MCP_CHANNELS: set[str] = {"stable", "beta", "dev", "canary"}
 
 
 def normalize_reasoning_effort(value: str | None) -> str | None:
@@ -23,35 +22,6 @@ def normalize_reasoning_effort(value: str | None) -> str | None:
     return cleaned
 
 
-def normalize_bool(value: bool | str | None) -> bool | None:
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return value
-    cleaned = value.strip().lower()
-    if not cleaned:
-        return None
-    if cleaned in {"1", "true", "yes", "on"}:
-        return True
-    if cleaned in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(f"Invalid boolean value '{value}'.")
-
-
-def normalize_chrome_mcp_channel(value: str | None) -> str | None:
-    if value is None:
-        return None
-    cleaned = value.strip().lower()
-    if not cleaned:
-        return None
-    if cleaned not in VALID_CHROME_MCP_CHANNELS:
-        raise ValueError(
-            f"Invalid Chrome MCP channel '{value}'. Expected one of: "
-            f"{', '.join(sorted(VALID_CHROME_MCP_CHANNELS))}"
-        )
-    return cleaned
-
-
 @dataclass(slots=True)
 class PersistentSettings:
     default_model: str | None = None
@@ -62,12 +32,6 @@ class PersistentSettings:
     default_model_cerebras: str | None = None
     default_model_zai: str | None = None
     default_model_ollama: str | None = None
-    chrome_mcp_enabled: bool | None = None
-    chrome_mcp_auto_connect: bool | None = None
-    chrome_mcp_browser_url: str | None = None
-    chrome_mcp_channel: str | None = None
-    chrome_mcp_connect_timeout_sec: int | None = None
-    chrome_mcp_rpc_timeout_sec: int | None = None
 
     def default_model_for_provider(self, provider: str) -> str | None:
         per_provider = {
@@ -95,20 +59,6 @@ class PersistentSettings:
             default_model_cerebras=(self.default_model_cerebras or "").strip() or None,
             default_model_zai=(self.default_model_zai or "").strip() or None,
             default_model_ollama=(self.default_model_ollama or "").strip() or None,
-            chrome_mcp_enabled=normalize_bool(self.chrome_mcp_enabled),
-            chrome_mcp_auto_connect=normalize_bool(self.chrome_mcp_auto_connect),
-            chrome_mcp_browser_url=(self.chrome_mcp_browser_url or "").strip() or None,
-            chrome_mcp_channel=normalize_chrome_mcp_channel(self.chrome_mcp_channel),
-            chrome_mcp_connect_timeout_sec=(
-                max(1, int(self.chrome_mcp_connect_timeout_sec))
-                if self.chrome_mcp_connect_timeout_sec is not None
-                else None
-            ),
-            chrome_mcp_rpc_timeout_sec=(
-                max(1, int(self.chrome_mcp_rpc_timeout_sec))
-                if self.chrome_mcp_rpc_timeout_sec is not None
-                else None
-            ),
         )
 
     def to_json(self) -> dict[str, str]:
@@ -129,18 +79,6 @@ class PersistentSettings:
             payload["default_model_zai"] = self.default_model_zai
         if self.default_model_ollama:
             payload["default_model_ollama"] = self.default_model_ollama
-        if self.chrome_mcp_enabled is not None:
-            payload["chrome_mcp_enabled"] = self.chrome_mcp_enabled
-        if self.chrome_mcp_auto_connect is not None:
-            payload["chrome_mcp_auto_connect"] = self.chrome_mcp_auto_connect
-        if self.chrome_mcp_browser_url:
-            payload["chrome_mcp_browser_url"] = self.chrome_mcp_browser_url
-        if self.chrome_mcp_channel:
-            payload["chrome_mcp_channel"] = self.chrome_mcp_channel
-        if self.chrome_mcp_connect_timeout_sec is not None:
-            payload["chrome_mcp_connect_timeout_sec"] = self.chrome_mcp_connect_timeout_sec
-        if self.chrome_mcp_rpc_timeout_sec is not None:
-            payload["chrome_mcp_rpc_timeout_sec"] = self.chrome_mcp_rpc_timeout_sec
         return payload
 
     @classmethod
@@ -158,20 +96,6 @@ class PersistentSettings:
             default_model_cerebras=(str(payload.get("default_model_cerebras", "")).strip() or None),
             default_model_zai=(str(payload.get("default_model_zai", "")).strip() or None),
             default_model_ollama=(str(payload.get("default_model_ollama", "")).strip() or None),
-            chrome_mcp_enabled=payload.get("chrome_mcp_enabled"),
-            chrome_mcp_auto_connect=payload.get("chrome_mcp_auto_connect"),
-            chrome_mcp_browser_url=(str(payload.get("chrome_mcp_browser_url", "")).strip() or None),
-            chrome_mcp_channel=(str(payload.get("chrome_mcp_channel", "")).strip() or None),
-            chrome_mcp_connect_timeout_sec=(
-                int(payload["chrome_mcp_connect_timeout_sec"])
-                if payload.get("chrome_mcp_connect_timeout_sec") is not None
-                else None
-            ),
-            chrome_mcp_rpc_timeout_sec=(
-                int(payload["chrome_mcp_rpc_timeout_sec"])
-                if payload.get("chrome_mcp_rpc_timeout_sec") is not None
-                else None
-            ),
         ).normalized()
 
 

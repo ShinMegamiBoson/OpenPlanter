@@ -27,12 +27,6 @@ from typing import Any
 
 _MAX_WALK_ENTRIES = 50_000
 
-from .chrome_mcp import (
-    ChromeMcpCallResult,
-    ChromeMcpError,
-    ChromeMcpStatus,
-    acquire_shared_manager,
-)
 from .patching import (
     AddFileOp,
     DeleteFileOp,
@@ -145,12 +139,6 @@ class WorkspaceTools:
     mistral_transcription_chunk_overlap_seconds: float = 2.0
     mistral_transcription_max_chunks: int = 48
     mistral_transcription_request_timeout_sec: int = 180
-    chrome_mcp_enabled: bool = False
-    chrome_mcp_auto_connect: bool = True
-    chrome_mcp_browser_url: str | None = None
-    chrome_mcp_channel: str = "stable"
-    chrome_mcp_connect_timeout_sec: int = 15
-    chrome_mcp_rpc_timeout_sec: int = 45
 
     def __post_init__(self) -> None:
         self.root = self.root.expanduser().resolve()
@@ -165,14 +153,6 @@ class WorkspaceTools:
         self._parallel_write_claims: dict[str, dict[Path, str]] = {}
         self._parallel_lock = threading.Lock()
         self._scope_local = threading.local()
-        self._chrome_mcp = acquire_shared_manager(
-            enabled=self.chrome_mcp_enabled,
-            auto_connect=self.chrome_mcp_auto_connect,
-            browser_url=self.chrome_mcp_browser_url,
-            channel=self.chrome_mcp_channel,
-            connect_timeout_sec=self.chrome_mcp_connect_timeout_sec,
-            rpc_timeout_sec=self.chrome_mcp_rpc_timeout_sec,
-        )
 
     def _clip(self, text: str, max_chars: int) -> str:
         if len(text) <= max_chars:
@@ -363,49 +343,6 @@ class WorkspaceTools:
             except OSError:
                 pass
         self._bg_jobs.clear()
-
-    def chrome_mcp_status(self) -> ChromeMcpStatus:
-        if not self.chrome_mcp_enabled or self._chrome_mcp is None:
-            return ChromeMcpStatus(
-                status="disabled",
-                detail="Chrome DevTools MCP is disabled.",
-            )
-        return self._chrome_mcp.status_snapshot()
-
-    def get_chrome_mcp_tool_defs(self, *, force_refresh: bool = False) -> list[dict[str, Any]]:
-        if not self.chrome_mcp_enabled or self._chrome_mcp is None:
-            return []
-        try:
-            return [
-                tool.as_tool_definition()
-                for tool in self._chrome_mcp.list_tools(force_refresh=force_refresh)
-            ]
-        except ChromeMcpError:
-            return []
-
-    def try_execute_dynamic_tool(
-        self,
-        name: str,
-        arguments: dict[str, Any],
-    ) -> ChromeMcpCallResult | None:
-        if not self.chrome_mcp_enabled or self._chrome_mcp is None:
-            return None
-        try:
-            known_names = {tool.name for tool in self._chrome_mcp.list_tools()}
-        except ChromeMcpError as exc:
-            return ChromeMcpCallResult(
-                content=f"Chrome DevTools MCP unavailable: {exc}",
-                is_error=True,
-            )
-        if name not in known_names:
-            return None
-        try:
-            return self._chrome_mcp.call_tool(name, arguments)
-        except ChromeMcpError as exc:
-            return ChromeMcpCallResult(
-                content=f"Chrome DevTools MCP unavailable: {exc}",
-                is_error=True,
-            )
 
     def list_files(self, glob: str | None = None) -> str:
         lines: list[str]

@@ -9,7 +9,6 @@ pub mod investigation_state;
 pub mod judge;
 
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::anyhow;
@@ -797,26 +796,6 @@ pub async fn solve_with_initial_context(
     cancel: CancellationToken,
     initial_context: Option<SolveInitialContext>,
 ) {
-    solve_with_initial_context_and_chrome_mcp(
-        objective,
-        config,
-        emitter,
-        cancel,
-        initial_context,
-        None,
-    )
-    .await;
-}
-
-/// Real solve flow with optional initial structured context and shared Chrome MCP manager.
-pub async fn solve_with_initial_context_and_chrome_mcp(
-    objective: &str,
-    config: &AgentConfig,
-    emitter: &dyn SolveEmitter,
-    cancel: CancellationToken,
-    initial_context: Option<SolveInitialContext>,
-    chrome_mcp: Option<Arc<crate::tools::chrome_mcp::ChromeMcpManager>>,
-) {
     if config.demo {
         return demo_solve(objective, emitter, cancel).await;
     }
@@ -834,21 +813,8 @@ pub async fn solve_with_initial_context_and_chrome_mcp(
     emitter.emit_trace(&format!("Solving with {}/{}", provider, model.model_name()));
 
     // 2. Build tools and messages
-    let dynamic_tool_defs = if let Some(manager) = chrome_mcp.as_ref() {
-        match manager.list_tools(false).await {
-            Ok(defs) => defs,
-            Err(err) => {
-                emitter.emit_trace(&format!(
-                    "[chrome-mcp] unavailable; continuing with built-in tools only: {err}"
-                ));
-                Vec::new()
-            }
-        }
-    } else {
-        Vec::new()
-    };
-    let tool_defs = build_tool_defs(&provider, &dynamic_tool_defs);
-    let mut tools = WorkspaceTools::new(config, chrome_mcp);
+    let tool_defs = build_tool_defs(&provider);
+    let mut tools = WorkspaceTools::new(config);
 
     let system_prompt =
         build_system_prompt(config.recursive, config.acceptance_criteria, config.demo);

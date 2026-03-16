@@ -7,7 +7,6 @@ use op_core::credentials::{
 #[cfg(test)]
 use op_core::settings::PersistentSettings;
 use op_core::settings::SettingsStore;
-use op_core::tools::chrome_mcp::{ChromeMcpConfigKey, ChromeMcpManager, ChromeMcpStatus};
 use op_core::workspace_init;
 use std::env;
 use std::fmt;
@@ -369,14 +368,7 @@ pub struct AppState {
     pub cancel_token: Arc<Mutex<CancellationToken>>,
     pub agent_running: Arc<Mutex<bool>>,
     pub init_lock: Arc<Mutex<()>>,
-    pub chrome_mcp: Arc<Mutex<ChromeMcpRuntime>>,
     startup_trace: String,
-}
-
-#[derive(Default)]
-pub struct ChromeMcpRuntime {
-    key: Option<ChromeMcpConfigKey>,
-    manager: Option<Arc<ChromeMcpManager>>,
 }
 
 impl AppState {
@@ -414,89 +406,12 @@ impl AppState {
             cancel_token: Arc::new(Mutex::new(CancellationToken::new())),
             agent_running: Arc::new(Mutex::new(false)),
             init_lock: Arc::new(Mutex::new(())),
-            chrome_mcp: Arc::new(Mutex::new(ChromeMcpRuntime::default())),
             startup_trace: format_startup_trace(&current_dir, &resolved_workspace, &migration),
         })
     }
 
     pub fn startup_trace(&self) -> &str {
         &self.startup_trace
-    }
-
-    pub async fn sync_chrome_mcp_config(&self, cfg: &AgentConfig) {
-        let key = ChromeMcpConfigKey::from_config(cfg);
-        let mut runtime = self.chrome_mcp.lock().await;
-        if runtime.key.as_ref() == Some(&key) {
-            return;
-        }
-        if let Some(manager) = runtime.manager.take() {
-            tokio::spawn(async move {
-                manager.shutdown().await;
-            });
-        }
-        runtime.key = Some(key);
-    }
-
-    pub async fn chrome_mcp_manager(&self, cfg: &AgentConfig) -> Option<Arc<ChromeMcpManager>> {
-        let key = ChromeMcpConfigKey::from_config(cfg);
-        let mut runtime = self.chrome_mcp.lock().await;
-        if !key.enabled {
-            if let Some(manager) = runtime.manager.take() {
-                tokio::spawn(async move {
-                    manager.shutdown().await;
-                });
-            }
-            runtime.key = Some(key);
-            return None;
-        }
-        if runtime.key.as_ref() != Some(&key) {
-            if let Some(manager) = runtime.manager.take() {
-                tokio::spawn(async move {
-                    manager.shutdown().await;
-                });
-            }
-            runtime.key = Some(key.clone());
-        }
-        if runtime.manager.is_none() {
-            runtime.manager = Some(Arc::new(ChromeMcpManager::new(key)));
-        }
-        runtime.manager.clone()
-    }
-
-    pub async fn chrome_mcp_status(&self, cfg: &AgentConfig) -> ChromeMcpStatus {
-        let key = ChromeMcpConfigKey::from_config(cfg);
-        let manager = {
-            let runtime = self.chrome_mcp.lock().await;
-            if runtime.key.as_ref() == Some(&key) {
-                runtime.manager.clone()
-            } else {
-                None
-            }
-        };
-        if let Some(manager) = manager {
-            manager.status_snapshot().await
-        } else if !key.enabled {
-            ChromeMcpStatus {
-                status: "disabled".into(),
-                detail: "Chrome DevTools MCP is disabled.".into(),
-                tool_count: 0,
-                last_refresh_ms: None,
-            }
-        } else if key.browser_url.is_none() && !key.auto_connect {
-            ChromeMcpStatus {
-                status: "unavailable".into(),
-                detail: "Chrome DevTools MCP is enabled but cannot attach: set `chrome_mcp_browser_url` or enable `chrome_mcp_auto_connect`.".into(),
-                tool_count: 0,
-                last_refresh_ms: None,
-            }
-        } else {
-            ChromeMcpStatus {
-                status: "ready".into(),
-                detail: "Chrome DevTools MCP will initialize on the next solve.".into(),
-                tool_count: 0,
-                last_refresh_ms: None,
-            }
-        }
     }
 }
 

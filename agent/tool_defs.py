@@ -488,34 +488,6 @@ _ARTIFACT_TOOLS = {"list_artifacts", "read_artifact"}
 _DELEGATION_TOOLS = {"subtask", "execute", "list_artifacts", "read_artifact"}
 
 
-def _merge_dynamic_definitions(
-    defs: list[dict[str, Any]],
-    dynamic_defs: list[dict[str, Any]] | None,
-) -> list[dict[str, Any]]:
-    if not dynamic_defs:
-        return defs
-    merged = list(defs)
-    seen = {str(item.get("name", "")).strip() for item in defs}
-    for item in dynamic_defs:
-        if not isinstance(item, dict):
-            continue
-        name = str(item.get("name", "")).strip()
-        if not name or name in seen:
-            continue
-        parameters = item.get("parameters")
-        if not isinstance(parameters, dict):
-            continue
-        merged.append(
-            {
-                "name": name,
-                "description": str(item.get("description", "") or ""),
-                "parameters": parameters,
-            }
-        )
-        seen.add(name)
-    return merged
-
-
 def _strip_acceptance_criteria(defs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Remove acceptance_criteria property from subtask/execute schemas."""
     import copy
@@ -535,7 +507,6 @@ def get_tool_definitions(
     include_subtask: bool = True,
     include_artifacts: bool = False,
     include_acceptance_criteria: bool = False,
-    dynamic_defs: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Return tool definitions based on mode.
 
@@ -551,8 +522,6 @@ def get_tool_definitions(
 
     if include_artifacts:
         defs += [d for d in TOOL_DEFINITIONS if d["name"] in _ARTIFACT_TOOLS]
-
-    defs = _merge_dynamic_definitions(defs, dynamic_defs)
 
     if not include_acceptance_criteria:
         defs = _strip_acceptance_criteria(defs)

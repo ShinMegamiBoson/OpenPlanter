@@ -103,42 +103,6 @@ pub fn apply_settings_to_config(cfg: &mut AgentConfig, settings: &PersistentSett
         }
     }
 
-    if !has_env_value(&["OPENPLANTER_CHROME_MCP_ENABLED"]) {
-        if let Some(enabled) = settings.chrome_mcp_enabled {
-            cfg.chrome_mcp_enabled = enabled;
-        }
-    }
-
-    if !has_env_value(&["OPENPLANTER_CHROME_MCP_AUTO_CONNECT"]) {
-        if let Some(auto_connect) = settings.chrome_mcp_auto_connect {
-            cfg.chrome_mcp_auto_connect = auto_connect;
-        }
-    }
-
-    if !has_env_value(&["OPENPLANTER_CHROME_MCP_BROWSER_URL"]) {
-        if let Some(browser_url) = settings.chrome_mcp_browser_url.as_deref() {
-            cfg.chrome_mcp_browser_url = Some(browser_url.to_string());
-        }
-    }
-
-    if !has_env_value(&["OPENPLANTER_CHROME_MCP_CHANNEL"]) {
-        if let Some(channel) = settings.chrome_mcp_channel.as_deref() {
-            cfg.chrome_mcp_channel = channel.to_string();
-        }
-    }
-
-    if !has_env_value(&["OPENPLANTER_CHROME_MCP_CONNECT_TIMEOUT_SEC"]) {
-        if let Some(timeout) = settings.chrome_mcp_connect_timeout_sec {
-            cfg.chrome_mcp_connect_timeout_sec = timeout.max(1);
-        }
-    }
-
-    if !has_env_value(&["OPENPLANTER_CHROME_MCP_RPC_TIMEOUT_SEC"]) {
-        if let Some(timeout) = settings.chrome_mcp_rpc_timeout_sec {
-            cfg.chrome_mcp_rpc_timeout_sec = timeout.max(1);
-        }
-    }
-
     if !has_env_value(&["OPENPLANTER_MODEL"]) {
         let saved_model = if cfg.provider == "auto" {
             settings.default_model.as_deref()

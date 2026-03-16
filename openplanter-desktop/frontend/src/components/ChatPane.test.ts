@@ -30,7 +30,7 @@ describe("KEY_ARGS", () => {
     expect(KEY_ARGS["read_file"]).toBe("path");
     expect(KEY_ARGS["run_shell"]).toBe("command");
     expect(KEY_ARGS["web_search"]).toBe("query");
-    expect(KEY_ARGS["fetch_url"]).toBe("urls");
+    expect(KEY_ARGS["fetch_url"]).toBe("url");
   });
 });
 
@@ -279,27 +279,6 @@ describe("createChatPane", () => {
     document.body.removeChild(pane);
   });
 
-  it("falls back to the first informative value for unknown tool args", () => {
-    const pane = createChatPane();
-    document.body.appendChild(pane);
-
-    window.dispatchEvent(
-      new CustomEvent("agent-delta", { detail: { kind: "tool_call_start", text: "chrome_click" } })
-    );
-    window.dispatchEvent(
-      new CustomEvent(
-        "agent-delta",
-        { detail: { kind: "tool_call_args", text: '{"selector": "#submit", "timeout": 5}' } },
-      )
-    );
-
-    const indicator = pane.querySelector(".activity-indicator");
-    expect(indicator!.getAttribute("data-mode")).toBe("tool");
-    expect(pane.querySelector(".activity-preview")!.textContent).toBe("#submit");
-
-    document.body.removeChild(pane);
-  });
-
   it("renders step summary on agent-step event", () => {
     const pane = createChatPane();
     document.body.appendChild(pane);
@@ -471,22 +450,6 @@ Trailing text.`;
     expect(toolBlock!.querySelector(".tool-arg")!.textContent).toContain("echo hello");
     // Should NOT contain raw XML tags as text
     expect(msg!.textContent).not.toContain("<tool_call>");
-  });
-
-  it("renders fallback key args for unknown tool calls in assistant messages", () => {
-    const pane = createChatPane();
-    const content = `<tool_call>
-{"name": "chrome_evaluate", "arguments": {"expression": "document.title", "timeout": 10}}
-</tool_call>`;
-    appState.update((s) => ({
-      ...s,
-      messages: [makeMsg({ role: "assistant", content, isRendered: true })],
-    }));
-    const msg = pane.querySelector(".message.assistant.rendered");
-    const toolBlock = msg!.querySelector(".tool-call-block");
-    expect(toolBlock).not.toBeNull();
-    expect(toolBlock!.querySelector(".tool-fn")!.textContent).toBe("chrome_evaluate");
-    expect(toolBlock!.querySelector(".tool-arg")!.textContent).toContain("document.title");
   });
 
   it("renders tool_result XML as collapsible block in rendered assistant message", () => {

@@ -431,22 +431,10 @@ class RLMEngine:
                 acceptance_criteria=self.config.acceptance_criteria,
                 demo=self.config.demo,
             )
-        self._set_model_tool_defs(self.model, include_subtask=self.config.recursive)
-
-    def _build_tool_defs(self, *, include_subtask: bool) -> list[dict[str, Any]]:
         ac = self.config.acceptance_criteria
-        dynamic_defs = self.tools.get_chrome_mcp_tool_defs()
-        return get_tool_definitions(
-            include_subtask=include_subtask,
-            include_acceptance_criteria=ac,
-            dynamic_defs=dynamic_defs,
-        )
-
-    def _set_model_tool_defs(self, model: BaseModel, *, include_subtask: bool) -> list[dict[str, Any]]:
-        tool_defs = self._build_tool_defs(include_subtask=include_subtask)
-        if hasattr(model, "tool_defs"):
-            model.tool_defs = tool_defs
-        return tool_defs
+        tool_defs = get_tool_definitions(include_subtask=self.config.recursive, include_acceptance_criteria=ac)
+        if hasattr(self.model, "tool_defs"):
+            self.model.tool_defs = tool_defs
 
     def cancel(self) -> None:
         """Signal the engine to stop after the current model call or tool."""
@@ -474,7 +462,6 @@ class RLMEngine:
             self._shell_command_counts.clear()
         active_context = context if context is not None else ExternalContext()
         deadline = (time.monotonic() + self.config.max_solve_seconds) if self.config.max_solve_seconds > 0 else 0
-        self._set_model_tool_defs(self.model, include_subtask=self.config.recursive)
         try:
             result = self._solve_recursive(
                 objective=objective.strip(),
@@ -1504,10 +1491,10 @@ class RLMEngine:
             # Give executor full tools (no subtask, no execute).
             _saved_defs = None
             if exec_model and hasattr(exec_model, "tool_defs"):
-                exec_model.tool_defs = self._build_tool_defs(include_subtask=False)
+                exec_model.tool_defs = get_tool_definitions(include_subtask=False, include_acceptance_criteria=self.config.acceptance_criteria)
             elif exec_model is None and hasattr(cur, "tool_defs"):
                 _saved_defs = cur.tool_defs
-                cur.tool_defs = self._build_tool_defs(include_subtask=False)
+                cur.tool_defs = get_tool_definitions(include_subtask=False, include_acceptance_criteria=self.config.acceptance_criteria)
 
             self._emit(f"[d{depth}] >> executing leaf: {objective}", on_event)
             child_logger = (
@@ -1546,15 +1533,6 @@ class RLMEngine:
             offset = int(args.get("offset", 0) or 0)
             limit = int(args.get("limit", 100) or 100)
             return False, self._read_artifact(aid, offset, limit)
-
-        dynamic_result = self.tools.try_execute_dynamic_tool(name, args)
-        if dynamic_result is not None:
-            if dynamic_result.image is not None:
-                self._pending_image.data = (
-                    dynamic_result.image.base64_data,
-                    dynamic_result.image.media_type,
-                )
-            return False, dynamic_result.content
 
         return False, f"Unknown action type: {name}"
 

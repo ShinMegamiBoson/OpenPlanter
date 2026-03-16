@@ -198,69 +198,17 @@ struct PendingToolCall {
 /// Key argument names for tool call display (mirrors frontend KEY_ARGS).
 fn extract_key_arg(tool_name: &str, args_json: &str) -> Option<String> {
     let key_name = match tool_name {
-        "read_file" | "write_file" | "edit_file" | "apply_patch" | "hashline_edit" => Some("path"),
-        "list_files" => Some("directory"),
-        "run_shell" | "run_shell_bg" => Some("command"),
-        "kill_shell_bg" => Some("pid"),
-        "web_search" => Some("query"),
-        "fetch_url" => Some("url"),
-        _ => None,
+        "read_file" | "write_file" | "edit_file" | "apply_patch" | "hashline_edit" => "path",
+        "list_files" => "directory",
+        "run_shell" | "run_shell_bg" => "command",
+        "kill_shell_bg" => "pid",
+        "web_search" => "query",
+        "fetch_url" => "url",
+        _ => return None,
     };
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(args_json) {
-        if let Some(key) = key_name {
-            if let Some(found) = value
-                .get(key)
-                .and_then(preview_value)
-                .filter(|value| !value.is_empty())
-            {
-                return Some(found);
-            }
-        }
-        return first_informative_value(&value);
-    }
-    if let Some(key) = key_name {
-        let pattern = format!("\"{}\"\\s*:\\s*\"([^\"]*)\"?", regex::escape(key));
-        let re = regex::Regex::new(&pattern).ok()?;
-        if let Some(captures) = re.captures(args_json) {
-            return captures.get(1).map(|capture| capture.as_str().to_string());
-        }
-    }
-    let re = regex::Regex::new(r#""[^"]+"\s*:\s*"([^"]+)""#).ok()?;
-    re.captures(args_json)
-        .and_then(|captures| captures.get(1))
-        .map(|capture| capture.as_str().to_string())
-}
-
-fn preview_value(value: &serde_json::Value) -> Option<String> {
-    match value {
-        serde_json::Value::String(text) => {
-            let trimmed = text.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.chars().take(60).collect())
-            }
-        }
-        serde_json::Value::Array(items) => {
-            let collected = items
-                .iter()
-                .filter_map(|item| item.as_str().map(str::trim).filter(|text| !text.is_empty()))
-                .take(3)
-                .collect::<Vec<_>>();
-            if collected.is_empty() {
-                None
-            } else {
-                Some(collected.join(", "))
-            }
-        }
-        serde_json::Value::Number(number) => Some(number.to_string()),
-        _ => None,
-    }
-}
-
-fn first_informative_value(value: &serde_json::Value) -> Option<String> {
-    let object = value.as_object()?;
-    object.values().find_map(preview_value)
+    let pattern = format!("\"{}\"\\s*:\\s*\"([^\"]*)\"?", regex::escape(key_name));
+    let re = regex::Regex::new(&pattern).ok()?;
+    re.captures(args_json).map(|c| c[1].to_string())
 }
 
 impl<E: SolveEmitter> LoggingEmitter<E> {

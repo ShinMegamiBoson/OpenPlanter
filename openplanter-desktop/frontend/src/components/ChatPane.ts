@@ -2,9 +2,23 @@
 import { appState, type ChatMessage, type StepToolCall } from "../state/store";
 import { createInputBar } from "./InputBar";
 import { parseAgentContent, stripToolXml, type ContentSegment } from "./contentParser";
-import { extractToolCallKeyArg, KEY_ARGS } from "./toolArgs";
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js";
+
+/** Key argument names for tool call display. */
+const KEY_ARGS: Record<string, string> = {
+  read_file: "path",
+  write_file: "path",
+  edit_file: "path",
+  list_files: "directory",
+  run_shell: "command",
+  run_shell_bg: "command",
+  kill_shell_bg: "pid",
+  web_search: "query",
+  fetch_url: "url",
+  apply_patch: "path",
+  hashline_edit: "path",
+};
 
 const md = new MarkdownIt({
   html: false,
@@ -19,6 +33,16 @@ const md = new MarkdownIt({
     return "";
   },
 });
+
+/** Extract the key argument value from a partial JSON string. */
+function extractKeyArg(toolName: string, argsJson: string): string | null {
+  const keyName = KEY_ARGS[toolName];
+  if (!keyName) return null;
+  // Try to extract "keyName": "value" from possibly-incomplete JSON
+  const regex = new RegExp(`"${keyName}"\\s*:\\s*"([^"]*)"?`);
+  const m = argsJson.match(regex);
+  return m ? m[1] : null;
+}
 
 /** Format elapsed milliseconds as a readable string. */
 function formatElapsed(ms: number): string {
@@ -487,7 +511,7 @@ export function createChatPane(): HTMLElement {
 
       // Always re-extract key arg as more chunks arrive — partial JSON
       // grows with each chunk so the extracted value gets more complete.
-      const keyArg = extractToolCallKeyArg(currentToolName, toolArgsBuf);
+      const keyArg = extractKeyArg(currentToolName, toolArgsBuf);
       if (keyArg) {
         const current = stepToolCalls[stepToolCalls.length - 1];
         if (current) current.keyArg = keyArg;
@@ -568,4 +592,5 @@ export function createChatPane(): HTMLElement {
 
   return pane;
 }
+
 export { KEY_ARGS };

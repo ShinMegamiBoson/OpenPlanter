@@ -15,16 +15,7 @@ from .runtime import SessionRuntime
 from .settings import SettingsStore
 
 
-SLASH_COMMANDS: list[str] = [
-    "/quit",
-    "/exit",
-    "/help",
-    "/status",
-    "/clear",
-    "/model",
-    "/reasoning",
-    "/chrome",
-]
+SLASH_COMMANDS: list[str] = ["/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning"]
 
 
 def _queue_prompt_style():
@@ -115,7 +106,6 @@ HELP_LINES: list[str] = [
     "  /model <name> --save  Switch and persist as default",
     "  /model list [all]   List available models",
     "  /reasoning [low|medium|high|off]  Change reasoning effort",
-    "  /chrome status|on|off|auto|url <endpoint>|channel <stable|beta|dev|canary> [--save]",
     "  /status  /clear  /quit  /exit  /help",
 ]
 
@@ -368,90 +358,6 @@ def _get_mode_label(cfg: AgentConfig) -> str:
     return "flat"
 
 
-def _format_chrome_status(ctx: ChatContext) -> list[str]:
-    status = ctx.runtime.engine.tools.chrome_mcp_status()
-    attach_mode = (
-        f"browser_url={ctx.cfg.chrome_mcp_browser_url}"
-        if ctx.cfg.chrome_mcp_browser_url
-        else ("auto-connect" if ctx.cfg.chrome_mcp_auto_connect else "manual-disabled")
-    )
-    lines = [
-        (
-            "Chrome MCP: "
-            f"enabled={ctx.cfg.chrome_mcp_enabled} | attach={attach_mode} | "
-            f"channel={ctx.cfg.chrome_mcp_channel}"
-        ),
-        f"Runtime status: {status.status} | {status.detail}",
-    ]
-    if status.tool_count:
-        lines.append(f"Discovered Chrome tools: {status.tool_count}")
-    return lines
-
-
-def handle_chrome_command(args: str, ctx: ChatContext) -> list[str]:
-    from .builder import build_engine
-
-    parts = [part for part in args.strip().split() if part]
-    save = False
-    if "--save" in parts:
-        save = True
-        parts = [part for part in parts if part != "--save"]
-
-    if not parts or parts[0] == "status":
-        lines = _format_chrome_status(ctx)
-        if not parts:
-            lines.append(
-                "Usage: /chrome status|on|off|auto|url <endpoint>|channel <stable|beta|dev|canary> [--save]"
-            )
-        return lines
-
-    action = parts[0].lower()
-    if action == "on":
-        ctx.cfg.chrome_mcp_enabled = True
-    elif action == "off":
-        ctx.cfg.chrome_mcp_enabled = False
-    elif action == "auto":
-        ctx.cfg.chrome_mcp_enabled = True
-        ctx.cfg.chrome_mcp_auto_connect = True
-        ctx.cfg.chrome_mcp_browser_url = None
-    elif action == "url":
-        if len(parts) < 2:
-            return ["Usage: /chrome url <endpoint> [--save]"]
-        ctx.cfg.chrome_mcp_enabled = True
-        ctx.cfg.chrome_mcp_auto_connect = False
-        ctx.cfg.chrome_mcp_browser_url = parts[1].strip() or None
-    elif action == "channel":
-        if len(parts) < 2:
-            return ["Usage: /chrome channel <stable|beta|dev|canary> [--save]"]
-        channel = parts[1].strip().lower()
-        if channel not in {"stable", "beta", "dev", "canary"}:
-            return [f"Invalid Chrome channel '{channel}'. Use: stable, beta, dev, canary"]
-        ctx.cfg.chrome_mcp_channel = channel
-    else:
-        return [
-            f"Unknown /chrome action '{action}'.",
-            "Usage: /chrome status|on|off|auto|url <endpoint>|channel <stable|beta|dev|canary> [--save]",
-        ]
-
-    try:
-        ctx.runtime.engine = build_engine(ctx.cfg)
-    except ModelError as exc:
-        return [f"Failed to apply Chrome MCP change: {exc}"]
-
-    lines = _format_chrome_status(ctx)
-    if save:
-        settings = ctx.settings_store.load()
-        settings.chrome_mcp_enabled = ctx.cfg.chrome_mcp_enabled
-        settings.chrome_mcp_auto_connect = ctx.cfg.chrome_mcp_auto_connect
-        settings.chrome_mcp_browser_url = ctx.cfg.chrome_mcp_browser_url
-        settings.chrome_mcp_channel = ctx.cfg.chrome_mcp_channel
-        settings.chrome_mcp_connect_timeout_sec = ctx.cfg.chrome_mcp_connect_timeout_sec
-        settings.chrome_mcp_rpc_timeout_sec = ctx.cfg.chrome_mcp_rpc_timeout_sec
-        ctx.settings_store.save(settings)
-        lines.append("Saved as workspace default.")
-    return lines
-
-
 def dispatch_slash_command(
     command: str,
     ctx: ChatContext,
@@ -479,8 +385,6 @@ def dispatch_slash_command(
                 )
         else:
             emit("  Tokens: (none yet)")
-        for line in _format_chrome_status(ctx):
-            emit(f"  {line}")
         return "handled"
     if command == "/clear":
         return "clear"
@@ -493,12 +397,6 @@ def dispatch_slash_command(
     if command.startswith("/reasoning"):
         cmd_args = command[len("/reasoning"):].strip()
         lines = handle_reasoning_command(cmd_args, ctx)
-        for line in lines:
-            emit(line)
-        return "handled"
-    if command.startswith("/chrome"):
-        cmd_args = command[len("/chrome"):].strip()
-        lines = handle_chrome_command(cmd_args, ctx)
         for line in lines:
             emit(line)
         return "handled"

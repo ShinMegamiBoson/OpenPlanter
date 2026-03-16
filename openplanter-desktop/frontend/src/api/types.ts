@@ -110,14 +110,6 @@ export interface ConfigView {
   reasoning_effort: string | null;
   zai_plan: string;
   web_search_provider: string;
-  chrome_mcp_enabled: boolean;
-  chrome_mcp_auto_connect: boolean;
-  chrome_mcp_browser_url: string | null;
-  chrome_mcp_channel: string;
-  chrome_mcp_connect_timeout_sec: number;
-  chrome_mcp_rpc_timeout_sec: number;
-  chrome_mcp_status: string;
-  chrome_mcp_status_detail: string;
   workspace: string;
   session_id: string | null;
   recursive: boolean;
@@ -132,12 +124,6 @@ export interface PartialConfig {
   reasoning_effort?: string;
   zai_plan?: string;
   web_search_provider?: string;
-  chrome_mcp_enabled?: boolean;
-  chrome_mcp_auto_connect?: boolean;
-  chrome_mcp_browser_url?: string | null;
-  chrome_mcp_channel?: string;
-  chrome_mcp_connect_timeout_sec?: number;
-  chrome_mcp_rpc_timeout_sec?: number;
 }
 
 export interface ModelInfo {
@@ -164,12 +150,6 @@ export interface PersistentSettings {
   default_model_ollama?: string | null;
   zai_plan?: string | null;
   web_search_provider?: string | null;
-  chrome_mcp_enabled?: boolean | null;
-  chrome_mcp_auto_connect?: boolean | null;
-  chrome_mcp_browser_url?: string | null;
-  chrome_mcp_channel?: string | null;
-  chrome_mcp_connect_timeout_sec?: number | null;
-  chrome_mcp_rpc_timeout_sec?: number | null;
 }
 
 export interface SlashResult {

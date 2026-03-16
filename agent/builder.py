@@ -247,12 +247,6 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
         mistral_transcription_chunk_overlap_seconds=cfg.mistral_transcription_chunk_overlap_seconds,
         mistral_transcription_max_chunks=cfg.mistral_transcription_max_chunks,
         mistral_transcription_request_timeout_sec=cfg.mistral_transcription_request_timeout_sec,
-        chrome_mcp_enabled=cfg.chrome_mcp_enabled,
-        chrome_mcp_auto_connect=cfg.chrome_mcp_auto_connect,
-        chrome_mcp_browser_url=cfg.chrome_mcp_browser_url,
-        chrome_mcp_channel=cfg.chrome_mcp_channel,
-        chrome_mcp_connect_timeout_sec=cfg.chrome_mcp_connect_timeout_sec,
-        chrome_mcp_rpc_timeout_sec=cfg.chrome_mcp_rpc_timeout_sec,
         max_observation_chars=cfg.max_observation_chars,
     )
 

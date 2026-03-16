@@ -9,7 +9,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from conftest import _tc
-from agent.chrome_mcp import ChromeMcpCallResult
 from agent.config import AgentConfig
 from agent.engine import RLMEngine
 from agent.prompts import build_system_prompt as _build_system_prompt
@@ -18,53 +17,6 @@ from agent.tools import WorkspaceTools
 
 
 class EngineTests(unittest.TestCase):
-    def test_dynamic_tool_defs_are_merged_for_main_loop(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            cfg = AgentConfig(workspace=root, max_depth=1, max_steps_per_call=2)
-            tools = WorkspaceTools(root=root)
-            model = ScriptedModel(scripted_turns=[ModelTurn(text="done", stop_reason="end_turn")])
-            with patch.object(
-                tools,
-                "get_chrome_mcp_tool_defs",
-                return_value=[
-                    {
-                        "name": "navigate_page",
-                        "description": "Navigate Chrome",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {"url": {"type": "string"}},
-                            "required": ["url"],
-                            "additionalProperties": False,
-                        },
-                    }
-                ],
-            ):
-                engine = RLMEngine(model=model, tools=tools, config=cfg)
-                names = [tool["name"] for tool in engine._build_tool_defs(include_subtask=True)]
-            self.assertIn("navigate_page", names)
-
-    def test_dynamic_tool_calls_fall_through_to_chrome_manager(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            cfg = AgentConfig(workspace=root, max_depth=1, max_steps_per_call=4)
-            tools = WorkspaceTools(root=root)
-            model = ScriptedModel(
-                scripted_turns=[
-                    ModelTurn(tool_calls=[_tc("navigate_page", url="https://example.com")]),
-                    ModelTurn(text="done", stop_reason="end_turn"),
-                ]
-            )
-            with patch.object(tools, "get_chrome_mcp_tool_defs", return_value=[]), patch.object(
-                tools,
-                "try_execute_dynamic_tool",
-                return_value=ChromeMcpCallResult(content="Navigated to https://example.com"),
-            ) as mocked:
-                engine = RLMEngine(model=model, tools=tools, config=cfg)
-                result = engine.solve("navigate using Chrome MCP")
-            self.assertEqual(result, "done")
-            mocked.assert_called_once()
-
     def test_write_and_read_then_final(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

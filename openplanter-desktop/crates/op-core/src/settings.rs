@@ -1,12 +1,10 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::{
-    normalize_chrome_mcp_browser_url, normalize_chrome_mcp_channel,
-    normalize_web_search_provider, normalize_zai_plan,
-};
+use crate::config::{normalize_web_search_provider, normalize_zai_plan};
 
 const VALID_REASONING_EFFORTS: &[&str] = &["low", "medium", "high"];
 
@@ -31,20 +29,6 @@ pub fn normalize_reasoning_effort(value: Option<&str>) -> Result<Option<String>,
     }
 }
 
-pub fn normalize_bool(value: Option<&serde_json::Value>) -> Result<Option<bool>, String> {
-    match value {
-        None | Some(serde_json::Value::Null) => Ok(None),
-        Some(serde_json::Value::Bool(value)) => Ok(Some(*value)),
-        Some(serde_json::Value::String(value)) => match value.trim().to_lowercase().as_str() {
-            "" => Ok(None),
-            "1" | "true" | "yes" | "on" => Ok(Some(true)),
-            "0" | "false" | "no" | "off" => Ok(Some(false)),
-            _ => Err(format!("Invalid boolean value '{}'.", value)),
-        },
-        Some(other) => Err(format!("Invalid boolean value '{}'.", other)),
-    }
-}
-
 /// Persistent settings stored per workspace.
 ///
 /// Mirrors the Python `PersistentSettings` dataclass.
@@ -60,12 +44,6 @@ pub struct PersistentSettings {
     pub default_model_ollama: Option<String>,
     pub zai_plan: Option<String>,
     pub web_search_provider: Option<String>,
-    pub chrome_mcp_enabled: Option<bool>,
-    pub chrome_mcp_auto_connect: Option<bool>,
-    pub chrome_mcp_browser_url: Option<String>,
-    pub chrome_mcp_channel: Option<String>,
-    pub chrome_mcp_connect_timeout_sec: Option<i64>,
-    pub chrome_mcp_rpc_timeout_sec: Option<i64>,
 }
 
 impl PersistentSettings {
@@ -124,27 +102,16 @@ impl PersistentSettings {
             default_model_ollama: trim_opt(&self.default_model_ollama),
             zai_plan,
             web_search_provider,
-            chrome_mcp_enabled: self.chrome_mcp_enabled,
-            chrome_mcp_auto_connect: self.chrome_mcp_auto_connect,
-            chrome_mcp_browser_url: normalize_chrome_mcp_browser_url(
-                self.chrome_mcp_browser_url.as_deref(),
-            ),
-            chrome_mcp_channel: self
-                .chrome_mcp_channel
-                .as_deref()
-                .map(|value| normalize_chrome_mcp_channel(Some(value))),
-            chrome_mcp_connect_timeout_sec: self.chrome_mcp_connect_timeout_sec.map(|value| value.max(1)),
-            chrome_mcp_rpc_timeout_sec: self.chrome_mcp_rpc_timeout_sec.map(|value| value.max(1)),
         })
     }
 
     /// Serialize to JSON map, omitting `None` values.
-    pub fn to_json(&self) -> serde_json::Map<String, serde_json::Value> {
-        let mut payload = serde_json::Map::new();
+    pub fn to_json(&self) -> HashMap<String, String> {
+        let mut payload = HashMap::new();
         macro_rules! add {
             ($field:ident, $key:expr) => {
                 if let Some(ref v) = self.$field {
-                    payload.insert($key.to_string(), serde_json::json!(v));
+                    payload.insert($key.to_string(), v.clone());
                 }
             };
         }
@@ -158,12 +125,6 @@ impl PersistentSettings {
         add!(default_model_ollama, "default_model_ollama");
         add!(zai_plan, "zai_plan");
         add!(web_search_provider, "web_search_provider");
-        add!(chrome_mcp_enabled, "chrome_mcp_enabled");
-        add!(chrome_mcp_auto_connect, "chrome_mcp_auto_connect");
-        add!(chrome_mcp_browser_url, "chrome_mcp_browser_url");
-        add!(chrome_mcp_channel, "chrome_mcp_channel");
-        add!(chrome_mcp_connect_timeout_sec, "chrome_mcp_connect_timeout_sec");
-        add!(chrome_mcp_rpc_timeout_sec, "chrome_mcp_rpc_timeout_sec");
         payload
     }
 
@@ -192,19 +153,6 @@ impl PersistentSettings {
             default_model_ollama: get_str(obj, "default_model_ollama"),
             zai_plan: get_str(obj, "zai_plan"),
             web_search_provider: get_str(obj, "web_search_provider"),
-            chrome_mcp_enabled: normalize_bool(obj.get("chrome_mcp_enabled"))?,
-            chrome_mcp_auto_connect: normalize_bool(obj.get("chrome_mcp_auto_connect"))?,
-            chrome_mcp_browser_url: normalize_chrome_mcp_browser_url(
-                get_str(obj, "chrome_mcp_browser_url").as_deref(),
-            ),
-            chrome_mcp_channel: get_str(obj, "chrome_mcp_channel")
-                .map(|value| normalize_chrome_mcp_channel(Some(&value))),
-            chrome_mcp_connect_timeout_sec: obj
-                .get("chrome_mcp_connect_timeout_sec")
-                .and_then(|value| value.as_i64()),
-            chrome_mcp_rpc_timeout_sec: obj
-                .get("chrome_mcp_rpc_timeout_sec")
-                .and_then(|value| value.as_i64()),
         };
         settings.normalized()
     }

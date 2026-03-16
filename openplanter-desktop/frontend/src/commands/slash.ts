@@ -2,7 +2,6 @@
 import { appState } from "../state/store";
 import { openSession } from "../api/invoke";
 import { handleModelCommand, type CommandResult } from "./model";
-import { CHROME_USAGE, formatChromeStatusLines, handleChromeCommand } from "./chrome";
 import { handleReasoningCommand } from "./reasoning";
 import { handleWebSearchCommand } from "./webSearch";
 import { handleZaiPlanCommand } from "./zaiPlan";
@@ -40,8 +39,6 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
           "  /web-search <provider> --save  Set and persist",
           "  /reasoning          Show/set reasoning effort",
           "  /reasoning <level>  Set level (low, medium, high, off)",
-          "  /chrome             Show current Chrome DevTools MCP status",
-          `  ${CHROME_USAGE.slice(6)}`,
           "  /init status        Show workspace init status",
           "  /init standard      Initialize the current workspace",
           "  /init migrate       Open the migration init panel",
@@ -96,7 +93,6 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
           `Z.AI plan:   ${s.zaiPlan || "paygo"}`,
           `Web search:  ${s.webSearchProvider || "exa"}`,
           `Reasoning:   ${s.reasoningEffort ?? "off"}`,
-          ...formatChromeStatusLines(s),
           `Mode:        ${s.recursive ? "recursive" : "flat"}`,
           `Max depth:   ${s.maxDepth}`,
           `Max steps:   ${s.maxStepsPerCall}`,
@@ -120,9 +116,6 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
 
     case "/reasoning":
       return handleReasoningCommand(args);
-
-    case "/chrome":
-      return handleChromeCommand(args);
 
     case "/init":
       return handleInitCommand(args);

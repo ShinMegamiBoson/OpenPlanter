@@ -22,9 +22,6 @@ pub const MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS: i64 = 900;
 pub const MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS: f64 = 2.0;
 pub const MISTRAL_TRANSCRIPTION_MAX_CHUNKS: i64 = 48;
 pub const MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC: i64 = 180;
-pub const CHROME_MCP_DEFAULT_CHANNEL: &str = "stable";
-pub const CHROME_MCP_CONNECT_TIMEOUT_SEC: i64 = 15;
-pub const CHROME_MCP_RPC_TIMEOUT_SEC: i64 = 45;
 
 /// Default model for each supported provider.
 pub static PROVIDER_DEFAULT_MODELS: LazyLock<HashMap<&'static str, &'static str>> =
@@ -90,22 +87,6 @@ pub fn normalize_web_search_provider(value: Option<&str>) -> String {
         "tavily" => "tavily".to_string(),
         _ => "exa".to_string(),
     }
-}
-
-pub fn normalize_chrome_mcp_channel(value: Option<&str>) -> String {
-    match value.unwrap_or_default().trim().to_lowercase().as_str() {
-        "beta" => "beta".to_string(),
-        "dev" => "dev".to_string(),
-        "canary" => "canary".to_string(),
-        _ => CHROME_MCP_DEFAULT_CHANNEL.to_string(),
-    }
-}
-
-pub fn normalize_chrome_mcp_browser_url(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
 }
 
 fn normalize_base_url(value: &str) -> String {
@@ -219,12 +200,6 @@ pub struct AgentConfig {
     pub mistral_transcription_chunk_overlap_seconds: f64,
     pub mistral_transcription_max_chunks: i64,
     pub mistral_transcription_request_timeout_sec: i64,
-    pub chrome_mcp_enabled: bool,
-    pub chrome_mcp_auto_connect: bool,
-    pub chrome_mcp_browser_url: Option<String>,
-    pub chrome_mcp_channel: String,
-    pub chrome_mcp_connect_timeout_sec: i64,
-    pub chrome_mcp_rpc_timeout_sec: i64,
 
     // Limits
     pub max_depth: i64,
@@ -297,12 +272,6 @@ impl Default for AgentConfig {
                 MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS,
             mistral_transcription_max_chunks: MISTRAL_TRANSCRIPTION_MAX_CHUNKS,
             mistral_transcription_request_timeout_sec: MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC,
-            chrome_mcp_enabled: false,
-            chrome_mcp_auto_connect: true,
-            chrome_mcp_browser_url: None,
-            chrome_mcp_channel: CHROME_MCP_DEFAULT_CHANNEL.into(),
-            chrome_mcp_connect_timeout_sec: CHROME_MCP_CONNECT_TIMEOUT_SEC,
-            chrome_mcp_rpc_timeout_sec: CHROME_MCP_RPC_TIMEOUT_SEC,
             max_depth: 4,
             max_steps_per_call: 100,
             budget_extension_enabled: true,
@@ -399,8 +368,6 @@ impl AgentConfig {
         });
         let web_search_provider =
             normalize_web_search_provider(env_opt("OPENPLANTER_WEB_SEARCH_PROVIDER").as_deref());
-        let chrome_mcp_enabled = env_bool("OPENPLANTER_CHROME_MCP_ENABLED", false);
-        let chrome_mcp_auto_connect = env_bool("OPENPLANTER_CHROME_MCP_AUTO_CONNECT", true);
 
         Self {
             workspace: ws,
@@ -470,24 +437,6 @@ impl AgentConfig {
                 "OPENPLANTER_MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC",
                 MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC,
             ),
-            chrome_mcp_enabled,
-            chrome_mcp_auto_connect,
-            chrome_mcp_browser_url: normalize_chrome_mcp_browser_url(
-                env_opt("OPENPLANTER_CHROME_MCP_BROWSER_URL").as_deref(),
-            ),
-            chrome_mcp_channel: normalize_chrome_mcp_channel(
-                env_opt("OPENPLANTER_CHROME_MCP_CHANNEL").as_deref(),
-            ),
-            chrome_mcp_connect_timeout_sec: env_int(
-                "OPENPLANTER_CHROME_MCP_CONNECT_TIMEOUT_SEC",
-                CHROME_MCP_CONNECT_TIMEOUT_SEC,
-            )
-            .max(1),
-            chrome_mcp_rpc_timeout_sec: env_int(
-                "OPENPLANTER_CHROME_MCP_RPC_TIMEOUT_SEC",
-                CHROME_MCP_RPC_TIMEOUT_SEC,
-            )
-            .max(1),
             max_depth: env_int("OPENPLANTER_MAX_DEPTH", 4),
             max_steps_per_call: env_int("OPENPLANTER_MAX_STEPS", 100),
             budget_extension_enabled: env_bool("OPENPLANTER_BUDGET_EXTENSION_ENABLED", true),

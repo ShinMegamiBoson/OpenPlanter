@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent.chrome_mcp import ChromeMcpStatus
 from agent.config import AgentConfig
 from agent.settings import SettingsStore
 from agent.tui import ChatContext, RichREPL, _queue_prompt_style, dispatch_slash_command
@@ -262,14 +261,6 @@ class TestRunLoop:
             repl.run()
         repl.ctx.runtime.solve.assert_not_called()
 
-
-class TestRunLoopMore:
-    def _make_repl(self, tmp_path):
-        ctx = _make_ctx(tmp_path)
-        repl = RichREPL(ctx)
-        repl.console = MagicMock()
-        return repl
-
     def test_help_command_handled(self, tmp_path):
         """The /help command should be handled without running the agent, then continue."""
         repl = self._make_repl(tmp_path)
@@ -330,44 +321,6 @@ class TestRunLoopMore:
             repl.run()
 
         assert agent_ran.is_set()
-
-
-class TestChromeSlashCommand:
-    def test_status_renders_runtime_state(self, tmp_path):
-        ctx = _make_ctx(tmp_path)
-        ctx.cfg.chrome_mcp_enabled = True
-        ctx.cfg.chrome_mcp_auto_connect = True
-        ctx.cfg.chrome_mcp_channel = "stable"
-        ctx.runtime.engine.tools.chrome_mcp_status.return_value = ChromeMcpStatus(
-            status="ready",
-            detail="Chrome DevTools MCP ready with 2 tool(s).",
-            tool_count=2,
-        )
-        lines: list[str] = []
-        result = dispatch_slash_command("/chrome status", ctx, emit=lines.append)
-        assert result == "handled"
-        assert any("Chrome MCP:" in line for line in lines)
-        assert any("ready" in line for line in lines)
-
-    def test_auto_rebuilds_engine_and_persists(self, tmp_path):
-        ctx = _make_ctx(tmp_path)
-        rebuilt_engine = MagicMock()
-        rebuilt_engine.tools.chrome_mcp_status.return_value = ChromeMcpStatus(
-            status="ready",
-            detail="Chrome DevTools MCP ready with 3 tool(s).",
-            tool_count=3,
-        )
-        lines: list[str] = []
-        with patch("agent.builder.build_engine", return_value=rebuilt_engine):
-            result = dispatch_slash_command("/chrome auto --save", ctx, emit=lines.append)
-        assert result == "handled"
-        assert ctx.cfg.chrome_mcp_enabled is True
-        assert ctx.cfg.chrome_mcp_auto_connect is True
-        assert ctx.cfg.chrome_mcp_browser_url is None
-        saved = ctx.settings_store.load()
-        assert saved.chrome_mcp_enabled is True
-        assert saved.chrome_mcp_auto_connect is True
-        assert "Saved as workspace default." in lines
 
 
 # ---------------------------------------------------------------------------

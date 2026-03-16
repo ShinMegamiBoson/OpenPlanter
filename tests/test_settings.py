@@ -8,12 +8,7 @@ from agent.__main__ import _resolve_provider
 from agent.builder import _validate_model_provider, infer_provider_for_model
 from agent.credentials import CredentialBundle
 from agent.model import ModelError
-from agent.settings import (
-    PersistentSettings,
-    SettingsStore,
-    normalize_chrome_mcp_channel,
-    normalize_reasoning_effort,
-)
+from agent.settings import PersistentSettings, SettingsStore, normalize_reasoning_effort
 from agent.tui import SLASH_COMMANDS, _compute_suggestions
 
 
@@ -31,39 +26,12 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(loaded.default_model, "gpt-5.2")
             self.assertEqual(loaded.default_reasoning_effort, "high")
 
-    def test_chrome_mcp_settings_roundtrip(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            store = SettingsStore(workspace=root, session_root_dir=".openplanter")
-            settings = PersistentSettings(
-                chrome_mcp_enabled=True,
-                chrome_mcp_auto_connect=False,
-                chrome_mcp_browser_url="http://127.0.0.1:9222",
-                chrome_mcp_channel="beta",
-                chrome_mcp_connect_timeout_sec=21,
-                chrome_mcp_rpc_timeout_sec=61,
-            )
-            store.save(settings)
-            loaded = store.load()
-            self.assertTrue(loaded.chrome_mcp_enabled)
-            self.assertFalse(loaded.chrome_mcp_auto_connect)
-            self.assertEqual(loaded.chrome_mcp_browser_url, "http://127.0.0.1:9222")
-            self.assertEqual(loaded.chrome_mcp_channel, "beta")
-            self.assertEqual(loaded.chrome_mcp_connect_timeout_sec, 21)
-            self.assertEqual(loaded.chrome_mcp_rpc_timeout_sec, 61)
-
     def test_normalize_reasoning_effort(self) -> None:
         self.assertEqual(normalize_reasoning_effort("LOW"), "low")
         self.assertEqual(normalize_reasoning_effort(" medium "), "medium")
         self.assertIsNone(normalize_reasoning_effort(""))
         with self.assertRaises(ValueError):
             normalize_reasoning_effort("extreme")
-
-    def test_normalize_chrome_channel(self) -> None:
-        self.assertEqual(normalize_chrome_mcp_channel("BETA"), "beta")
-        self.assertIsNone(normalize_chrome_mcp_channel(""))
-        with self.assertRaises(ValueError):
-            normalize_chrome_mcp_channel("nightly")
 
     def test_per_provider_model_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -193,10 +161,6 @@ class ComputeSuggestionsTests(unittest.TestCase):
     def test_slash_r_matches_reasoning(self) -> None:
         matches, _ = _compute_suggestions("/r")
         self.assertIn("/reasoning", matches)
-
-    def test_slash_c_matches_chrome(self) -> None:
-        matches, _ = _compute_suggestions("/ch")
-        self.assertIn("/chrome", matches)
 
 
 class InferProviderTests(unittest.TestCase):

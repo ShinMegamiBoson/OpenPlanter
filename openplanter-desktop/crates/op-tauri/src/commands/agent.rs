@@ -50,7 +50,6 @@ pub async fn solve(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let cfg = state.config.lock().await.clone();
-    let chrome_mcp = state.chrome_mcp_manager(&cfg).await;
     let init_status = workspace_init::get_init_status(&cfg.workspace, &cfg.session_root_dir)
         .map_err(|e| e.to_string())?;
     if init_status.gate_state != "ready" {
@@ -124,13 +123,12 @@ pub async fn solve(
 
     tokio::spawn(async move {
         let result = tokio::spawn(async move {
-            op_core::engine::solve_with_initial_context_and_chrome_mcp(
+            op_core::engine::solve_with_initial_context(
                 &objective,
                 &cfg,
                 &emitter,
                 token,
                 Some(initial_context),
-                chrome_mcp,
             )
             .await;
         })

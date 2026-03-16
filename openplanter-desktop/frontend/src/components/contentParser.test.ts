@@ -86,19 +86,7 @@ Environment confirmed.`;
     expect(result[0]).toMatchObject({
       type: "tool_call",
       name: "custom_tool",
-      keyArg: "stuff",
-    });
-  });
-
-  it("falls back to the first informative array or number for unknown tools", () => {
-    const content = `<tool_call>
-{"name": "custom_tool", "arguments": {"links": ["https://a.test", "https://b.test"], "limit": 3}}
-</tool_call>`;
-    const result = parseAgentContent(content);
-    expect(result[0]).toMatchObject({
-      type: "tool_call",
-      name: "custom_tool",
-      keyArg: "https://a.test, https://b.test",
+      keyArg: "",
     });
   });
 

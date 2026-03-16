@@ -26,7 +26,6 @@ describe("completionRegistry", () => {
     expect(values).toContain("/zai-plan");
     expect(values).toContain("/web-search");
     expect(values).toContain("/reasoning");
-    expect(values).toContain("/chrome");
     expect(values).toContain("/init");
   });
 
@@ -101,31 +100,6 @@ describe("completionRegistry", () => {
     const childValues = zaiPlanCmd!.children!.map((c) => c.value);
     expect(childValues).toEqual(["paygo", "coding"]);
     expect(zaiPlanCmd!.children![0].children?.[0].value).toBe("--save");
-  });
-
-  it("/chrome has expected subcommands", () => {
-    const chromeCmd = COMMAND_COMPLETIONS.find((c) => c.value === "/chrome");
-    expect(chromeCmd).toBeDefined();
-    expect(chromeCmd!.children?.map((child) => child.value)).toEqual([
-      "status",
-      "on",
-      "off",
-      "auto",
-      "url",
-      "channel",
-    ]);
-  });
-
-  it("/chrome channel exposes supported channels and save flag", () => {
-    const chromeCmd = COMMAND_COMPLETIONS.find((c) => c.value === "/chrome")!;
-    const channelCmd = chromeCmd.children!.find((c) => c.value === "channel")!;
-    expect(channelCmd.children?.map((child) => child.value)).toEqual([
-      "stable",
-      "beta",
-      "dev",
-      "canary",
-    ]);
-    expect(channelCmd.children?.[0].children?.[0].value).toBe("--save");
   });
 
   it("reasoning level children have --save flag", () => {

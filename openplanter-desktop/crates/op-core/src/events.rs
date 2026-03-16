@@ -201,14 +201,6 @@ pub struct ConfigView {
     pub reasoning_effort: Option<String>,
     pub zai_plan: String,
     pub web_search_provider: String,
-    pub chrome_mcp_enabled: bool,
-    pub chrome_mcp_auto_connect: bool,
-    pub chrome_mcp_browser_url: Option<String>,
-    pub chrome_mcp_channel: String,
-    pub chrome_mcp_connect_timeout_sec: i64,
-    pub chrome_mcp_rpc_timeout_sec: i64,
-    pub chrome_mcp_status: String,
-    pub chrome_mcp_status_detail: String,
     pub workspace: String,
     pub session_id: Option<String>,
     pub recursive: bool,
@@ -225,12 +217,6 @@ pub struct PartialConfig {
     pub reasoning_effort: Option<String>,
     pub zai_plan: Option<String>,
     pub web_search_provider: Option<String>,
-    pub chrome_mcp_enabled: Option<bool>,
-    pub chrome_mcp_auto_connect: Option<bool>,
-    pub chrome_mcp_browser_url: Option<String>,
-    pub chrome_mcp_channel: Option<String>,
-    pub chrome_mcp_connect_timeout_sec: Option<i64>,
-    pub chrome_mcp_rpc_timeout_sec: Option<i64>,
 }
 
 /// Model information for the model list.

@@ -4,8 +4,6 @@
 /// provider-specific shapes expected by OpenAI and Anthropic APIs.
 use serde_json::{Value, json};
 
-use super::chrome_mcp::ChromeMcpToolDef;
-
 struct ToolDef {
     name: &'static str,
     description: &'static str,
@@ -357,27 +355,6 @@ fn mvp_tool_defs() -> Vec<ToolDef> {
     ]
 }
 
-fn merged_tool_defs(dynamic_defs: &[ChromeMcpToolDef]) -> Vec<(String, String, Value)> {
-    let mut defs: Vec<(String, String, Value)> = mvp_tool_defs()
-        .into_iter()
-        .map(|def| (def.name.to_string(), def.description.to_string(), def.parameters))
-        .collect();
-    let mut existing: std::collections::HashSet<String> =
-        defs.iter().map(|(name, _, _)| name.clone()).collect();
-    for def in dynamic_defs {
-        if existing.contains(&def.name) {
-            continue;
-        }
-        defs.push((
-            def.name.clone(),
-            def.description.clone(),
-            def.parameters.clone(),
-        ));
-        existing.insert(def.name.clone());
-    }
-    defs
-}
-
 /// For OpenAI strict mode: make all properties required, wrapping optional ones
 /// with `anyOf [original, null]`. Recurse into nested objects and array items.
 fn strict_fixup(schema: &mut Value) {
@@ -455,20 +432,16 @@ fn strict_fixup(schema: &mut Value) {
 
 /// Convert to OpenAI tools format: `[{ type: "function", function: { name, description, parameters, strict } }]`
 pub fn to_openai_tools() -> Vec<Value> {
-    to_openai_tools_with_dynamic(&[])
-}
-
-pub fn to_openai_tools_with_dynamic(dynamic_defs: &[ChromeMcpToolDef]) -> Vec<Value> {
-    merged_tool_defs(dynamic_defs)
+    mvp_tool_defs()
         .into_iter()
         .map(|def| {
-            let (name, description, mut params) = def;
+            let mut params = def.parameters;
             strict_fixup(&mut params);
             json!({
                 "type": "function",
                 "function": {
-                    "name": name,
-                    "description": description,
+                    "name": def.name,
+                    "description": def.description,
                     "parameters": params,
                     "strict": true
                 }
@@ -479,28 +452,23 @@ pub fn to_openai_tools_with_dynamic(dynamic_defs: &[ChromeMcpToolDef]) -> Vec<Va
 
 /// Convert to Anthropic tools format: `[{ name, description, input_schema }]`
 pub fn to_anthropic_tools() -> Vec<Value> {
-    to_anthropic_tools_with_dynamic(&[])
-}
-
-pub fn to_anthropic_tools_with_dynamic(dynamic_defs: &[ChromeMcpToolDef]) -> Vec<Value> {
-    merged_tool_defs(dynamic_defs)
+    mvp_tool_defs()
         .into_iter()
         .map(|def| {
-            let (name, description, parameters) = def;
             json!({
-                "name": name,
-                "description": description,
-                "input_schema": parameters
+                "name": def.name,
+                "description": def.description,
+                "input_schema": def.parameters
             })
         })
         .collect()
 }
 
 /// Build tool definitions for the given provider.
-pub fn build_tool_defs(provider: &str, dynamic_defs: &[ChromeMcpToolDef]) -> Vec<Value> {
+pub fn build_tool_defs(provider: &str) -> Vec<Value> {
     match provider {
-        "anthropic" => to_anthropic_tools_with_dynamic(dynamic_defs),
-        _ => to_openai_tools_with_dynamic(dynamic_defs),
+        "anthropic" => to_anthropic_tools(),
+        _ => to_openai_tools(),
     }
 }
 
@@ -607,14 +575,14 @@ mod tests {
 
     #[test]
     fn test_build_tool_defs_anthropic() {
-        let tools = build_tool_defs("anthropic", &[]);
+        let tools = build_tool_defs("anthropic");
         assert!(tools[0].get("input_schema").is_some());
         assert!(tools[0].get("type").is_none());
     }
 
     #[test]
     fn test_build_tool_defs_openai() {
-        let tools = build_tool_defs("openai", &[]);
+        let tools = build_tool_defs("openai");
         assert_eq!(tools[0]["type"], "function");
     }
 

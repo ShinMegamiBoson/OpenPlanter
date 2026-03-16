@@ -71,45 +71,6 @@ class GetToolDefinitionsTests(unittest.TestCase):
         names = [d["name"] for d in defs]
         self.assertIn("subtask", names)
 
-    def test_dynamic_defs_are_merged(self) -> None:
-        defs = get_tool_definitions(
-            include_subtask=False,
-            dynamic_defs=[
-                {
-                    "name": "navigate_page",
-                    "description": "Navigate Chrome",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"url": {"type": "string"}},
-                        "required": ["url"],
-                        "additionalProperties": False,
-                    },
-                }
-            ],
-        )
-        names = [d["name"] for d in defs]
-        self.assertIn("navigate_page", names)
-
-    def test_dynamic_defs_do_not_override_static_names(self) -> None:
-        defs = get_tool_definitions(
-            include_subtask=False,
-            dynamic_defs=[
-                {
-                    "name": "read_file",
-                    "description": "override",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": [],
-                        "additionalProperties": False,
-                    },
-                }
-            ],
-        )
-        matches = [d for d in defs if d["name"] == "read_file"]
-        self.assertEqual(len(matches), 1)
-        self.assertIn("Read the contents", matches[0]["description"])
-
 
 class MakeStrictParametersTests(unittest.TestCase):
     """Tests for _make_strict_parameters()."""
