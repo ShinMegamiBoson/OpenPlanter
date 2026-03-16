@@ -73,7 +73,9 @@ export async function handleChromeCommand(args: string): Promise<CommandResult> 
       partial = {
         chrome_mcp_enabled: true,
         chrome_mcp_auto_connect: true,
-        chrome_mcp_browser_url: null,
+        // Tauri partial config treats `null` as "field omitted", so send an
+        // empty string and let the Rust normalizer clear the stored URL.
+        chrome_mcp_browser_url: "",
       };
       break;
     case "url":

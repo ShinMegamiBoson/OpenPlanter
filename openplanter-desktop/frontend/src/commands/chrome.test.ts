@@ -65,7 +65,7 @@ describe("handleChromeCommand", () => {
     __setHandler("update_config", ({ partial }: { partial: Record<string, unknown> }) => {
       expect(partial.chrome_mcp_enabled).toBe(true);
       expect(partial.chrome_mcp_auto_connect).toBe(true);
-      expect(partial.chrome_mcp_browser_url).toBeNull();
+      expect(partial.chrome_mcp_browser_url).toBe("");
       return makeChromeConfig();
     });
 
