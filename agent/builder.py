@@ -83,17 +83,9 @@ def _validate_model_provider(model_name: str, provider: str) -> None:
 
 def _fetch_models_for_provider(cfg: AgentConfig, provider: str) -> list[dict]:
     if provider == "openai":
-        api_key = resolve_openai_api_key(
-            cfg.openai_api_key,
-            cfg.openai_base_url,
-            cfg.openai_oauth_token,
-        )
+        api_key = resolve_openai_api_key(cfg.openai_api_key, cfg.openai_base_url)
         if not api_key:
-            raise ModelError(
-                "OpenAI auth not configured. Set OPENAI_API_KEY, "
-                "OPENPLANTER_OPENAI_API_KEY, OPENAI_OAUTH_TOKEN, "
-                "or OPENPLANTER_OPENAI_OAUTH_TOKEN."
-            )
+            raise ModelError("OpenAI key not configured.")
         models = list_openai_models(api_key=api_key, base_url=cfg.openai_base_url)
         if is_foundry_openai_base_url(cfg.openai_base_url):
             return [
@@ -156,11 +148,7 @@ def _resolve_model_name(cfg: AgentConfig) -> str:
 
 def build_model_factory(cfg: AgentConfig) -> ModelFactory | None:
     """Return a factory that creates models by name + optional reasoning effort."""
-    openai_api_key = resolve_openai_api_key(
-        cfg.openai_api_key,
-        cfg.openai_base_url,
-        cfg.openai_oauth_token,
-    )
+    openai_api_key = resolve_openai_api_key(cfg.openai_api_key, cfg.openai_base_url)
     anthropic_api_key = resolve_anthropic_api_key(cfg.anthropic_api_key, cfg.anthropic_base_url)
 
     def _factory(model_name: str, reasoning_effort: str | None = None) -> AnthropicModel | OpenAICompatibleModel:
@@ -276,11 +264,7 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
 
     _validate_model_provider(model_name, cfg.provider)
 
-    openai_api_key = resolve_openai_api_key(
-        cfg.openai_api_key,
-        cfg.openai_base_url,
-        cfg.openai_oauth_token,
-    )
+    openai_api_key = resolve_openai_api_key(cfg.openai_api_key, cfg.openai_base_url)
     anthropic_api_key = resolve_anthropic_api_key(cfg.anthropic_api_key, cfg.anthropic_base_url)
 
     if cfg.provider == "openai" and openai_api_key:

@@ -214,7 +214,7 @@ class InferProviderTests(unittest.TestCase):
         self.assertEqual(infer_provider_for_model("gpt-4.1-mini"), "openai")
         self.assertEqual(infer_provider_for_model("GPT-4o"), "openai")
         self.assertEqual(
-            infer_provider_for_model("azure-foundry/gpt-5.4"),
+            infer_provider_for_model("azure-foundry/gpt-5.3-codex"),
             "openai",
         )
 

@@ -509,7 +509,6 @@ mod tests {
     fn empty_cfg() -> AgentConfig {
         let mut cfg = AgentConfig::from_env("/nonexistent");
         cfg.openai_api_key = None;
-        cfg.openai_oauth_token = None;
         cfg.anthropic_api_key = None;
         cfg.openrouter_api_key = None;
         cfg.cerebras_api_key = None;
@@ -545,33 +544,6 @@ mod tests {
         let file_creds = CredentialBundle::default();
         merge_credentials_into_config(&mut cfg, &env_creds, &file_creds);
         assert_eq!(cfg.openai_api_key, Some("existing".to_string()));
-    }
-
-    #[test]
-    fn test_merge_prefers_real_openai_key_over_oauth() {
-        let mut cfg = empty_cfg();
-        let env_creds = CredentialBundle {
-            openai_api_key: Some("env-key".to_string()),
-            openai_oauth_token: Some("oauth-token".to_string()),
-            ..Default::default()
-        };
-        merge_credentials_into_config(&mut cfg, &env_creds, &CredentialBundle::default());
-        assert_eq!(cfg.openai_oauth_token, Some("oauth-token".to_string()));
-        assert_eq!(cfg.openai_api_key, Some("env-key".to_string()));
-        assert_eq!(cfg.api_key, Some("env-key".to_string()));
-    }
-
-    #[test]
-    fn test_merge_uses_oauth_when_only_placeholder_exists() {
-        let mut cfg = AgentConfig::default();
-        let env_creds = CredentialBundle {
-            openai_oauth_token: Some("oauth-token".to_string()),
-            ..Default::default()
-        };
-        merge_credentials_into_config(&mut cfg, &env_creds, &CredentialBundle::default());
-        assert_eq!(cfg.openai_oauth_token, Some("oauth-token".to_string()));
-        assert_eq!(cfg.openai_api_key, Some("oauth-token".to_string()));
-        assert_eq!(cfg.api_key, Some("oauth-token".to_string()));
     }
 
     #[test]
