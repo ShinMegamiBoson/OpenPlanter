@@ -123,10 +123,11 @@ fn strip_quotes(s: &str) -> &str {
     trimmed
 }
 
-pub fn parse_env_assignments(path: &Path) -> HashMap<String, String> {
+/// Parse a `.env` file and extract credential keys.
+pub fn parse_env_file(path: &Path) -> CredentialBundle {
     let content = match fs::read_to_string(path) {
         Ok(c) => c,
-        Err(_) => return HashMap::new(),
+        Err(_) => return CredentialBundle::default(),
     };
 
     let mut env_map: HashMap<String, String> = HashMap::new();
@@ -142,13 +143,6 @@ pub fn parse_env_assignments(path: &Path) -> HashMap<String, String> {
             env_map.insert(key.to_string(), value.to_string());
         }
     }
-
-    env_map
-}
-
-/// Parse a `.env` file and extract credential keys.
-pub fn parse_env_file(path: &Path) -> CredentialBundle {
-    let env_map = parse_env_assignments(path);
 
     fn get_key(map: &HashMap<String, String>, primary: &str, secondary: &str) -> Option<String> {
         map.get(primary)
@@ -426,36 +420,6 @@ UNRELATED_VAR=foo
         assert_eq!(bundle.brave_api_key, Some("brave-from-env".into()));
         assert_eq!(bundle.tavily_api_key, Some("tavily-from-env".into()));
         assert!(bundle.cerebras_api_key.is_none());
-    }
-
-    #[test]
-    fn test_parse_env_assignments_preserves_generic_workspace_keys() {
-        let dir = tempfile::tempdir().unwrap();
-        let env_path = dir.path().join(".env");
-        fs::write(
-            &env_path,
-            "OPENPLANTER_WORKSPACE=workspace\nOPENAI_API_KEY=sk-from-env\n",
-        )
-        .unwrap();
-
-        let env_map = parse_env_assignments(&env_path);
-        assert_eq!(
-            env_map.get("OPENPLANTER_WORKSPACE"),
-            Some(&"workspace".to_string())
-        );
-        assert_eq!(env_map.get("OPENAI_API_KEY"), Some(&"sk-from-env".to_string()));
-    }
-
-    #[test]
-    fn test_discover_env_candidates_returns_nearest_ancestor_env() {
-        let dir = tempfile::tempdir().unwrap();
-        let repo = dir.path().join("repo");
-        let nested = repo.join("workspace").join("deep");
-        fs::create_dir_all(&nested).unwrap();
-        fs::write(repo.join(".env"), "OPENPLANTER_WORKSPACE=workspace\n").unwrap();
-
-        let candidates = discover_env_candidates(&nested);
-        assert_eq!(candidates, vec![repo.join(".env").canonicalize().unwrap()]);
     }
 
     #[test]

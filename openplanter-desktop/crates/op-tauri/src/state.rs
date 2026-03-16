@@ -1,15 +1,12 @@
 use op_core::config::AgentConfig;
 use op_core::config_hydration::{apply_settings_to_config, merge_credentials_into_config};
 use op_core::credentials::CredentialBundle;
-use op_core::credentials::{
-    credentials_from_env, discover_env_candidates, parse_env_assignments, parse_env_file,
-};
+use op_core::credentials::{credentials_from_env, discover_env_candidates, parse_env_file};
 #[cfg(test)]
 use op_core::settings::PersistentSettings;
 use op_core::settings::SettingsStore;
 use op_core::workspace_init;
 use std::env;
-use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -21,25 +18,15 @@ const WORKSPACE_ENV_KEY: &str = "OPENPLANTER_WORKSPACE";
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum WorkspaceSource {
     EnvOverride,
-    DotEnv,
     GitRoot,
     CurrentDir,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum GuardrailAction {
-    None,
-    RedirectedToWorkspace,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ResolvedWorkspace {
     path: PathBuf,
     source: WorkspaceSource,
-    dotenv_path: Option<PathBuf>,
     invalid_override: Option<String>,
-    invalid_dotenv_value: Option<String>,
-    guardrail_action: GuardrailAction,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -48,24 +35,6 @@ struct LegacyMigrationReport {
     copied_files: u64,
     skipped_existing: u64,
     errors: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StartupWorkspaceError {
-    RepoRootDisallowed { repo_root: PathBuf },
-}
-
-impl fmt::Display for StartupWorkspaceError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            StartupWorkspaceError::RepoRootDisallowed { repo_root } => write!(
-                f,
-                "Refusing to use repository root as the workspace: {}. Set {} in the nearest .env or use a non-root workspace override.",
-                repo_root.display(),
-                WORKSPACE_ENV_KEY
-            ),
-        }
-    }
 }
 
 fn canonicalize_or_self(path: &Path) -> PathBuf {
@@ -83,108 +52,43 @@ fn find_git_root(start: &Path) -> Option<PathBuf> {
     None
 }
 
-fn resolve_candidate_path(raw_value: &str, base_dir: &Path) -> PathBuf {
-    let candidate = PathBuf::from(raw_value.trim());
-    let joined = if candidate.is_absolute() {
-        candidate
-    } else {
-        base_dir.join(candidate)
-    };
-    canonicalize_or_self(&joined)
-}
-
-fn apply_repo_root_guardrail(
-    candidate: &Path,
-) -> Result<(PathBuf, GuardrailAction), StartupWorkspaceError> {
-    let candidate = canonicalize_or_self(candidate);
-    if candidate.join(".git").exists() {
-        let workspace_dir = candidate.join("workspace");
-        if workspace_dir.is_dir() {
-            return Ok((
-                canonicalize_or_self(&workspace_dir),
-                GuardrailAction::RedirectedToWorkspace,
-            ));
-        }
-        return Err(StartupWorkspaceError::RepoRootDisallowed { repo_root: candidate });
-    }
-
-    Ok((candidate, GuardrailAction::None))
-}
-
 fn resolve_startup_workspace_from(
     current_dir: &Path,
     env_override: Option<&str>,
-) -> Result<ResolvedWorkspace, StartupWorkspaceError> {
-    let dotenv_path = discover_env_candidates(current_dir).into_iter().next();
+) -> ResolvedWorkspace {
     let mut invalid_override = None;
-    let mut invalid_dotenv_value = None;
 
     if let Some(raw_override) = env_override
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        let candidate = resolve_candidate_path(raw_override, current_dir);
-        if candidate.is_dir() {
-            let (path, guardrail_action) = apply_repo_root_guardrail(&candidate)?;
-            return Ok(ResolvedWorkspace {
-                path,
+        let candidate = PathBuf::from(raw_override);
+        if candidate.exists() {
+            return ResolvedWorkspace {
+                path: canonicalize_or_self(&candidate),
                 source: WorkspaceSource::EnvOverride,
-                dotenv_path: None,
                 invalid_override: None,
-                invalid_dotenv_value: None,
-                guardrail_action,
-            });
+            };
         }
         invalid_override = Some(raw_override.to_string());
     }
 
-    if let Some(path) = dotenv_path.as_ref() {
-        let env_map = parse_env_assignments(path);
-        if let Some(raw_value) = env_map
-            .get(WORKSPACE_ENV_KEY)
-            .map(|value| value.trim())
-            .filter(|value| !value.is_empty())
-        {
-            let candidate = resolve_candidate_path(raw_value, path.parent().unwrap_or(current_dir));
-            if candidate.is_dir() {
-                let (path, guardrail_action) = apply_repo_root_guardrail(&candidate)?;
-                return Ok(ResolvedWorkspace {
-                    path,
-                    source: WorkspaceSource::DotEnv,
-                    dotenv_path,
-                    invalid_override,
-                    invalid_dotenv_value: None,
-                    guardrail_action,
-                });
-            }
-            invalid_dotenv_value = Some(raw_value.to_string());
-        }
-    }
-
     if let Some(git_root) = find_git_root(current_dir) {
-        let (path, guardrail_action) = apply_repo_root_guardrail(&git_root)?;
-        return Ok(ResolvedWorkspace {
-            path,
+        return ResolvedWorkspace {
+            path: git_root,
             source: WorkspaceSource::GitRoot,
-            dotenv_path,
             invalid_override,
-            invalid_dotenv_value,
-            guardrail_action,
-        });
+        };
     }
 
-    let (path, guardrail_action) = apply_repo_root_guardrail(current_dir)?;
-    Ok(ResolvedWorkspace {
-        path,
+    ResolvedWorkspace {
+        path: canonicalize_or_self(current_dir),
         source: WorkspaceSource::CurrentDir,
-        dotenv_path,
         invalid_override,
-        invalid_dotenv_value,
-        guardrail_action,
-    })
+    }
 }
 
-fn resolve_desktop_workspace() -> Result<ResolvedWorkspace, StartupWorkspaceError> {
+fn resolve_desktop_workspace() -> ResolvedWorkspace {
     let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let env_override = env::var(WORKSPACE_ENV_KEY).ok();
     resolve_startup_workspace_from(&current_dir, env_override.as_deref())
@@ -321,21 +225,10 @@ fn format_startup_trace(
 ) -> String {
     let source = match resolved.source {
         WorkspaceSource::EnvOverride => "env_override",
-        WorkspaceSource::DotEnv => "dotenv",
         WorkspaceSource::GitRoot => "git_root",
         WorkspaceSource::CurrentDir => "current_dir",
     };
-    let dotenv_path = resolved
-        .dotenv_path
-        .as_ref()
-        .map(|path| path.display().to_string())
-        .unwrap_or_else(|| "<none>".to_string());
     let invalid_override = resolved.invalid_override.as_deref().unwrap_or("<none>");
-    let invalid_dotenv_value = resolved.invalid_dotenv_value.as_deref().unwrap_or("<none>");
-    let guardrail_action = match resolved.guardrail_action {
-        GuardrailAction::None => "none",
-        GuardrailAction::RedirectedToWorkspace => "redirected_to_workspace",
-    };
     let migration_source = migration
         .source
         .as_ref()
@@ -343,15 +236,12 @@ fn format_startup_trace(
         .unwrap_or_else(|| "<none>".to_string());
 
     format!(
-        "pid={} cwd={} workspace={} source={} dotenv_path={} invalid_override={} invalid_dotenv_value={} guardrail_action={} migration_source={} migration_copied={} migration_skipped={} migration_errors={}",
+        "pid={} cwd={} workspace={} source={} invalid_override={} migration_source={} migration_copied={} migration_skipped={} migration_errors={}",
         std::process::id(),
         current_dir.display(),
         resolved.path.display(),
         source,
-        dotenv_path,
         invalid_override,
-        invalid_dotenv_value,
-        guardrail_action,
         migration_source,
         migration.copied_files,
         migration.skipped_existing,
@@ -370,9 +260,9 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn try_new() -> Result<Self, StartupWorkspaceError> {
+    pub fn new() -> Self {
         let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let resolved_workspace = resolve_desktop_workspace()?;
+        let resolved_workspace = resolve_desktop_workspace();
         let mut cfg = AgentConfig::from_env(&resolved_workspace.path);
         let migration = migrate_legacy_desktop_state(&cfg.workspace, &cfg.session_root_dir);
         if let Err(err) =
@@ -398,14 +288,14 @@ impl AppState {
         let settings = SettingsStore::new(&cfg.workspace, &cfg.session_root_dir).load();
         apply_settings_to_config(&mut cfg, &settings);
 
-        Ok(Self {
+        Self {
             config: Arc::new(Mutex::new(cfg)),
             session_id: Arc::new(Mutex::new(None)),
             cancel_token: Arc::new(Mutex::new(CancellationToken::new())),
             agent_running: Arc::new(Mutex::new(false)),
             init_lock: Arc::new(Mutex::new(())),
             startup_trace: format_startup_trace(&current_dir, &resolved_workspace, &migration),
-        })
+        }
     }
 
     pub fn startup_trace(&self) -> &str {
@@ -555,111 +445,43 @@ mod tests {
         let override_dir = temp.path().join("override");
         fs::create_dir_all(&override_dir).unwrap();
 
-        let resolved =
-            resolve_startup_workspace_from(&repo, Some(override_dir.to_str().unwrap())).unwrap();
+        let resolved = resolve_startup_workspace_from(&repo, Some(override_dir.to_str().unwrap()));
 
         assert_eq!(resolved.source, WorkspaceSource::EnvOverride);
         assert_eq!(resolved.path, canonicalize_or_self(&override_dir));
         assert!(resolved.invalid_override.is_none());
-        assert_eq!(resolved.guardrail_action, GuardrailAction::None);
     }
 
     #[test]
-    fn test_resolve_startup_workspace_prefers_dotenv_before_git_root() {
+    fn test_resolve_startup_workspace_finds_git_root_from_nested_dir() {
         let temp = tempdir().unwrap();
         let repo = temp.path().join("repo");
-        let workspace = repo.join("workspace");
+        fs::create_dir_all(repo.join(".git")).unwrap();
         let nested = repo
             .join("openplanter-desktop")
             .join("crates")
             .join("op-tauri");
-        fs::create_dir_all(repo.join(".git")).unwrap();
-        fs::create_dir_all(&workspace).unwrap();
-        fs::create_dir_all(&nested).unwrap();
-        fs::write(repo.join(".env"), "OPENPLANTER_WORKSPACE=workspace\n").unwrap();
-
-        let resolved = resolve_startup_workspace_from(&nested, None).unwrap();
-
-        assert_eq!(resolved.source, WorkspaceSource::DotEnv);
-        assert_eq!(resolved.path, canonicalize_or_self(&workspace));
-        assert_eq!(
-            resolved.dotenv_path,
-            Some(canonicalize_or_self(&repo.join(".env")))
-        );
-    }
-
-    #[test]
-    fn test_resolve_startup_workspace_redirects_repo_root_to_workspace() {
-        let temp = tempdir().unwrap();
-        let repo = temp.path().join("repo");
-        let workspace = repo.join("workspace");
-        let nested = repo
-            .join("openplanter-desktop")
-            .join("crates")
-            .join("op-tauri");
-        fs::create_dir_all(repo.join(".git")).unwrap();
-        fs::create_dir_all(&workspace).unwrap();
         fs::create_dir_all(&nested).unwrap();
 
-        let resolved = resolve_startup_workspace_from(&nested, None).unwrap();
+        let resolved = resolve_startup_workspace_from(&nested, None);
 
         assert_eq!(resolved.source, WorkspaceSource::GitRoot);
-        assert_eq!(resolved.path, canonicalize_or_self(&workspace));
-        assert_eq!(
-            resolved.guardrail_action,
-            GuardrailAction::RedirectedToWorkspace
-        );
+        assert_eq!(resolved.path, canonicalize_or_self(&repo));
     }
 
     #[test]
-    fn test_resolve_startup_workspace_rejects_repo_root_when_workspace_dir_missing() {
+    fn test_resolve_startup_workspace_falls_back_to_current_dir() {
         let temp = tempdir().unwrap();
-        let repo = temp.path().join("repo");
-        fs::create_dir_all(repo.join(".git")).unwrap();
-
-        let err = resolve_startup_workspace_from(&repo, None).unwrap_err();
-
-        assert_eq!(
-            err,
-            StartupWorkspaceError::RepoRootDisallowed {
-                repo_root: canonicalize_or_self(&repo),
-            }
-        );
-    }
-
-    #[test]
-    fn test_resolve_startup_workspace_invalid_override_falls_back_cleanly() {
-        let temp = tempdir().unwrap();
-        let repo = temp.path().join("repo");
-        let workspace = repo.join("workspace");
-        let invalid = temp.path().join("missing");
-        fs::create_dir_all(repo.join(".git")).unwrap();
-        fs::create_dir_all(&workspace).unwrap();
 
         let resolved =
-            resolve_startup_workspace_from(&repo, Some(invalid.to_str().unwrap())).unwrap();
+            resolve_startup_workspace_from(temp.path(), Some("/definitely/missing/path"));
 
-        assert_eq!(resolved.source, WorkspaceSource::GitRoot);
-        assert_eq!(resolved.path, canonicalize_or_self(&workspace));
-        assert_eq!(resolved.invalid_override, Some(invalid.display().to_string()));
-    }
-
-    #[test]
-    fn test_resolve_startup_workspace_file_override_is_treated_as_invalid() {
-        let temp = tempdir().unwrap();
-        let repo = temp.path().join("repo");
-        let workspace = repo.join("workspace");
-        let invalid = repo.join("workspace.txt");
-        fs::create_dir_all(repo.join(".git")).unwrap();
-        fs::create_dir_all(&workspace).unwrap();
-        fs::write(&invalid, "not a directory\n").unwrap();
-
-        let resolved =
-            resolve_startup_workspace_from(&repo, Some(invalid.to_str().unwrap())).unwrap();
-
-        assert_eq!(resolved.source, WorkspaceSource::GitRoot);
-        assert_eq!(resolved.path, canonicalize_or_self(&workspace));
-        assert_eq!(resolved.invalid_override, Some(invalid.display().to_string()));
+        assert_eq!(resolved.source, WorkspaceSource::CurrentDir);
+        assert_eq!(resolved.path, canonicalize_or_self(temp.path()));
+        assert_eq!(
+            resolved.invalid_override,
+            Some("/definitely/missing/path".to_string())
+        );
     }
 
     #[test]
@@ -725,10 +547,7 @@ mod tests {
         fs::create_dir_all(workspace.join(".git")).unwrap();
         fs::create_dir_all(&current_dir).unwrap();
 
-        let workspace_dir = workspace.join("workspace");
-        fs::create_dir_all(&workspace_dir).unwrap();
-
-        let resolved = resolve_startup_workspace_from(&current_dir, None).unwrap();
+        let resolved = resolve_startup_workspace_from(&current_dir, None);
         let migration = LegacyMigrationReport {
             source: Some(workspace.join("legacy-state")),
             copied_files: 2,
@@ -742,10 +561,7 @@ mod tests {
         assert!(trace.contains(&format!("cwd={}", current_dir.display())));
         assert!(trace.contains(&format!("workspace={}", resolved.path.display())));
         assert!(trace.contains("source=git_root"));
-        assert!(trace.contains("dotenv_path=<none>"));
         assert!(trace.contains("invalid_override=<none>"));
-        assert!(trace.contains("invalid_dotenv_value=<none>"));
-        assert!(trace.contains("guardrail_action=redirected_to_workspace"));
         assert!(trace.contains(&format!(
             "migration_source={}",
             workspace.join("legacy-state").display()

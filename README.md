@@ -63,11 +63,8 @@ pip install -e .
 # Configure API keys (interactive prompt)
 openplanter-agent --configure-keys
 
-# In this repo, point OpenPlanter at the live workspace from the repo-root .env
-echo 'OPENPLANTER_WORKSPACE=workspace' >> .env
-
 # Launch the TUI
-openplanter-agent
+openplanter-agent --workspace /path/to/your/project
 ```
 
 Or run a single task headlessly:
@@ -182,27 +179,10 @@ openplanter-agent [options]
 
 | Flag | Description |
 |------|-------------|
-| `--workspace DIR` | Explicit non-root workspace override. Repo root is rejected. |
+| `--workspace DIR` | Workspace root (default: `.`) |
 | `--session-id ID` | Use a specific session ID |
 | `--resume` | Resume the latest (or specified) session |
 | `--list-sessions` | List saved sessions and exit |
-
-### Startup Workspace Resolution
-
-Startup resolves the runtime workspace in this order:
-
-1. Explicit CLI `--workspace` for the Python agent, if provided
-2. Process env `OPENPLANTER_WORKSPACE`
-3. `OPENPLANTER_WORKSPACE` from the nearest ancestor `.env`
-4. Entry-point fallback, followed by repo-root guardrails
-
-Both the CLI and the desktop app refuse to operate directly in repo root. If startup would land on repo root and `<repo>/workspace` exists, OpenPlanter redirects there. Otherwise it exits with an actionable error.
-
-For this repository, the intended local setup is:
-
-```dotenv
-OPENPLANTER_WORKSPACE=workspace
-```
 
 ### Model Selection
 
@@ -243,7 +223,7 @@ Keys are resolved in this priority order (highest wins):
 
 1. CLI flags (`--openai-api-key`, etc.)
 2. Environment variables (`OPENAI_API_KEY` or `OPENPLANTER_OPENAI_API_KEY`)
-3. Nearest ancestor `.env` discovered from the resolved workspace path
+3. `.env` file in the workspace
 4. Workspace credential store (`.openplanter/credentials.json`)
 5. User credential store (`~/.openplanter/credentials.json`)
 

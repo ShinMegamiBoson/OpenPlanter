@@ -4,7 +4,6 @@ import argparse
 import os
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
 
 from .builder import _fetch_models_for_provider, build_engine, infer_provider_for_model
 from .config import (
@@ -27,7 +26,6 @@ from .model import ModelError
 from .runtime import SessionError, SessionRuntime, SessionStore
 from .settings import PersistentSettings, SettingsStore, normalize_reasoning_effort
 from .tui import ChatContext, _clip_event, _get_model_display_name, dispatch_slash_command, run_rich_repl
-from .workspace_resolution import WorkspaceResolutionError, resolve_startup_workspace
 
 VALID_REASONING_FLAGS = ["low", "medium", "high", "none"]
 
@@ -549,15 +547,9 @@ def _has_non_interactive_command(args: argparse.Namespace) -> bool:
     return False
 
 
-def _workspace_flag_explicit(argv: list[str]) -> bool:
-    return any(token == "--workspace" or token.startswith("--workspace=") for token in argv)
-
-
 def main() -> None:
-    argv = sys.argv[1:]
     parser = build_parser()
-    args = parser.parse_args(argv)
-    workspace_flag_explicit = _workspace_flag_explicit(argv)
+    args = parser.parse_args()
 
     if args.resume and args.session_id is None and args.session_id_positional:
         args.session_id = args.session_id_positional
@@ -568,20 +560,7 @@ def main() -> None:
     if (args.headless or non_tty) and not args.textual:
         args.no_tui = True
 
-    try:
-        workspace_resolution = resolve_startup_workspace(
-            cli_workspace=args.workspace,
-            cli_workspace_explicit=workspace_flag_explicit,
-            cwd=Path.cwd(),
-        )
-    except WorkspaceResolutionError as exc:
-        print(f"Workspace error: {exc}")
-        raise SystemExit(2)
-
-    for warning in workspace_resolution.warnings:
-        print(f"[workspace] {warning}")
-
-    cfg = AgentConfig.from_env(workspace_resolution.workspace)
+    cfg = AgentConfig.from_env(args.workspace)
     settings_store = SettingsStore(workspace=cfg.workspace, session_root_dir=cfg.session_root_dir)
     settings = _apply_persistent_settings(cfg, args, settings_store)
 
@@ -683,9 +662,6 @@ def main() -> None:
         startup_info["Reasoning"] = cfg.reasoning_effort
     startup_info["Mode"] = "recursive" if cfg.recursive else "flat"
     startup_info["Workspace"] = str(cfg.workspace)
-    startup_info["WorkspaceSource"] = workspace_resolution.source
-    if workspace_resolution.guardrail_action != "none":
-        startup_info["WorkspaceGuardrail"] = workspace_resolution.guardrail_action
     startup_info["Session"] = runtime.session_id
 
     ctx = ChatContext(runtime=runtime, cfg=cfg, settings_store=settings_store)

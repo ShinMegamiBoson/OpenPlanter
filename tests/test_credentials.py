@@ -7,7 +7,6 @@ from pathlib import Path
 from agent.credentials import (
     CredentialBundle,
     CredentialStore,
-    parse_env_assignments,
     discover_env_candidates,
     parse_env_file,
 )
@@ -42,22 +41,6 @@ class CredentialTests(unittest.TestCase):
             self.assertEqual(creds.brave_api_key, "brave-key")
             self.assertEqual(creds.tavily_api_key, "tavily-key")
 
-    def test_parse_env_assignments_preserves_generic_workspace_keys(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            env_path = Path(tmpdir) / ".env"
-            env_path.write_text(
-                "\n".join(
-                    [
-                        "OPENPLANTER_WORKSPACE=workspace",
-                        "OPENAI_API_KEY=oa-key",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            env_map = parse_env_assignments(env_path)
-            self.assertEqual(env_map["OPENPLANTER_WORKSPACE"], "workspace")
-            self.assertEqual(env_map["OPENAI_API_KEY"], "oa-key")
-
     def test_store_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -76,20 +59,13 @@ class CredentialTests(unittest.TestCase):
             loaded = store.load()
             self.assertEqual(loaded, creds)
 
-    def test_discover_env_candidates_returns_nearest_ancestor_env(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            repo = Path(tmpdir) / "repo"
-            nested = repo / "workspace" / "deep"
-            nested.mkdir(parents=True, exist_ok=True)
-            (repo / ".env").write_text("OPENPLANTER_WORKSPACE=workspace\n", encoding="utf-8")
-            candidates = discover_env_candidates(nested)
-            self.assertEqual(candidates, [(repo / ".env").resolve()])
-
-    def test_discover_env_candidates_returns_empty_when_no_env_exists(self) -> None:
+    def test_discover_env_candidates_includes_workspace_env(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace = Path(tmpdir) / "RLMCode"
             workspace.mkdir(parents=True, exist_ok=True)
-            self.assertEqual(discover_env_candidates(workspace), [])
+            candidates = discover_env_candidates(workspace)
+            self.assertGreaterEqual(len(candidates), 1)
+            self.assertEqual(candidates[0].resolve(), (workspace / ".env").resolve())
 
 
 if __name__ == "__main__":
