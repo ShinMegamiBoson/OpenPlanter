@@ -133,7 +133,6 @@ describe("invoke wrappers", () => {
       brave: false,
       tavily: true,
       voyage: true,
-      mistral_transcription: true,
     }));
     const status = await getCredentialsStatus();
     expect(status.openai).toBe(true);
@@ -143,7 +142,6 @@ describe("invoke wrappers", () => {
     expect(status.brave).toBe(false);
     expect(status.tavily).toBe(true);
     expect(status.voyage).toBe(true);
-    expect(status.mistral_transcription).toBe(true);
   });
 
   it("listSessions sends limit", async () => {

@@ -105,9 +105,7 @@ fn apply_repo_root_guardrail(
                 GuardrailAction::RedirectedToWorkspace,
             ));
         }
-        return Err(StartupWorkspaceError::RepoRootDisallowed {
-            repo_root: candidate,
-        });
+        return Err(StartupWorkspaceError::RepoRootDisallowed { repo_root: candidate });
     }
 
     Ok((candidate, GuardrailAction::None))
@@ -643,10 +641,7 @@ mod tests {
 
         assert_eq!(resolved.source, WorkspaceSource::GitRoot);
         assert_eq!(resolved.path, canonicalize_or_self(&workspace));
-        assert_eq!(
-            resolved.invalid_override,
-            Some(invalid.display().to_string())
-        );
+        assert_eq!(resolved.invalid_override, Some(invalid.display().to_string()));
     }
 
     #[test]
@@ -664,10 +659,7 @@ mod tests {
 
         assert_eq!(resolved.source, WorkspaceSource::GitRoot);
         assert_eq!(resolved.path, canonicalize_or_self(&workspace));
-        assert_eq!(
-            resolved.invalid_override,
-            Some(invalid.display().to_string())
-        );
+        assert_eq!(resolved.invalid_override, Some(invalid.display().to_string()));
     }
 
     #[test]

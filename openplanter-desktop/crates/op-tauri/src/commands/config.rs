@@ -205,10 +205,6 @@ pub fn build_credential_status(cfg: &op_core::config::AgentConfig) -> HashMap<St
     status.insert("brave".to_string(), cfg.brave_api_key.is_some());
     status.insert("tavily".to_string(), cfg.tavily_api_key.is_some());
     status.insert("voyage".to_string(), cfg.voyage_api_key.is_some());
-    status.insert(
-        "mistral_transcription".to_string(),
-        cfg.mistral_transcription_api_key.is_some(),
-    );
     status
 }
 
@@ -261,11 +257,6 @@ pub async fn get_credentials_status(
     status.insert(
         "voyage".to_string(),
         cfg.voyage_api_key.is_some() || env_creds.voyage_api_key.is_some(),
-    );
-    status.insert(
-        "mistral_transcription".to_string(),
-        cfg.mistral_transcription_api_key.is_some()
-            || env_creds.mistral_transcription_api_key.is_some(),
     );
     Ok(status)
 }
@@ -374,7 +365,6 @@ mod tests {
         cfg.brave_api_key = None;
         cfg.tavily_api_key = None;
         cfg.voyage_api_key = None;
-        cfg.mistral_transcription_api_key = None;
         let status = build_credential_status(&cfg);
         assert_eq!(status["openai"], false);
         assert_eq!(status["anthropic"], false);
@@ -385,7 +375,6 @@ mod tests {
         assert_eq!(status["brave"], false);
         assert_eq!(status["tavily"], false);
         assert_eq!(status["voyage"], false);
-        assert_eq!(status["mistral_transcription"], false);
     }
 
     #[test]
@@ -438,7 +427,6 @@ mod tests {
         cfg.brave_api_key = Some("k8".to_string());
         cfg.tavily_api_key = Some("k9".to_string());
         cfg.voyage_api_key = Some("k10".to_string());
-        cfg.mistral_transcription_api_key = Some("k11".to_string());
         let status = build_credential_status(&cfg);
         for (provider, has_key) in &status {
             assert!(has_key, "{} should be true when key is set", provider);
@@ -446,13 +434,13 @@ mod tests {
     }
 
     #[test]
-    fn test_cred_status_has_twelve_entries() {
+    fn test_cred_status_has_eleven_entries() {
         let cfg = op_core::config::AgentConfig::from_env("/nonexistent");
         let status = build_credential_status(&cfg);
         assert_eq!(
             status.len(),
-            12,
-            "should have 12 entries (6 providers + 6 services)"
+            11,
+            "should have 11 entries (6 providers + 5 services)"
         );
     }
 }

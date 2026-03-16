@@ -16,12 +16,6 @@ pub const ZAI_PAYGO_BASE_URL: &str = "https://api.z.ai/api/paas/v4";
 pub const ZAI_CODING_BASE_URL: &str = "https://api.z.ai/api/coding/paas/v4";
 pub const BRAVE_BASE_URL: &str = "https://api.search.brave.com/res/v1";
 pub const TAVILY_BASE_URL: &str = "https://api.tavily.com";
-pub const MISTRAL_TRANSCRIPTION_BASE_URL: &str = "https://api.mistral.ai";
-pub const MISTRAL_TRANSCRIPTION_DEFAULT_MODEL: &str = "voxtral-mini-latest";
-pub const MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS: i64 = 900;
-pub const MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS: f64 = 2.0;
-pub const MISTRAL_TRANSCRIPTION_MAX_CHUNKS: i64 = 48;
-pub const MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC: i64 = 180;
 
 /// Default model for each supported provider.
 pub static PROVIDER_DEFAULT_MODELS: LazyLock<HashMap<&'static str, &'static str>> =
@@ -178,7 +172,6 @@ pub struct AgentConfig {
     pub firecrawl_base_url: String,
     pub brave_base_url: String,
     pub tavily_base_url: String,
-    pub mistral_transcription_base_url: String,
 
     // API keys
     pub api_key: Option<String>,
@@ -193,13 +186,6 @@ pub struct AgentConfig {
     pub tavily_api_key: Option<String>,
     pub web_search_provider: String,
     pub voyage_api_key: Option<String>,
-    pub mistral_transcription_api_key: Option<String>,
-    pub mistral_transcription_model: String,
-    pub mistral_transcription_max_bytes: i64,
-    pub mistral_transcription_chunk_max_seconds: i64,
-    pub mistral_transcription_chunk_overlap_seconds: f64,
-    pub mistral_transcription_max_chunks: i64,
-    pub mistral_transcription_request_timeout_sec: i64,
 
     // Limits
     pub max_depth: i64,
@@ -251,7 +237,6 @@ impl Default for AgentConfig {
             firecrawl_base_url: "https://api.firecrawl.dev/v1".into(),
             brave_base_url: BRAVE_BASE_URL.into(),
             tavily_base_url: TAVILY_BASE_URL.into(),
-            mistral_transcription_base_url: MISTRAL_TRANSCRIPTION_BASE_URL.into(),
             api_key: Some(FOUNDRY_OPENAI_API_KEY_PLACEHOLDER.into()),
             openai_api_key: Some(FOUNDRY_OPENAI_API_KEY_PLACEHOLDER.into()),
             anthropic_api_key: Some(FOUNDRY_ANTHROPIC_API_KEY_PLACEHOLDER.into()),
@@ -264,14 +249,6 @@ impl Default for AgentConfig {
             tavily_api_key: None,
             web_search_provider: "exa".into(),
             voyage_api_key: None,
-            mistral_transcription_api_key: None,
-            mistral_transcription_model: MISTRAL_TRANSCRIPTION_DEFAULT_MODEL.into(),
-            mistral_transcription_max_bytes: 100 * 1024 * 1024,
-            mistral_transcription_chunk_max_seconds: MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS,
-            mistral_transcription_chunk_overlap_seconds:
-                MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS,
-            mistral_transcription_max_chunks: MISTRAL_TRANSCRIPTION_MAX_CHUNKS,
-            mistral_transcription_request_timeout_sec: MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC,
             max_depth: 4,
             max_steps_per_call: 100,
             budget_extension_enabled: true,
@@ -332,9 +309,6 @@ impl AgentConfig {
 
         let voyage_api_key =
             env_opt("OPENPLANTER_VOYAGE_API_KEY").or_else(|| env_opt("VOYAGE_API_KEY"));
-        let mistral_transcription_api_key = env_opt("OPENPLANTER_MISTRAL_TRANSCRIPTION_API_KEY")
-            .or_else(|| env_opt("MISTRAL_TRANSCRIPTION_API_KEY"))
-            .or_else(|| env_opt("MISTRAL_API_KEY"));
 
         let openai_base_url = env_opt("OPENPLANTER_OPENAI_BASE_URL")
             .or_else(|| env_opt("OPENPLANTER_BASE_URL"))
@@ -398,10 +372,6 @@ impl AgentConfig {
             ),
             brave_base_url: env_or("OPENPLANTER_BRAVE_BASE_URL", BRAVE_BASE_URL),
             tavily_base_url: env_or("OPENPLANTER_TAVILY_BASE_URL", TAVILY_BASE_URL),
-            mistral_transcription_base_url: env_opt("OPENPLANTER_MISTRAL_TRANSCRIPTION_BASE_URL")
-                .or_else(|| env_opt("MISTRAL_TRANSCRIPTION_BASE_URL"))
-                .or_else(|| env_opt("MISTRAL_BASE_URL"))
-                .unwrap_or_else(|| MISTRAL_TRANSCRIPTION_BASE_URL.into()),
             openai_api_key,
             anthropic_api_key,
             openrouter_api_key,
@@ -413,30 +383,6 @@ impl AgentConfig {
             tavily_api_key,
             web_search_provider,
             voyage_api_key,
-            mistral_transcription_api_key,
-            mistral_transcription_model: env_opt("OPENPLANTER_MISTRAL_TRANSCRIPTION_MODEL")
-                .or_else(|| env_opt("MISTRAL_TRANSCRIPTION_MODEL"))
-                .unwrap_or_else(|| MISTRAL_TRANSCRIPTION_DEFAULT_MODEL.into()),
-            mistral_transcription_max_bytes: env_int(
-                "OPENPLANTER_MISTRAL_TRANSCRIPTION_MAX_BYTES",
-                100 * 1024 * 1024,
-            ),
-            mistral_transcription_chunk_max_seconds: env_int(
-                "OPENPLANTER_MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS",
-                MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS,
-            ),
-            mistral_transcription_chunk_overlap_seconds: env_float(
-                "OPENPLANTER_MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS",
-                MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS,
-            ),
-            mistral_transcription_max_chunks: env_int(
-                "OPENPLANTER_MISTRAL_TRANSCRIPTION_MAX_CHUNKS",
-                MISTRAL_TRANSCRIPTION_MAX_CHUNKS,
-            ),
-            mistral_transcription_request_timeout_sec: env_int(
-                "OPENPLANTER_MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC",
-                MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC,
-            ),
             max_depth: env_int("OPENPLANTER_MAX_DEPTH", 4),
             max_steps_per_call: env_int("OPENPLANTER_MAX_STEPS", 100),
             budget_extension_enabled: env_bool("OPENPLANTER_BUDGET_EXTENSION_ENABLED", true),
@@ -523,31 +469,6 @@ mod tests {
         assert!(cfg.brave_api_key.is_none());
         assert_eq!(cfg.tavily_base_url, TAVILY_BASE_URL);
         assert!(cfg.tavily_api_key.is_none());
-        assert_eq!(
-            cfg.mistral_transcription_base_url,
-            MISTRAL_TRANSCRIPTION_BASE_URL
-        );
-        assert!(cfg.mistral_transcription_api_key.is_none());
-        assert_eq!(
-            cfg.mistral_transcription_model,
-            MISTRAL_TRANSCRIPTION_DEFAULT_MODEL
-        );
-        assert_eq!(
-            cfg.mistral_transcription_chunk_max_seconds,
-            MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS
-        );
-        assert_eq!(
-            cfg.mistral_transcription_chunk_overlap_seconds,
-            MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS
-        );
-        assert_eq!(
-            cfg.mistral_transcription_max_chunks,
-            MISTRAL_TRANSCRIPTION_MAX_CHUNKS
-        );
-        assert_eq!(
-            cfg.mistral_transcription_request_timeout_sec,
-            MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC
-        );
         assert_eq!(cfg.rate_limit_max_retries, 12);
         assert_eq!(cfg.rate_limit_backoff_base_sec, 1.0);
         assert_eq!(cfg.rate_limit_backoff_max_sec, 60.0);
@@ -609,19 +530,6 @@ mod tests {
             "OPENPLANTER_TAVILY_API_KEY",
             "TAVILY_API_KEY",
             "OPENPLANTER_TAVILY_BASE_URL",
-            "OPENPLANTER_MISTRAL_TRANSCRIPTION_API_KEY",
-            "MISTRAL_TRANSCRIPTION_API_KEY",
-            "MISTRAL_API_KEY",
-            "OPENPLANTER_MISTRAL_TRANSCRIPTION_BASE_URL",
-            "MISTRAL_TRANSCRIPTION_BASE_URL",
-            "MISTRAL_BASE_URL",
-            "OPENPLANTER_MISTRAL_TRANSCRIPTION_MODEL",
-            "MISTRAL_TRANSCRIPTION_MODEL",
-            "OPENPLANTER_MISTRAL_TRANSCRIPTION_MAX_BYTES",
-            "OPENPLANTER_MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS",
-            "OPENPLANTER_MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS",
-            "OPENPLANTER_MISTRAL_TRANSCRIPTION_MAX_CHUNKS",
-            "OPENPLANTER_MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC",
             "OPENPLANTER_ZAI_PLAN",
             "OPENPLANTER_ZAI_BASE_URL",
             "OPENPLANTER_RATE_LIMIT_MAX_RETRIES",
@@ -662,34 +570,8 @@ mod tests {
         assert!(cfg.zai_api_key.is_none());
         assert!(cfg.brave_api_key.is_none());
         assert!(cfg.tavily_api_key.is_none());
-        assert!(cfg.mistral_transcription_api_key.is_none());
         assert_eq!(cfg.openai_base_url, FOUNDRY_OPENAI_BASE_URL);
         assert_eq!(cfg.anthropic_base_url, FOUNDRY_ANTHROPIC_BASE_URL);
-        assert_eq!(
-            cfg.mistral_transcription_base_url,
-            MISTRAL_TRANSCRIPTION_BASE_URL
-        );
-        assert_eq!(
-            cfg.mistral_transcription_model,
-            MISTRAL_TRANSCRIPTION_DEFAULT_MODEL
-        );
-        assert_eq!(cfg.mistral_transcription_max_bytes, 100 * 1024 * 1024);
-        assert_eq!(
-            cfg.mistral_transcription_chunk_max_seconds,
-            MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS
-        );
-        assert_eq!(
-            cfg.mistral_transcription_chunk_overlap_seconds,
-            MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS
-        );
-        assert_eq!(
-            cfg.mistral_transcription_max_chunks,
-            MISTRAL_TRANSCRIPTION_MAX_CHUNKS
-        );
-        assert_eq!(
-            cfg.mistral_transcription_request_timeout_sec,
-            MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC
-        );
         assert_eq!(cfg.web_search_provider, "exa");
         assert_eq!(cfg.rate_limit_max_retries, 12);
         assert_eq!(cfg.rate_limit_backoff_base_sec, 1.0);
@@ -711,27 +593,7 @@ mod tests {
             env::set_var("ZAI_API_KEY", "zai-test123");
             env::set_var("BRAVE_API_KEY", "brave-test123");
             env::set_var("TAVILY_API_KEY", "tavily-test123");
-            env::set_var("MISTRAL_API_KEY", "mistral-test123");
             env::set_var("OPENPLANTER_WEB_SEARCH_PROVIDER", "tavily");
-            env::set_var(
-                "OPENPLANTER_MISTRAL_TRANSCRIPTION_BASE_URL",
-                "https://mistral.example",
-            );
-            env::set_var(
-                "OPENPLANTER_MISTRAL_TRANSCRIPTION_MODEL",
-                "voxtral-mini-2508",
-            );
-            env::set_var("OPENPLANTER_MISTRAL_TRANSCRIPTION_MAX_BYTES", "2048");
-            env::set_var("OPENPLANTER_MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS", "600");
-            env::set_var(
-                "OPENPLANTER_MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS",
-                "3.5",
-            );
-            env::set_var("OPENPLANTER_MISTRAL_TRANSCRIPTION_MAX_CHUNKS", "24");
-            env::set_var(
-                "OPENPLANTER_MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC",
-                "240",
-            );
             env::set_var("OPENPLANTER_RATE_LIMIT_MAX_RETRIES", "5");
             env::set_var("OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC", "2.5");
             env::set_var("OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC", "30.0");
@@ -755,20 +617,6 @@ mod tests {
         assert_eq!(cfg.zai_api_key, Some("zai-test123".into()));
         assert_eq!(cfg.brave_api_key, Some("brave-test123".into()));
         assert_eq!(cfg.tavily_api_key, Some("tavily-test123".into()));
-        assert_eq!(
-            cfg.mistral_transcription_api_key,
-            Some("mistral-test123".into())
-        );
-        assert_eq!(
-            cfg.mistral_transcription_base_url,
-            "https://mistral.example"
-        );
-        assert_eq!(cfg.mistral_transcription_model, "voxtral-mini-2508");
-        assert_eq!(cfg.mistral_transcription_max_bytes, 2048);
-        assert_eq!(cfg.mistral_transcription_chunk_max_seconds, 600);
-        assert_eq!(cfg.mistral_transcription_chunk_overlap_seconds, 3.5);
-        assert_eq!(cfg.mistral_transcription_max_chunks, 24);
-        assert_eq!(cfg.mistral_transcription_request_timeout_sec, 240);
         assert_eq!(cfg.zai_plan, "coding");
         assert_eq!(cfg.zai_base_url, ZAI_CODING_BASE_URL);
         assert_eq!(cfg.zai_stream_max_retries, 7);
