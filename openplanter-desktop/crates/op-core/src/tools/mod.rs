@@ -37,9 +37,16 @@ impl ToolResult {
     }
 }
 
+#[derive(Debug, Clone)]
+enum ToolScope {
+    FullWorkspace,
+    CuratorWikiOnly { allowed_root: PathBuf },
+}
+
 /// Central dispatcher for workspace tools.
 pub struct WorkspaceTools {
     root: PathBuf,
+    scope: ToolScope,
     shell_path: String,
     command_timeout_sec: u64,
     max_shell_output_chars: usize,
@@ -57,6 +64,7 @@ impl WorkspaceTools {
     pub fn new(config: &AgentConfig) -> Self {
         Self {
             root: config.workspace.clone(),
+            scope: ToolScope::FullWorkspace,
             shell_path: config.shell.clone(),
             command_timeout_sec: config.command_timeout_sec as u64,
             max_shell_output_chars: config.max_shell_output_chars as usize,
@@ -68,6 +76,46 @@ impl WorkspaceTools {
             exa_base_url: config.exa_base_url.clone(),
             files_read: HashSet::new(),
             bg_jobs: shell::BgJobs::new(),
+        }
+    }
+
+    pub fn new_curator(config: &AgentConfig) -> Self {
+        let allowed_root = filesystem::resolve_path(
+            &config.workspace,
+            &format!("{}/wiki", config.session_root_dir),
+        )
+        .unwrap_or_else(|_| config.workspace.join(&config.session_root_dir).join("wiki"));
+        Self {
+            root: config.workspace.clone(),
+            scope: ToolScope::CuratorWikiOnly { allowed_root },
+            shell_path: config.shell.clone(),
+            command_timeout_sec: config.command_timeout_sec as u64,
+            max_shell_output_chars: config.max_shell_output_chars as usize,
+            max_file_chars: config.max_file_chars as usize,
+            max_files_listed: config.max_files_listed as usize,
+            max_search_hits: config.max_search_hits as usize,
+            max_observation_chars: config.max_observation_chars as usize,
+            exa_api_key: config.exa_api_key.clone(),
+            exa_base_url: config.exa_base_url.clone(),
+            files_read: HashSet::new(),
+            bg_jobs: shell::BgJobs::new(),
+        }
+    }
+
+    fn enforce_write_scope(&self, raw_path: &str) -> Result<(), ToolResult> {
+        match &self.scope {
+            ToolScope::FullWorkspace => Ok(()),
+            ToolScope::CuratorWikiOnly { allowed_root } => {
+                let resolved =
+                    filesystem::resolve_path(&self.root, raw_path).map_err(ToolResult::error)?;
+                if resolved == *allowed_root || resolved.starts_with(allowed_root) {
+                    Ok(())
+                } else {
+                    Err(ToolResult::error(
+                        "Curator writes are restricted to .openplanter/wiki/**".to_string(),
+                    ))
+                }
+            }
         }
     }
 
@@ -93,12 +141,18 @@ impl WorkspaceTools {
             "write_file" => {
                 let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
                 let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                if let Err(result) = self.enforce_write_scope(path) {
+                    return result;
+                }
                 filesystem::write_file(&self.root, path, content, &mut self.files_read)
             }
             "edit_file" => {
                 let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
                 let old_text = args.get("old_text").and_then(|v| v.as_str()).unwrap_or("");
                 let new_text = args.get("new_text").and_then(|v| v.as_str()).unwrap_or("");
+                if let Err(result) = self.enforce_write_scope(path) {
+                    return result;
+                }
                 filesystem::edit_file(
                     &self.root,
                     path,

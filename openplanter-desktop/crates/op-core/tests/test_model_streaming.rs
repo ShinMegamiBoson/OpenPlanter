@@ -464,18 +464,13 @@ async fn test_openai_rate_limit_error_includes_retry_after() {
     }])
     .await;
     let model = OpenAIModel::new(
-        "glm-5".to_string(),
-        "zai".to_string(),
+        "gpt-4o".to_string(),
+        "openai".to_string(),
         format!("http://{addr}"),
-        "zai-key".to_string(),
+        "test-key".to_string(),
         Some("high".to_string()),
         HashMap::new(),
-    )
-    .with_zai_runtime(op_core::model::openai::ZaiRuntimeConfig {
-        paygo_base_url: format!("http://{addr}"),
-        coding_base_url: format!("http://{addr}"),
-        stream_max_retries: 1,
-    });
+    );
 
     let cancel = CancellationToken::new();
     let error = model
@@ -849,17 +844,16 @@ async fn test_solve_rate_limit_retry_eventually_completes() {
     };
 
     let cfg = AgentConfig {
-        provider: "zai".into(),
-        model: "glm-5".into(),
-        zai_api_key: Some("zai-key".into()),
-        zai_base_url: format!("http://{addr}"),
-        zai_paygo_base_url: format!("http://{addr}"),
-        zai_coding_base_url: format!("http://{addr}"),
+        provider: "openai".into(),
+        model: "gpt-4o".into(),
+        api_key: Some("test-key".into()),
+        openai_api_key: Some("test-key".into()),
+        base_url: format!("http://{addr}"),
+        openai_base_url: format!("http://{addr}"),
         rate_limit_max_retries: 1,
         rate_limit_backoff_base_sec: 0.0,
         rate_limit_backoff_max_sec: 0.0,
         rate_limit_retry_after_cap_sec: 0.0,
-        zai_stream_max_retries: 1,
         demo: false,
         ..Default::default()
     };

@@ -6,12 +6,34 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Callable, Protocol
 
 from .tool_defs import TOOL_DEFINITIONS, to_anthropic_tools, to_openai_tools
 
 
 class ModelError(RuntimeError):
+    pass
+
+
+class HTTPModelError(ModelError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        provider_code: str | int | None = None,
+        body: str = "",
+        retry_after_sec: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.provider_code = provider_code
+        self.body = body
+        self.retry_after_sec = retry_after_sec
+
+
+class RateLimitError(HTTPModelError):
     pass
 
 
@@ -103,6 +125,132 @@ def _extract_content(content: object) -> str:
     return ""
 
 
+def _parse_json_object(text: str) -> dict[str, Any] | None:
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(parsed, dict):
+        return parsed
+    return None
+
+
+def _parse_retry_after_value(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return max(float(value), 0.0)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return max(float(text), 0.0)
+        except ValueError:
+            pass
+        try:
+            dt = parsedate_to_datetime(text)
+        except (TypeError, ValueError, IndexError):
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max((dt - datetime.now(timezone.utc)).total_seconds(), 0.0)
+    return None
+
+
+def _parse_retry_after(headers: Any) -> float | None:
+    if headers is None:
+        return None
+    getter = getattr(headers, "get", None)
+    if not callable(getter):
+        return None
+    return _parse_retry_after_value(getter("Retry-After"))
+
+
+def _extract_openai_style_error(
+    payload: dict[str, Any],
+) -> tuple[str, str | int | None, float | None]:
+    error = payload.get("error")
+    if isinstance(error, dict):
+        message = str(error.get("message", "")).strip()
+        provider_code = error.get("code")
+        retry_after = _parse_retry_after_value(error.get("retry_after"))
+        if retry_after is None:
+            retry_after = _parse_retry_after_value(payload.get("retry_after"))
+        return message, provider_code, retry_after
+    return "", None, _parse_retry_after_value(payload.get("retry_after"))
+
+
+def _is_rate_limit_error(
+    status_code: int | None,
+    provider_code: str | int | None,
+    message: str,
+) -> bool:
+    if status_code == 429:
+        return True
+    if provider_code is not None:
+        code_text = str(provider_code).strip().lower()
+        if code_text in {"1302", "429", "rate_limit", "rate_limit_exceeded", "too_many_requests"}:
+            return True
+    lower = message.lower()
+    return "rate limit" in lower or "too many requests" in lower
+
+
+def _raise_http_error(url: str, status_code: int, body: str, headers: Any) -> None:
+    parsed = _parse_json_object(body)
+    message = ""
+    provider_code: str | int | None = None
+    body_retry_after: float | None = None
+    if parsed is not None:
+        message, provider_code, body_retry_after = _extract_openai_style_error(parsed)
+    retry_after = _parse_retry_after(headers)
+    if retry_after is None:
+        retry_after = body_retry_after
+    text = message or body
+    exc_cls = RateLimitError if _is_rate_limit_error(status_code, provider_code, text) else HTTPModelError
+    raise exc_cls(
+        f"HTTP {status_code} calling {url}: {body}",
+        status_code=status_code,
+        provider_code=provider_code,
+        body=body,
+        retry_after_sec=retry_after,
+    )
+
+
+def _raise_sse_error(data_dict: dict[str, Any]) -> None:
+    if data_dict.get("type") == "error":
+        err = data_dict.get("error")
+        if isinstance(err, dict):
+            err_msg = str(err.get("message", str(data_dict)))
+            provider_code = err.get("code")
+            retry_after = _parse_retry_after_value(err.get("retry_after"))
+            if _is_rate_limit_error(None, provider_code, err_msg):
+                raise RateLimitError(
+                    f"Stream error: {err_msg}",
+                    status_code=None,
+                    provider_code=provider_code,
+                    body=json.dumps(data_dict, ensure_ascii=True),
+                    retry_after_sec=retry_after,
+                )
+            raise ModelError(f"Stream error: {err_msg}")
+        raise ModelError(f"Stream error: {data_dict}")
+
+    err = data_dict.get("error")
+    if isinstance(err, dict):
+        err_msg = str(err.get("message", str(data_dict)))
+        provider_code = err.get("code")
+        retry_after = _parse_retry_after_value(err.get("retry_after"))
+        if _is_rate_limit_error(None, provider_code, err_msg):
+            raise RateLimitError(
+                f"Stream error: {err_msg}",
+                status_code=None,
+                provider_code=provider_code,
+                body=json.dumps(data_dict, ensure_ascii=True),
+                retry_after_sec=retry_after,
+            )
+        raise ModelError(f"Stream error: {err_msg}")
+
+
 def _http_json(
     url: str,
     method: str,
@@ -121,7 +269,7 @@ def _http_json(
             raw = resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:  # pragma: no cover - network path
         body = exc.read().decode("utf-8", errors="replace")
-        raise ModelError(f"HTTP {exc.code} calling {url}: {body}") from exc
+        _raise_http_error(url, exc.code, body, exc.headers)
     except urllib.error.URLError as exc:  # pragma: no cover - network path
         raise ModelError(f"Connection error calling {url}: {exc}") from exc
     except OSError as exc:  # pragma: no cover - bare socket.timeout, etc.
@@ -176,10 +324,7 @@ def _read_sse_events(
                 except json.JSONDecodeError:
                     data_dict = {"_raw": joined}
                 if isinstance(data_dict, dict):
-                    # Check for Anthropic error events
-                    if data_dict.get("type") == "error":
-                        err_msg = data_dict.get("error", {}).get("message", str(data_dict))
-                        raise ModelError(f"Stream error: {err_msg}")
+                    _raise_sse_error(data_dict)
                     events.append((current_event, data_dict))
                     if on_sse_event:
                         try:
@@ -198,9 +343,7 @@ def _read_sse_events(
         except json.JSONDecodeError:
             data_dict = {"_raw": joined}
         if isinstance(data_dict, dict):
-            if data_dict.get("type") == "error":
-                err_msg = data_dict.get("error", {}).get("message", str(data_dict))
-                raise ModelError(f"Stream error: {err_msg}")
+            _raise_sse_error(data_dict)
             events.append((current_event, data_dict))
             if on_sse_event:
                 try:
@@ -231,7 +374,7 @@ def _http_stream_sse(
             resp = urllib.request.urlopen(req, timeout=first_byte_timeout)
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
-            raise ModelError(f"HTTP {exc.code} calling {url}: {body}") from exc
+            _raise_http_error(url, exc.code, body, exc.headers)
         except (socket.timeout, urllib.error.URLError, OSError) as exc:
             # Timeout or connection error — retry
             last_exc = exc
@@ -754,6 +897,13 @@ class OpenAICompatibleModel:
             raise ModelError(f"Model response missing content: {parsed}") from exc
 
         finish_reason = parsed["choices"][0].get("finish_reason", "")
+        if finish_reason == "rate_limit":
+            raise RateLimitError(
+                "Model finish_reason=rate_limit",
+                status_code=429,
+                provider_code="rate_limit",
+                body=json.dumps(parsed, ensure_ascii=True),
+            )
 
         # Parse tool calls
         raw_tool_calls = message.get("tool_calls")

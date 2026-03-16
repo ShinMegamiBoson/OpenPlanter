@@ -199,8 +199,6 @@ pub struct ConfigView {
     pub provider: String,
     pub model: String,
     pub reasoning_effort: Option<String>,
-    pub zai_plan: String,
-    pub web_search_provider: String,
     pub workspace: String,
     pub session_id: Option<String>,
     pub recursive: bool,
@@ -215,8 +213,6 @@ pub struct PartialConfig {
     pub provider: Option<String>,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
-    pub zai_plan: Option<String>,
-    pub web_search_provider: Option<String>,
 }
 
 /// Model information for the model list.

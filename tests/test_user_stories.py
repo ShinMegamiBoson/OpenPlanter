@@ -939,7 +939,7 @@ class TestTUIModelAndReasoningSwitching(unittest.TestCase):
             ctx = ChatContext(runtime=runtime, cfg=cfg, settings_store=settings_store)
 
             lines = handle_model_command("opus", ctx)
-            self.assertEqual(cfg.model, "anthropic-foundry/claude-opus-4-6")
+            self.assertEqual(cfg.model, "claude-opus-4-6")
             self.assertTrue(any("alias" in l.lower() for l in lines))
 
     def test_reasoning_change_rebuilds_engine(self) -> None:
