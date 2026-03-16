@@ -22,11 +22,7 @@ class CredentialTests(unittest.TestCase):
                         "OPENAI_API_KEY=oa-key",
                         "ANTHROPIC_API_KEY=an-key",
                         "OPENROUTER_API_KEY=or-key",
-                        "ZAI_API_KEY=zai-key",
                         "EXA_API_KEY=exa-key",
-                        "FIRECRAWL_API_KEY=fc-key",
-                        "BRAVE_API_KEY=brave-key",
-                        "OPENPLANTER_TAVILY_API_KEY=tavily-key",
                     ]
                 ),
                 encoding="utf-8",
@@ -35,11 +31,7 @@ class CredentialTests(unittest.TestCase):
             self.assertEqual(creds.openai_api_key, "oa-key")
             self.assertEqual(creds.anthropic_api_key, "an-key")
             self.assertEqual(creds.openrouter_api_key, "or-key")
-            self.assertEqual(creds.zai_api_key, "zai-key")
             self.assertEqual(creds.exa_api_key, "exa-key")
-            self.assertEqual(creds.firecrawl_api_key, "fc-key")
-            self.assertEqual(creds.brave_api_key, "brave-key")
-            self.assertEqual(creds.tavily_api_key, "tavily-key")
 
     def test_store_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -49,11 +41,7 @@ class CredentialTests(unittest.TestCase):
                 openai_api_key="oa",
                 anthropic_api_key="an",
                 openrouter_api_key="or",
-                zai_api_key="zai",
                 exa_api_key="exa",
-                firecrawl_api_key="fc",
-                brave_api_key="brave",
-                tavily_api_key="tavily",
             )
             store.save(creds)
             loaded = store.load()

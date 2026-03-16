@@ -2,13 +2,12 @@
 //
 // Uses the Anthropic Messages API with SSE streaming.
 
-use anyhow::{Context, anyhow};
+use anyhow::{anyhow, Context};
 use reqwest_eventsource::{Event, RequestBuilderExt};
 use tokio_util::sync::CancellationToken;
 
-use super::{BaseModel, Message, ModelTurn, ToolCall};
-use crate::config::strip_foundry_model_prefix;
 use crate::events::{DeltaEvent, DeltaKind};
+use super::{BaseModel, Message, ModelTurn, ToolCall};
 
 pub struct AnthropicModel {
     client: reqwest::Client,
@@ -37,12 +36,8 @@ impl AnthropicModel {
     }
 
     fn is_opus_46(&self) -> bool {
-        let lower = self.request_model_name().to_lowercase();
+        let lower = self.model.to_lowercase();
         lower.contains("opus-4-6") || lower.contains("opus-4.6")
-    }
-
-    fn request_model_name(&self) -> String {
-        strip_foundry_model_prefix(&self.model)
     }
 
     /// Extract the system prompt from messages (Anthropic uses a top-level `system` field).
@@ -72,10 +67,7 @@ impl AnthropicModel {
                         "content": content,
                     }));
                 }
-                Message::Assistant {
-                    content,
-                    tool_calls,
-                } => {
+                Message::Assistant { content, tool_calls } => {
                     let mut blocks: Vec<serde_json::Value> = Vec::new();
                     if !content.is_empty() {
                         blocks.push(serde_json::json!({
@@ -85,8 +77,8 @@ impl AnthropicModel {
                     }
                     if let Some(tcs) = tool_calls {
                         for tc in tcs {
-                            let input: serde_json::Value = serde_json::from_str(&tc.arguments)
-                                .unwrap_or(serde_json::json!({}));
+                            let input: serde_json::Value =
+                                serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({}));
                             blocks.push(serde_json::json!({
                                 "type": "tool_use",
                                 "id": tc.id,
@@ -100,10 +92,7 @@ impl AnthropicModel {
                         "content": blocks,
                     }));
                 }
-                Message::Tool {
-                    tool_call_id,
-                    content,
-                } => {
+                Message::Tool { tool_call_id, content } => {
                     let block = serde_json::json!({
                         "type": "tool_result",
                         "tool_use_id": tool_call_id,
@@ -112,12 +101,8 @@ impl AnthropicModel {
                     // Merge into previous user message if it contains tool_result blocks
                     if let Some(last) = result.last_mut() {
                         if last.get("role").and_then(|r| r.as_str()) == Some("user") {
-                            if let Some(arr) =
-                                last.get_mut("content").and_then(|c| c.as_array_mut())
-                            {
-                                if arr.iter().any(|b| {
-                                    b.get("type").and_then(|t| t.as_str()) == Some("tool_result")
-                                }) {
+                            if let Some(arr) = last.get_mut("content").and_then(|c| c.as_array_mut()) {
+                                if arr.iter().any(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_result")) {
                                     arr.push(block);
                                     continue;
                                 }
@@ -148,7 +133,7 @@ impl AnthropicModel {
         let use_thinking = matches!(effort.as_str(), "low" | "medium" | "high");
 
         let mut payload = serde_json::json!({
-            "model": self.request_model_name(),
+            "model": self.model,
             "max_tokens": self.max_tokens,
             "messages": Self::convert_messages(messages),
             "stream": true,
@@ -235,8 +220,7 @@ impl BaseModel for AnthropicModel {
             tool_name: String,
             input_json: String,
         }
-        let mut blocks: std::collections::HashMap<u64, BlockState> =
-            std::collections::HashMap::new();
+        let mut blocks: std::collections::HashMap<u64, BlockState> = std::collections::HashMap::new();
         let mut tool_calls: Vec<ToolCall> = Vec::new();
 
         use futures::StreamExt;
@@ -287,8 +271,7 @@ impl BaseModel for AnthropicModel {
                     match msg_type {
                         "message_start" => {
                             if let Some(usage) = data.pointer("/message/usage") {
-                                if let Some(it) = usage.get("input_tokens").and_then(|v| v.as_u64())
-                                {
+                                if let Some(it) = usage.get("input_tokens").and_then(|v| v.as_u64()) {
                                     input_tokens = it;
                                 }
                             }
@@ -296,24 +279,13 @@ impl BaseModel for AnthropicModel {
 
                         "content_block_start" => {
                             let idx = data.get("index").and_then(|i| i.as_u64()).unwrap_or(0);
-                            let block = data
-                                .get("content_block")
-                                .unwrap_or(&serde_json::Value::Null);
-                            let btype =
-                                block.get("type").and_then(|t| t.as_str()).unwrap_or("text");
+                            let block = data.get("content_block").unwrap_or(&serde_json::Value::Null);
+                            let btype = block.get("type").and_then(|t| t.as_str()).unwrap_or("text");
 
                             let state = match btype {
                                 "tool_use" => {
-                                    let name = block
-                                        .get("name")
-                                        .and_then(|n| n.as_str())
-                                        .unwrap_or("")
-                                        .to_string();
-                                    let id = block
-                                        .get("id")
-                                        .and_then(|i| i.as_str())
-                                        .unwrap_or("")
-                                        .to_string();
+                                    let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
+                                    let id = block.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string();
                                     if !name.is_empty() {
                                         on_delta(DeltaEvent {
                                             kind: DeltaKind::ToolCallStart,
@@ -349,8 +321,7 @@ impl BaseModel for AnthropicModel {
                                 Some(d) => d,
                                 None => continue,
                             };
-                            let delta_type =
-                                delta.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                            let delta_type = delta.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
                             match delta_type {
                                 "text_delta" => {
@@ -365,8 +336,7 @@ impl BaseModel for AnthropicModel {
                                     }
                                 }
                                 "thinking_delta" => {
-                                    if let Some(t) = delta.get("thinking").and_then(|t| t.as_str())
-                                    {
+                                    if let Some(t) = delta.get("thinking").and_then(|t| t.as_str()) {
                                         if !t.is_empty() {
                                             thinking.push_str(t);
                                             on_delta(DeltaEvent {
@@ -377,9 +347,7 @@ impl BaseModel for AnthropicModel {
                                     }
                                 }
                                 "input_json_delta" => {
-                                    if let Some(chunk) =
-                                        delta.get("partial_json").and_then(|j| j.as_str())
-                                    {
+                                    if let Some(chunk) = delta.get("partial_json").and_then(|j| j.as_str()) {
                                         if !chunk.is_empty() {
                                             if let Some(block) = blocks.get_mut(&idx) {
                                                 block.input_json.push_str(chunk);
@@ -410,9 +378,7 @@ impl BaseModel for AnthropicModel {
 
                         "message_delta" => {
                             if let Some(usage) = data.get("usage") {
-                                if let Some(ot) =
-                                    usage.get("output_tokens").and_then(|v| v.as_u64())
-                                {
+                                if let Some(ot) = usage.get("output_tokens").and_then(|v| v.as_u64()) {
                                     output_tokens = ot;
                                 }
                             }
@@ -435,11 +401,7 @@ impl BaseModel for AnthropicModel {
 
         Ok(ModelTurn {
             text,
-            thinking: if thinking.is_empty() {
-                None
-            } else {
-                Some(thinking)
-            },
+            thinking: if thinking.is_empty() { None } else { Some(thinking) },
             tool_calls,
             input_tokens,
             output_tokens,
@@ -474,7 +436,6 @@ mod tests {
     fn test_is_opus_46() {
         assert!(make_model("claude-opus-4-6", None).is_opus_46());
         assert!(make_model("claude-opus-4.6-20250610", None).is_opus_46());
-        assert!(make_model("anthropic-foundry/claude-opus-4-6", None).is_opus_46());
         assert!(!make_model("claude-sonnet-4-5", None).is_opus_46());
     }
 
@@ -483,24 +444,15 @@ mod tests {
     #[test]
     fn test_extract_system_present() {
         let msgs = vec![
-            Message::System {
-                content: "Be helpful.".to_string(),
-            },
-            Message::User {
-                content: "Hi".to_string(),
-            },
+            Message::System { content: "Be helpful.".to_string() },
+            Message::User { content: "Hi".to_string() },
         ];
-        assert_eq!(
-            AnthropicModel::extract_system(&msgs),
-            Some("Be helpful.".to_string())
-        );
+        assert_eq!(AnthropicModel::extract_system(&msgs), Some("Be helpful.".to_string()));
     }
 
     #[test]
     fn test_extract_system_absent() {
-        let msgs = vec![Message::User {
-            content: "Hi".to_string(),
-        }];
+        let msgs = vec![Message::User { content: "Hi".to_string() }];
         assert_eq!(AnthropicModel::extract_system(&msgs), None);
     }
 
@@ -509,12 +461,8 @@ mod tests {
     #[test]
     fn test_convert_filters_system() {
         let msgs = vec![
-            Message::System {
-                content: "System prompt".to_string(),
-            },
-            Message::User {
-                content: "Hello".to_string(),
-            },
+            Message::System { content: "System prompt".to_string() },
+            Message::User { content: "Hello".to_string() },
         ];
         let converted = AnthropicModel::convert_messages(&msgs);
         assert_eq!(converted.len(), 1); // System is filtered out
@@ -560,40 +508,18 @@ mod tests {
             Message::Assistant {
                 content: "Using tools.".to_string(),
                 tool_calls: Some(vec![
-                    ToolCall {
-                        id: "t1".into(),
-                        name: "read_file".into(),
-                        arguments: "{}".into(),
-                    },
-                    ToolCall {
-                        id: "t2".into(),
-                        name: "list_files".into(),
-                        arguments: "{}".into(),
-                    },
+                    ToolCall { id: "t1".into(), name: "read_file".into(), arguments: "{}".into() },
+                    ToolCall { id: "t2".into(), name: "list_files".into(), arguments: "{}".into() },
                 ]),
             },
-            Message::Tool {
-                tool_call_id: "t1".into(),
-                content: "file1 contents".into(),
-            },
-            Message::Tool {
-                tool_call_id: "t2".into(),
-                content: "file list".into(),
-            },
+            Message::Tool { tool_call_id: "t1".into(), content: "file1 contents".into() },
+            Message::Tool { tool_call_id: "t2".into(), content: "file list".into() },
         ];
         let converted = AnthropicModel::convert_messages(&msgs);
         // Should be 2 messages: assistant + one merged user
-        assert_eq!(
-            converted.len(),
-            2,
-            "consecutive Tool messages should merge into one user message"
-        );
+        assert_eq!(converted.len(), 2, "consecutive Tool messages should merge into one user message");
         let user_content = converted[1]["content"].as_array().unwrap();
-        assert_eq!(
-            user_content.len(),
-            2,
-            "merged user message should have 2 tool_result blocks"
-        );
+        assert_eq!(user_content.len(), 2, "merged user message should have 2 tool_result blocks");
         assert_eq!(user_content[0]["tool_use_id"], "t1");
         assert_eq!(user_content[1]["tool_use_id"], "t2");
     }
@@ -604,12 +530,8 @@ mod tests {
     fn test_payload_no_thinking_has_temperature() {
         let model = make_model("claude-sonnet-4-5", None);
         let msgs = vec![
-            Message::System {
-                content: "System".to_string(),
-            },
-            Message::User {
-                content: "Hi".to_string(),
-            },
+            Message::System { content: "System".to_string() },
+            Message::User { content: "Hi".to_string() },
         ];
         let payload = model.build_payload(&msgs, &[]);
         assert_eq!(payload["temperature"], 0.0);
@@ -621,9 +543,7 @@ mod tests {
     #[test]
     fn test_payload_opus_46_adaptive_thinking() {
         let model = make_model("claude-opus-4-6", Some("high"));
-        let msgs = vec![Message::User {
-            content: "Hi".to_string(),
-        }];
+        let msgs = vec![Message::User { content: "Hi".to_string() }];
         let payload = model.build_payload(&msgs, &[]);
         assert!(payload.get("temperature").is_none()); // No temperature with thinking
         assert_eq!(payload["thinking"]["type"], "adaptive");
@@ -631,21 +551,9 @@ mod tests {
     }
 
     #[test]
-    fn test_payload_strips_foundry_prefix() {
-        let model = make_model("anthropic-foundry/claude-opus-4-6", Some("high"));
-        let msgs = vec![Message::User {
-            content: "Hi".to_string(),
-        }];
-        let payload = model.build_payload(&msgs, &[]);
-        assert_eq!(payload["model"], "claude-opus-4-6");
-    }
-
-    #[test]
     fn test_payload_older_model_enabled_thinking() {
         let model = make_model("claude-sonnet-4-5", Some("medium"));
-        let msgs = vec![Message::User {
-            content: "Hi".to_string(),
-        }];
+        let msgs = vec![Message::User { content: "Hi".to_string() }];
         let payload = model.build_payload(&msgs, &[]);
         assert_eq!(payload["thinking"]["type"], "enabled");
         assert_eq!(payload["thinking"]["budget_tokens"], 4096);
@@ -655,12 +563,8 @@ mod tests {
     fn test_payload_system_extracted_to_top_level() {
         let model = make_model("claude-sonnet-4-5", None);
         let msgs = vec![
-            Message::System {
-                content: "You are helpful.".to_string(),
-            },
-            Message::User {
-                content: "Test".to_string(),
-            },
+            Message::System { content: "You are helpful.".to_string() },
+            Message::User { content: "Test".to_string() },
         ];
         let payload = model.build_payload(&msgs, &[]);
         // System should be top-level, not in messages array
