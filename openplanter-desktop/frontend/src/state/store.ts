@@ -1,4 +1,9 @@
 /** Simple observable state store. */
+import type {
+  CompletionMeta,
+  LoopMetrics,
+  LoopHealthEvent,
+} from "../api/types";
 type Listener<T> = (value: T) => void;
 
 export class Store<T> {
@@ -73,6 +78,9 @@ export interface AppState {
   maxStepsPerCall: number;
   currentStep: number;
   currentDepth: number;
+  loopHealth: LoopHealthEvent | null;
+  lastLoopMetrics: LoopMetrics | null;
+  lastCompletion: CompletionMeta | null;
   inputHistory: string[];
   inputQueue: string[];
 }
@@ -92,6 +100,9 @@ export const appState = new Store<AppState>({
   maxStepsPerCall: 100,
   currentStep: 0,
   currentDepth: 0,
+  loopHealth: null,
+  lastLoopMetrics: null,
+  lastCompletion: null,
   inputHistory: [],
   inputQueue: [],
 });

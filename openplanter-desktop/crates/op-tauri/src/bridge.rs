@@ -10,8 +10,52 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
 use op_core::engine::SolveEmitter;
-use op_core::events::{CompleteEvent, CuratorUpdateEvent, DeltaEvent, DeltaKind, ErrorEvent, StepEvent, TraceEvent};
+use op_core::events::{
+    CompleteEvent, CompletionMeta, CuratorUpdateEvent, DeltaEvent, DeltaKind, ErrorEvent,
+    LoopHealthEvent, LoopMetrics, LoopPhase, StepEvent, TraceEvent,
+};
 use op_core::session::replay::{ReplayEntry, ReplayLogger, StepToolCallEntry};
+
+const MAX_STEP_MODEL_PREVIEW_CHARS: usize = 4 * 1024;
+const MAX_TOOL_ARGS_CAPTURE_CHARS: usize = 16 * 1024;
+const MAX_DELTA_LOG_CHARS: usize = 120;
+
+fn preview_text(text: &str, max_chars: usize) -> String {
+    if text.len() <= max_chars {
+        return text.to_string();
+    }
+
+    let end = text.floor_char_boundary(max_chars);
+    format!("{}...[truncated {} chars]", &text[..end], text.len() - end)
+}
+
+fn append_with_cap(buffer: &mut String, text: &str, max_chars: usize, truncated: &mut bool) {
+    if *truncated {
+        return;
+    }
+    if buffer.len() >= max_chars {
+        *truncated = true;
+        return;
+    }
+
+    let remaining = max_chars - buffer.len();
+    let end = text.floor_char_boundary(text.len().min(remaining));
+    buffer.push_str(&text[..end]);
+    if end < text.len() {
+        *truncated = true;
+    }
+}
+
+fn format_model_preview(buffer: &str, truncated: bool) -> Option<String> {
+    let trimmed = buffer.trim();
+    if trimmed.is_empty() {
+        None
+    } else if truncated {
+        Some(format!("{trimmed}\n...[truncated]"))
+    } else {
+        Some(trimmed.to_string())
+    }
+}
 
 pub struct TauriEmitter {
     handle: AppHandle,
@@ -35,21 +79,48 @@ impl SolveEmitter for TauriEmitter {
     }
 
     fn emit_delta(&self, event: DeltaEvent) {
-        eprintln!("[bridge] delta: kind={:?} text={:?}", event.kind, event.text);
+        match event.kind {
+            DeltaKind::ToolCallArgs => eprintln!(
+                "[bridge] delta: kind={:?} len={} preview={:?}",
+                event.kind,
+                event.text.len(),
+                preview_text(&event.text, MAX_DELTA_LOG_CHARS)
+            ),
+            _ if event.text.len() > MAX_DELTA_LOG_CHARS => eprintln!(
+                "[bridge] delta: kind={:?} len={} preview={:?}",
+                event.kind,
+                event.text.len(),
+                preview_text(&event.text, MAX_DELTA_LOG_CHARS)
+            ),
+            _ => eprintln!(
+                "[bridge] delta: kind={:?} text={:?}",
+                event.kind, event.text
+            ),
+        }
         let _ = self.handle.emit("agent:delta", event);
     }
 
     fn emit_step(&self, event: StepEvent) {
-        eprintln!("[bridge] step: depth={} step={} is_final={}", event.depth, event.step, event.is_final);
+        eprintln!(
+            "[bridge] step: depth={} step={} is_final={}",
+            event.depth, event.step, event.is_final
+        );
         let _ = self.handle.emit("agent:step", event);
     }
 
-    fn emit_complete(&self, result: &str) {
+    fn emit_complete(
+        &self,
+        result: &str,
+        loop_metrics: Option<LoopMetrics>,
+        completion: Option<CompletionMeta>,
+    ) {
         eprintln!("[bridge] complete: {result}");
         let _ = self.handle.emit(
             "agent:complete",
             CompleteEvent {
                 result: result.to_string(),
+                loop_metrics,
+                completion,
             },
         );
     }
@@ -60,6 +131,26 @@ impl SolveEmitter for TauriEmitter {
             "agent:error",
             ErrorEvent {
                 message: message.to_string(),
+            },
+        );
+    }
+
+    fn emit_loop_health(
+        &self,
+        depth: u32,
+        step: u32,
+        phase: LoopPhase,
+        metrics: LoopMetrics,
+        is_final: bool,
+    ) {
+        let _ = self.handle.emit(
+            "agent:loop-health",
+            LoopHealthEvent {
+                depth,
+                step,
+                phase,
+                metrics,
+                is_final,
             },
         );
     }
@@ -85,12 +176,16 @@ pub struct LoggingEmitter<E: SolveEmitter> {
     replay: Arc<tokio::sync::Mutex<ReplayLogger>>,
     /// Accumulated streaming text for the current step (std::sync for non-async ops).
     streaming_buf: Mutex<String>,
+    /// Whether the current step preview was truncated.
+    streaming_truncated: Mutex<bool>,
     /// Tool calls accumulated during the current step.
     step_tool_calls: Mutex<Vec<PendingToolCall>>,
     /// Name of the tool currently being generated.
     current_tool: Mutex<String>,
     /// Accumulated args JSON for the current tool.
     current_args_buf: Mutex<String>,
+    /// Whether the current tool args buffer was truncated.
+    current_args_truncated: Mutex<bool>,
 }
 
 /// A tool call being accumulated during streaming.
@@ -122,9 +217,11 @@ impl<E: SolveEmitter> LoggingEmitter<E> {
             inner,
             replay: Arc::new(tokio::sync::Mutex::new(replay)),
             streaming_buf: Mutex::new(String::new()),
+            streaming_truncated: Mutex::new(false),
             step_tool_calls: Mutex::new(Vec::new()),
             current_tool: Mutex::new(String::new()),
             current_args_buf: Mutex::new(String::new()),
+            current_args_truncated: Mutex::new(false),
         }
     }
 }
@@ -138,12 +235,19 @@ impl<E: SolveEmitter> SolveEmitter for LoggingEmitter<E> {
         // Accumulate streaming data for step summary logging (sync — no I/O)
         match event.kind {
             DeltaKind::Text => {
-                self.streaming_buf.lock().unwrap().push_str(&event.text);
+                let mut truncated = self.streaming_truncated.lock().unwrap();
+                append_with_cap(
+                    &mut self.streaming_buf.lock().unwrap(),
+                    &event.text,
+                    MAX_STEP_MODEL_PREVIEW_CHARS,
+                    &mut truncated,
+                );
             }
             DeltaKind::ToolCallStart => {
                 let tool_name = event.text.clone();
                 *self.current_tool.lock().unwrap() = tool_name.clone();
                 *self.current_args_buf.lock().unwrap() = String::new();
+                *self.current_args_truncated.lock().unwrap() = false;
                 self.step_tool_calls.lock().unwrap().push(PendingToolCall {
                     name: tool_name,
                     key_arg: String::new(),
@@ -152,7 +256,13 @@ impl<E: SolveEmitter> SolveEmitter for LoggingEmitter<E> {
             }
             DeltaKind::ToolCallArgs => {
                 let mut buf = self.current_args_buf.lock().unwrap();
-                buf.push_str(&event.text);
+                let mut truncated = self.current_args_truncated.lock().unwrap();
+                append_with_cap(
+                    &mut buf,
+                    &event.text,
+                    MAX_TOOL_ARGS_CAPTURE_CHARS,
+                    &mut truncated,
+                );
                 let tool_name = self.current_tool.lock().unwrap().clone();
                 if let Some(key_arg) = extract_key_arg(&tool_name, &buf) {
                     let mut calls = self.step_tool_calls.lock().unwrap();
@@ -171,8 +281,7 @@ impl<E: SolveEmitter> SolveEmitter for LoggingEmitter<E> {
         // Collect accumulated data (sync)
         let model_preview = {
             let buf = self.streaming_buf.lock().unwrap();
-            let trimmed = buf.trim().to_string();
-            if trimmed.is_empty() { None } else { Some(trimmed) }
+            format_model_preview(&buf, *self.streaming_truncated.lock().unwrap())
         };
 
         let step_tools: Vec<StepToolCallEntry> = {
@@ -218,12 +327,21 @@ impl<E: SolveEmitter> SolveEmitter for LoggingEmitter<E> {
 
         // Reset buffers for next step
         self.streaming_buf.lock().unwrap().clear();
+        *self.streaming_truncated.lock().unwrap() = false;
         self.step_tool_calls.lock().unwrap().clear();
+        self.current_tool.lock().unwrap().clear();
+        self.current_args_buf.lock().unwrap().clear();
+        *self.current_args_truncated.lock().unwrap() = false;
 
         self.inner.emit_step(event);
     }
 
-    fn emit_complete(&self, result: &str) {
+    fn emit_complete(
+        &self,
+        result: &str,
+        loop_metrics: Option<LoopMetrics>,
+        completion: Option<CompletionMeta>,
+    ) {
         let entry = ReplayEntry {
             seq: 0,
             timestamp: String::new(),
@@ -249,11 +367,23 @@ impl<E: SolveEmitter> SolveEmitter for LoggingEmitter<E> {
             });
         });
 
-        self.inner.emit_complete(result);
+        self.inner.emit_complete(result, loop_metrics, completion);
     }
 
     fn emit_error(&self, message: &str) {
         self.inner.emit_error(message);
+    }
+
+    fn emit_loop_health(
+        &self,
+        depth: u32,
+        step: u32,
+        phase: LoopPhase,
+        metrics: LoopMetrics,
+        is_final: bool,
+    ) {
+        self.inner
+            .emit_loop_health(depth, step, phase, metrics, is_final);
     }
 
     fn emit_curator_update(&self, summary: &str, files_changed: u32) {
@@ -301,7 +431,7 @@ mod tests {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, _: &str) {}
+        fn emit_complete(&self, _: &str, _: Option<LoopMetrics>, _: Option<CompletionMeta>) {}
         fn emit_error(&self, _: &str) {}
     }
 
@@ -327,7 +457,12 @@ mod tests {
         assert_eq!(step.step_number, Some(1));
         assert!(step.step_tokens_in.is_some());
         assert!(step.step_model_preview.is_some());
-        assert!(step.step_model_preview.as_ref().unwrap().contains("Test persistence"));
+        assert!(
+            step.step_model_preview
+                .as_ref()
+                .unwrap()
+                .contains("Test persistence")
+        );
 
         let assistant = entries.iter().find(|e| e.role == "assistant");
         assert!(assistant.is_some(), "expected an assistant entry");
@@ -355,20 +490,23 @@ mod tests {
 
         // 1. Log user message
         let mut replay = ReplayLogger::new(tmp.path());
-        replay.append(ReplayEntry {
-            seq: 0,
-            timestamp: String::new(),
-            role: "user".into(),
-            content: "Roundtrip test".into(),
-            tool_name: None,
-            is_rendered: None,
-            step_number: None,
-            step_tokens_in: None,
-            step_tokens_out: None,
-            step_elapsed: None,
-            step_model_preview: None,
-            step_tool_calls: None,
-        }).await.unwrap();
+        replay
+            .append(ReplayEntry {
+                seq: 0,
+                timestamp: String::new(),
+                role: "user".into(),
+                content: "Roundtrip test".into(),
+                tool_name: None,
+                is_rendered: None,
+                step_number: None,
+                step_tokens_in: None,
+                step_tokens_out: None,
+                step_elapsed: None,
+                step_model_preview: None,
+                step_tool_calls: None,
+            })
+            .await
+            .unwrap();
 
         // 2. Run demo_solve through LoggingEmitter
         let emitter = LoggingEmitter::new(NullEmitter, replay);
@@ -377,7 +515,11 @@ mod tests {
 
         // 3. Read back full conversation
         let entries = ReplayLogger::read_all(tmp.path()).await.unwrap();
-        assert!(entries.len() >= 3, "expected user + step-summary + assistant, got {}", entries.len());
+        assert!(
+            entries.len() >= 3,
+            "expected user + step-summary + assistant, got {}",
+            entries.len()
+        );
 
         assert_eq!(entries[0].role, "user");
         assert_eq!(entries[0].content, "Roundtrip test");
@@ -393,5 +535,107 @@ mod tests {
         for (i, entry) in entries.iter().enumerate() {
             assert_eq!(entry.seq, (i + 1) as u64);
         }
+    }
+
+    #[derive(Default)]
+    struct CapturingEmitter {
+        deltas: Arc<Mutex<Vec<DeltaEvent>>>,
+    }
+
+    impl SolveEmitter for CapturingEmitter {
+        fn emit_trace(&self, _: &str) {}
+        fn emit_delta(&self, event: DeltaEvent) {
+            self.deltas.lock().unwrap().push(event);
+        }
+        fn emit_step(&self, _: StepEvent) {}
+        fn emit_complete(&self, _: &str, _: Option<LoopMetrics>, _: Option<CompletionMeta>) {}
+        fn emit_error(&self, _: &str) {}
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_logging_emitter_caps_model_preview_and_preserves_deltas() {
+        let tmp = tempdir().unwrap();
+        let replay = ReplayLogger::new(tmp.path());
+        let inner = CapturingEmitter::default();
+        let deltas = inner.deltas.clone();
+        let emitter = LoggingEmitter::new(inner, replay);
+        let big_text = "x".repeat(MAX_STEP_MODEL_PREVIEW_CHARS + 256);
+
+        emitter.emit_delta(DeltaEvent {
+            kind: DeltaKind::Text,
+            text: big_text.clone(),
+        });
+        emitter.emit_step(StepEvent {
+            depth: 0,
+            step: 1,
+            tool_name: None,
+            tokens: Default::default(),
+            elapsed_ms: 1,
+            is_final: false,
+            loop_phase: None,
+            loop_metrics: None,
+        });
+
+        let entries = ReplayLogger::read_all(tmp.path()).await.unwrap();
+        let step = entries
+            .iter()
+            .find(|entry| entry.role == "step-summary")
+            .unwrap();
+        let preview = step.step_model_preview.as_ref().unwrap();
+        assert!(preview.contains("[truncated]"));
+        assert!(preview.len() < big_text.len());
+
+        let captured = deltas.lock().unwrap();
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].text, big_text);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn test_logging_emitter_caps_tool_args_buffer_and_keeps_key_arg() {
+        let tmp = tempdir().unwrap();
+        let replay = ReplayLogger::new(tmp.path());
+        let inner = CapturingEmitter::default();
+        let deltas = inner.deltas.clone();
+        let emitter = LoggingEmitter::new(inner, replay);
+        let filler = "x".repeat(MAX_TOOL_ARGS_CAPTURE_CHARS + 512);
+
+        emitter.emit_delta(DeltaEvent {
+            kind: DeltaKind::ToolCallStart,
+            text: "read_file".to_string(),
+        });
+        emitter.emit_delta(DeltaEvent {
+            kind: DeltaKind::ToolCallArgs,
+            text: "{\"path\":\"foo.md\",\"other\":\"".to_string(),
+        });
+        emitter.emit_delta(DeltaEvent {
+            kind: DeltaKind::ToolCallArgs,
+            text: filler.clone(),
+        });
+
+        assert!(emitter.current_args_buf.lock().unwrap().len() <= MAX_TOOL_ARGS_CAPTURE_CHARS);
+        assert!(*emitter.current_args_truncated.lock().unwrap());
+
+        emitter.emit_step(StepEvent {
+            depth: 0,
+            step: 1,
+            tool_name: Some("read_file".into()),
+            tokens: Default::default(),
+            elapsed_ms: 1,
+            is_final: false,
+            loop_phase: None,
+            loop_metrics: None,
+        });
+
+        let entries = ReplayLogger::read_all(tmp.path()).await.unwrap();
+        let step = entries
+            .iter()
+            .find(|entry| entry.role == "step-summary")
+            .unwrap();
+        let tool_calls = step.step_tool_calls.as_ref().unwrap();
+        assert_eq!(tool_calls[0].key_arg, "foo.md");
+
+        let captured = deltas.lock().unwrap();
+        assert_eq!(captured.len(), 3);
+        assert_eq!(captured[2].text, filler);
     }
 }

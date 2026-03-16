@@ -1044,8 +1044,8 @@ class TestErrorRecoveryChain(unittest.TestCase):
             )
             self.assertGreaterEqual(error_count, 2)
 
-    def test_all_steps_fail_then_budget_exhausted(self) -> None:
-        """Every step errors; budget exhausted message still includes objective."""
+    def test_all_steps_fail_then_returns_partial_completion(self) -> None:
+        """Every step errors; partial completion still includes objective."""
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             cfg = _make_config(root, max_steps_per_call=3)
@@ -1060,8 +1060,9 @@ class TestErrorRecoveryChain(unittest.TestCase):
             runtime = _make_runtime(root, cfg, turns, "all-fail")
             result = runtime.solve("attempt impossible reads")
 
-            self.assertIn("Step budget exhausted", result)
+            self.assertIn("Partial completion for objective", result)
             self.assertIn("attempt impossible reads", result)
+            self.assertEqual(runtime.loop_metrics.get("termination_reason"), "budget_no_progress")
 
 
 # ===================================================================

@@ -1,10 +1,44 @@
+use std::path::Path;
+
 use tauri::{AppHandle, Emitter, State};
 use tokio_util::sync::CancellationToken;
 
 use crate::bridge::{LoggingEmitter, TauriEmitter};
 use crate::commands::session::sessions_dir;
 use crate::state::AppState;
+use op_core::engine::context::load_or_migrate_investigation_state;
+use op_core::engine::investigation_state::{
+    build_question_reasoning_packet, has_reasoning_content,
+};
+use op_core::engine::{SolveEmitter, SolveInitialContext};
 use op_core::session::replay::{ReplayEntry, ReplayLogger};
+
+async fn build_solve_initial_context(
+    session_dir: &Path,
+    session_id: &str,
+) -> (SolveInitialContext, Option<String>) {
+    let mut initial_context = SolveInitialContext {
+        session_id: Some(session_id.to_string()),
+        session_dir: Some(session_dir.display().to_string()),
+        question_reasoning_packet: None,
+    };
+
+    match load_or_migrate_investigation_state(session_dir).await {
+        Ok(state) => {
+            let packet = build_question_reasoning_packet(&state, 8, 6);
+            if has_reasoning_content(&packet) {
+                initial_context.question_reasoning_packet = Some(packet);
+            }
+            (initial_context, None)
+        }
+        Err(err) => (
+            initial_context,
+            Some(format!(
+                "[solve] failed to load investigation state for reasoning packet; continuing without packet: {err}"
+            )),
+        ),
+    }
+}
 
 /// Start solving an objective. Result streamed via events.
 #[tauri::command]
@@ -55,10 +89,33 @@ pub async fn solve(
     }
 
     let emitter = LoggingEmitter::new(TauriEmitter::new(app), replay);
+    let cwd = std::env::current_dir()
+        .map(|dir| dir.display().to_string())
+        .unwrap_or_else(|_| "<unavailable>".to_string());
+    emitter.emit_trace(&format!(
+        "[solve] pid={} cwd={} workspace={} session={}",
+        std::process::id(),
+        cwd,
+        cfg.workspace.display(),
+        session_id
+    ));
+    emitter.emit_trace(&format!("[startup:info] {}", state.startup_trace()));
+    let (initial_context, initial_context_warning) =
+        build_solve_initial_context(&session_dir, &session_id).await;
+    if let Some(warning) = initial_context_warning.as_deref() {
+        emitter.emit_trace(warning);
+    }
 
     tokio::spawn(async move {
         let result = tokio::spawn(async move {
-            op_core::engine::solve(&objective, &cfg, &emitter, token).await;
+            op_core::engine::solve_with_initial_context(
+                &objective,
+                &cfg,
+                &emitter,
+                token,
+                Some(initial_context),
+            )
+            .await;
         })
         .await;
 
@@ -67,12 +124,7 @@ pub async fn solve(
         if let Err(e) = result {
             let msg = format!("Internal error: {e}");
             eprintln!("[bridge] panic: {msg}");
-            let _ = error_handle.emit(
-                "agent:error",
-                op_core::events::ErrorEvent {
-                    message: msg,
-                },
-            );
+            let _ = error_handle.emit("agent:error", op_core::events::ErrorEvent { message: msg });
         }
     });
 
@@ -81,9 +133,7 @@ pub async fn solve(
 
 /// Cancel a running solve.
 #[tauri::command]
-pub async fn cancel(
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn cancel(state: State<'_, AppState>) -> Result<(), String> {
     let token = state.cancel_token.lock().await;
     token.cancel();
     Ok(())
@@ -94,4 +144,55 @@ pub async fn cancel(
 pub async fn debug_log(msg: String) -> Result<(), String> {
     eprintln!("[frontend] {msg}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    use tokio::fs;
+
+    #[tokio::test]
+    async fn test_build_solve_initial_context_includes_packet_when_state_has_reasoning() {
+        let tmp = tempdir().unwrap();
+        fs::write(
+            tmp.path().join("investigation_state.json"),
+            r#"{
+                "schema_version":"1.0.0",
+                "session_id":"sid",
+                "questions":{"q_1":{"id":"q_1","question_text":"Open question","status":"open","priority":"high","claim_ids":["cl_1"]}},
+                "claims":{"cl_1":{"id":"cl_1","claim_text":"Needs support","status":"unresolved","evidence_ids":["ev_1"]}},
+                "evidence":{"ev_1":{"id":"ev_1","evidence_type":"web_fetch","source_uri":"https://example.test","provenance_ids":["pv_1"]}}
+            }"#,
+        )
+        .await
+        .unwrap();
+
+        let (context, warning) = build_solve_initial_context(tmp.path(), "sid").await;
+        assert!(warning.is_none());
+        let packet = context
+            .question_reasoning_packet
+            .expect("packet should be present");
+        assert_eq!(packet["focus_question_ids"], serde_json::json!(["q_1"]));
+        assert_eq!(
+            packet["candidate_actions"][0]["id"],
+            serde_json::json!("ca_q_q_1")
+        );
+        assert_eq!(context.session_id, Some("sid".to_string()));
+        assert_eq!(context.session_dir, Some(tmp.path().display().to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_build_solve_initial_context_degrades_to_no_packet_on_load_failure() {
+        let tmp = tempdir().unwrap();
+        fs::write(tmp.path().join("investigation_state.json"), "{not-json")
+            .await
+            .unwrap();
+
+        let (context, warning) = build_solve_initial_context(tmp.path(), "sid").await;
+        assert!(warning.is_some());
+        assert!(context.question_reasoning_packet.is_none());
+        assert_eq!(context.session_id, Some("sid".to_string()));
+        assert_eq!(context.session_dir, Some(tmp.path().display().to_string()));
+    }
 }

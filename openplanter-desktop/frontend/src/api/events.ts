@@ -1,6 +1,13 @@
 /** Tauri event subscriptions. */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { AgentEvent, CuratorUpdateEvent, GraphData } from "./types";
+import type {
+  CompleteEvent,
+  CuratorUpdateEvent,
+  DeltaEvent,
+  GraphData,
+  LoopHealthEvent,
+  StepEvent,
+} from "./types";
 
 export function onAgentTrace(
   callback: (message: string) => void
@@ -11,23 +18,27 @@ export function onAgentTrace(
 }
 
 export function onAgentStep(
-  callback: (event: AgentEvent & { type: "step" }) => void
+  callback: (event: StepEvent) => void
 ): Promise<UnlistenFn> {
-  return listen("agent:step", (e) => callback(e.payload as any));
+  return listen<StepEvent>("agent:step", (e) => callback(e.payload));
 }
 
 export function onAgentDelta(
-  callback: (event: AgentEvent & { type: "delta" }) => void
+  callback: (event: DeltaEvent) => void
 ): Promise<UnlistenFn> {
-  return listen("agent:delta", (e) => callback(e.payload as any));
+  return listen<DeltaEvent>("agent:delta", (e) => callback(e.payload));
+}
+
+export function onAgentCompleteEvent(
+  callback: (event: CompleteEvent) => void
+): Promise<UnlistenFn> {
+  return listen<CompleteEvent>("agent:complete", (e) => callback(e.payload));
 }
 
 export function onAgentComplete(
   callback: (result: string) => void
 ): Promise<UnlistenFn> {
-  return listen<{ result: string }>("agent:complete", (e) =>
-    callback(e.payload.result)
-  );
+  return onAgentCompleteEvent((event) => callback(event.result));
 }
 
 export function onAgentError(
@@ -50,4 +61,9 @@ export function onCuratorUpdate(
   return listen<CuratorUpdateEvent>("agent:curator-update", (e) =>
     callback(e.payload)
   );
+}
+export function onLoopHealth(
+  callback: (event: LoopHealthEvent) => void
+): Promise<UnlistenFn> {
+  return listen<LoopHealthEvent>("agent:loop-health", (e) => callback(e.payload));
 }

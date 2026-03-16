@@ -145,7 +145,7 @@ class SingleStepBudgetTests(unittest.TestCase):
             ])
             engine = _make_engine(root, model, max_steps_per_call=1)
             result = engine.solve("one step only")
-            self.assertIn("Step budget exhausted", result)
+            self.assertIn("Partial completion for objective", result)
 
 
 # ---------------------------------------------------------------------------

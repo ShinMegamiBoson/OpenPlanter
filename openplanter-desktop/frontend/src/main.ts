@@ -3,11 +3,12 @@ import { getConfig } from "./api/invoke";
 import {
   onAgentTrace,
   onAgentDelta,
-  onAgentComplete,
+  onAgentCompleteEvent,
   onAgentError,
   onAgentStep,
   onWikiUpdated,
   onCuratorUpdate,
+  onLoopHealth,
 } from "./api/events";
 import { appState } from "./state/store";
 
@@ -93,12 +94,11 @@ async function init() {
       outputTokens: s.outputTokens + event.tokens.output_tokens,
       currentStep: event.step,
       currentDepth: event.depth,
+      lastLoopMetrics: event.loop_metrics ?? s.lastLoopMetrics,
     }));
 
     // Dispatch to ChatPane for rich step summary rendering
-    window.dispatchEvent(
-      new CustomEvent("agent-step", { detail: event })
-    );
+    window.dispatchEvent(new CustomEvent("agent-step", { detail: event }));
   });
 
   await onAgentDelta((event) => {
@@ -106,21 +106,35 @@ async function init() {
     window.dispatchEvent(detail);
   });
 
-  await onAgentComplete((result) => {
+  await onAgentCompleteEvent((event) => {
     appState.update((s) => ({
       ...s,
       isRunning: false,
       currentStep: 0,
       currentDepth: 0,
+      loopHealth: null,
+      lastLoopMetrics: event.loop_metrics ?? s.lastLoopMetrics,
+      lastCompletion: event.completion ?? null,
       messages: [
         ...s.messages,
         {
           id: crypto.randomUUID(),
           role: "assistant" as const,
-          content: result,
+          content: event.result,
           timestamp: Date.now(),
           isRendered: true,
         },
+        ...(event.completion?.kind === "partial"
+          ? [
+              {
+                id: crypto.randomUUID(),
+                role: "system" as const,
+                content:
+                  "Partial completion: the run used its bounded step budget and stopped cleanly. Resume to continue from the saved state.",
+                timestamp: Date.now(),
+              },
+            ]
+          : []),
       ],
     }));
 
@@ -134,6 +148,8 @@ async function init() {
       isRunning: false,
       currentStep: 0,
       currentDepth: 0,
+      loopHealth: null,
+      lastCompletion: null,
       messages: [
         ...s.messages,
         {
@@ -154,22 +170,16 @@ async function init() {
     window.dispatchEvent(detail);
   });
 
-  await onCuratorUpdate((event) => {
-    appState.update((s) => ({
-      ...s,
-      messages: [
-        ...s.messages,
-        {
-          id: crypto.randomUUID(),
-          role: "system" as const,
-          content: `[Wiki Curator] ${event.summary}`,
-          timestamp: Date.now(),
-        },
-      ],
-    }));
-
+  await onCuratorUpdate(() => {
     // Notify graph pane to refresh with curator's wiki changes
     window.dispatchEvent(new CustomEvent("curator-done"));
+  });
+  await onLoopHealth((event) => {
+    appState.update((s) => ({
+      ...s,
+      loopHealth: event,
+      lastLoopMetrics: event.metrics,
+    }));
   });
 }
 
@@ -180,7 +190,7 @@ function processQueue() {
     appState.update((s) => ({ ...s, inputQueue: rest }));
     // Dispatch queued-submit event for InputBar to pick up
     window.dispatchEvent(
-      new CustomEvent("queued-submit", { detail: { text: next } })
+      new CustomEvent("queued-submit", { detail: { text: next } }),
     );
   }
 }

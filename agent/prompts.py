@@ -346,8 +346,10 @@ logs you can read with read_file to recall prior work:
 - {session_dir}/events.jsonl — Trace events log (JSONL). Each record has a
   timestamp, event type ("objective", "trace", "step", "result"), and payload.
   Use this for a lightweight overview of objectives and results without full messages.
-- {session_dir}/state.json — Persisted external context observations from prior turns.
-  This is what feeds the external_context_summary in your initial message.
+- {session_dir}/investigation_state.json — Canonical typed session state with
+  structured evidence plus a legacy projection of prior observations.
+- {session_dir}/state.json — Legacy compatibility projection of session state.
+  This still feeds the external_context_summary in your initial message.
 
 These files grow throughout the session. If you need to recall prior analysis,
 check what you did before, or pick up where you left off, read these logs.
@@ -364,7 +366,7 @@ from prior turns in this session. Each entry has:
   - objective: the objective given to that turn
   - result_preview: first ~200 characters of the turn's result
   - timestamp: ISO 8601 UTC when the turn ran
-  - steps_used: how many engine steps were consumed
+  - steps_used: how many replayed model calls the turn produced, including delegated child conversations
   - replay_seq_start: starting sequence number in replay.jsonl
 
 Use turn history to:
@@ -377,6 +379,43 @@ For full details of any prior turn, read the session logs:
 """
 
 
+QUESTION_REASONING_SECTION = """
+== QUESTION-CENTRIC REASONING ==
+Your initial message may contain a "question_reasoning_packet" derived from
+{session_dir}/investigation_state.json. Use question-centric reasoning over
+document-centric "read more then synthesize" behavior.
+
+Run this loop until step budget is low or high-priority questions are resolved:
+1) Select the next unresolved question from question_reasoning_packet.focus_question_ids
+   or question_reasoning_packet.unresolved_questions.
+2) Gather discriminating evidence targeted at that question.
+3) Update related claims in investigation_state.claims with explicit status
+   (supported / contested / unresolved), confidence, and cited evidence IDs.
+4) Record contradictions explicitly, preserving both supporting and contradictory
+   evidence with provenance IDs instead of collapsing disagreement.
+5) Only then synthesize, and repeat for remaining unresolved questions.
+
+Rules:
+- Ground reasoning in typed state references, not raw transcript quotes. Prefer
+  question IDs, claim IDs, evidence IDs, provenance IDs, and candidate action IDs.
+- Treat question_reasoning_packet.candidate_actions as machine-readable, read-only
+  planner suggestions. Use them to prioritize next steps, but do not assume they
+  were persisted as canonical tasks/actions.
+- Prefer the highest-priority, highest-payoff candidate actions when choosing what
+  to do next.
+- Do not mark a claim supported without support evidence IDs.
+- Do not resolve a question without explicit claim/evidence linkage.
+- Prefer provenance-backed evidence over uncited notes.
+
+Final deliverables MUST separate findings into three sections:
+- Supported Findings
+- Contested Findings
+- Unresolved Findings
+
+Each item should cite the relevant evidence/provenance IDs.
+"""
+
+
 WIKI_SECTION = """
 == DATA SOURCES WIKI ==
 A runtime wiki of data source documentation is available at .openplanter/wiki/.
@@ -384,9 +423,14 @@ Read .openplanter/wiki/index.md at the start of any investigation to see what
 data sources are documented. Each entry describes access methods, schemas,
 coverage, and cross-reference potential.
 
-When you discover new information about a data source — updated URLs, new fields,
-cross-reference joins, data quality issues, or entirely new sources — update the
-relevant entry or create a new one using .openplanter/wiki/template.md.
+Treat the wiki as a derived knowledge surface, not your primary memory store.
+Primary continuity comes from {session_dir}/investigation_state.json and explicit
+evidence/provenance IDs.
+
+When you discover durable, non-duplicative information about a data source —
+updated URLs, new fields, cross-reference joins, data quality issues, or
+entirely new sources — update the relevant entry or create a new one using
+.openplanter/wiki/template.md. Avoid noisy repeat edits that do not add facts.
 
 === MANDATORY WIKI INDEXING ===
 For EVERY investigation, you MUST maintain the wiki as a living knowledge map:
@@ -415,6 +459,7 @@ def build_system_prompt(
     prompt = SYSTEM_PROMPT_BASE
     prompt += SESSION_LOGS_SECTION
     prompt += TURN_HISTORY_SECTION
+    prompt += QUESTION_REASONING_SECTION
     prompt += WIKI_SECTION
     if recursive:
         prompt += RECURSIVE_SECTION

@@ -1,16 +1,19 @@
 // Prevents additional console window on Windows in release.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod state;
 mod bridge;
 mod commands;
+mod state;
 
 use state::AppState;
 
 fn main() {
+    let state = AppState::new();
+    eprintln!("[startup:info] {}", state.startup_trace());
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .manage(AppState::new())
+        .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::agent::solve,
             commands::agent::cancel,
@@ -27,8 +30,6 @@ fn main() {
             commands::wiki::get_graph_data,
             commands::wiki::read_wiki_file,
         ])
-        .run(tauri::generate_context!(
-            "tauri.conf.json"
-        ))
+        .run(tauri::generate_context!("tauri.conf.json"))
         .expect("error while running tauri application");
 }

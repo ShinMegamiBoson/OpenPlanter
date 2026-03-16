@@ -136,6 +136,98 @@ class EngineTests(unittest.TestCase):
                 "expected policy block observation in context",
             )
 
+    def test_meta_text_not_accepted_as_final_answer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(workspace=root, max_depth=1, max_steps_per_call=4, acceptance_criteria=False)
+            tools = WorkspaceTools(root=root)
+            model = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(text="Here is my plan: I will inspect files and then implement.", stop_reason="end_turn"),
+                    ModelTurn(text="Concrete result delivered.", stop_reason="end_turn"),
+                ]
+            )
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            result = engine.solve("meta final rejection")
+            self.assertEqual(result, "Concrete result delivered.")
+            self.assertEqual(engine.last_loop_metrics.get("final_rejections"), 1)
+
+    def test_plan_objective_allows_structural_meta_final(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(workspace=root, max_depth=1, max_steps_per_call=2, acceptance_criteria=False)
+            tools = WorkspaceTools(root=root)
+            model = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(text="Here is my plan for finishing the task.", stop_reason="end_turn"),
+                ]
+            )
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            result = engine.solve("Draft a plan for finishing the task")
+            self.assertEqual(result, "Here is my plan for finishing the task.")
+            self.assertEqual(engine.last_loop_metrics.get("final_rejections"), 0)
+
+    def test_plan_objective_still_rejects_strong_process_meta(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(workspace=root, max_depth=1, max_steps_per_call=4, acceptance_criteria=False)
+            tools = WorkspaceTools(root=root)
+            model = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(text="Here is my plan: I will inspect files and then implement.", stop_reason="end_turn"),
+                    ModelTurn(text="Concrete planning deliverable.", stop_reason="end_turn"),
+                ]
+            )
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            result = engine.solve("Write an implementation plan for the fix")
+            self.assertEqual(result, "Concrete planning deliverable.")
+            self.assertEqual(engine.last_loop_metrics.get("final_rejections"), 1)
+
+    def test_soft_guardrail_fires_once_per_recon_episode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(workspace=root, max_depth=1, max_steps_per_call=7, acceptance_criteria=False)
+            tools = WorkspaceTools(root=root)
+            model = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(tool_calls=[_tc("list_files")]),
+                    ModelTurn(tool_calls=[_tc("search_files", query="x")]),
+                    ModelTurn(tool_calls=[_tc("repo_map")]),
+                    ModelTurn(tool_calls=[_tc("list_files")]),
+                    ModelTurn(text="done", stop_reason="end_turn"),
+                ]
+            )
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            result, ctx = engine.solve_with_context("trigger recon guardrail")
+            self.assertEqual(result, "done")
+            warnings = [obs for obs in ctx.observations if "Soft guardrail" in obs]
+            self.assertEqual(len(warnings), 1)
+            self.assertEqual(int(engine.last_loop_metrics.get("guardrail_warnings", 0)), 1)
+
+    def test_soft_guardrail_resets_for_second_recon_episode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(workspace=root, max_depth=1, max_steps_per_call=9, acceptance_criteria=False)
+            tools = WorkspaceTools(root=root)
+            model = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(tool_calls=[_tc("list_files")]),
+                    ModelTurn(tool_calls=[_tc("search_files", query="x")]),
+                    ModelTurn(tool_calls=[_tc("repo_map")]),
+                    ModelTurn(tool_calls=[_tc("write_file", path="artifact.txt", content="data")]),
+                    ModelTurn(tool_calls=[_tc("list_files")]),
+                    ModelTurn(tool_calls=[_tc("search_files", query="x")]),
+                    ModelTurn(tool_calls=[_tc("repo_map")]),
+                    ModelTurn(text="done", stop_reason="end_turn"),
+                ]
+            )
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            result, ctx = engine.solve_with_context("trigger two recon episodes")
+            self.assertEqual(result, "done")
+            warnings = [obs for obs in ctx.observations if "Soft guardrail" in obs]
+            self.assertEqual(len(warnings), 2)
+            self.assertEqual(int(engine.last_loop_metrics.get("guardrail_warnings", 0)), 2)
+
 
 class CustomSystemPromptTests(unittest.TestCase):
     def test_custom_system_prompt_override(self) -> None:
@@ -171,6 +263,14 @@ class REPLPromptTests(unittest.TestCase):
     def test_flat_prompt_excludes_repl(self) -> None:
         prompt = _build_system_prompt(recursive=False)
         self.assertNotIn("REPL STRUCTURE", prompt)
+
+    def test_prompt_includes_question_centric_reasoning_rules(self) -> None:
+        prompt = _build_system_prompt(recursive=False)
+        self.assertIn("QUESTION-CENTRIC REASONING", prompt)
+        self.assertIn("supported / contested / unresolved", prompt)
+        self.assertIn("Supported Findings", prompt)
+        self.assertIn("candidate_actions", prompt)
+        self.assertIn("machine-readable, read-only", prompt)
 
     def test_recursive_initial_message_has_repl_hint(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -218,6 +318,46 @@ class REPLPromptTests(unittest.TestCase):
             self.assertEqual(len(captured), 1)
             parsed = json.loads(captured[0])
             self.assertNotIn("repl_hint", parsed)
+
+    def test_initial_message_includes_question_reasoning_packet(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(workspace=root, max_depth=2, max_steps_per_call=3, recursive=False)
+            tools = WorkspaceTools(root=root)
+
+            captured: list[str] = []
+
+            class CapturingModel(ScriptedModel):
+                def create_conversation(self, system_prompt: str, initial_user_message: str):
+                    captured.append(initial_user_message)
+                    return super().create_conversation(system_prompt, initial_user_message)
+
+            model = CapturingModel(scripted_turns=[
+                ModelTurn(text="done", stop_reason="end_turn"),
+            ])
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            packet = {
+                "reasoning_mode": "question_centric",
+                "focus_question_ids": ["q_1"],
+                "unresolved_questions": [{"id": "q_1", "question": "Open question"}],
+                "findings": {"supported": [], "contested": [], "unresolved": []},
+                "contradictions": [],
+                "evidence_index": {},
+                "candidate_actions": [
+                    {
+                        "id": "ca_q_q_1",
+                        "action_type": "search",
+                        "status": "proposed",
+                        "priority": "high",
+                    }
+                ],
+            }
+
+            engine.solve_with_context("test objective", question_reasoning_packet=packet)
+
+            self.assertEqual(len(captured), 1)
+            parsed = json.loads(captured[0])
+            self.assertEqual(parsed["question_reasoning_packet"], packet)
 
 
 @dataclass

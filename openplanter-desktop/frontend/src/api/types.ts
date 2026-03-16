@@ -9,6 +9,27 @@ export interface TraceEvent {
   message: string;
 }
 
+export type LoopPhase = "investigate" | "build" | "iterate" | "finalize";
+
+export interface LoopMetrics {
+  steps: number;
+  model_turns: number;
+  tool_calls: number;
+  investigate_steps: number;
+  build_steps: number;
+  iterate_steps: number;
+  finalize_steps: number;
+  recon_streak: number;
+  max_recon_streak: number;
+  guardrail_warnings: number;
+  final_rejections: number;
+  extensions_granted: number;
+  extension_eligible_checks: number;
+  extension_denials_no_progress: number;
+  extension_denials_cap: number;
+  termination_reason: string;
+}
+
 export interface StepEvent {
   depth: number;
   step: number;
@@ -16,6 +37,8 @@ export interface StepEvent {
   tokens: TokenUsage;
   elapsed_ms: number;
   is_final: boolean;
+  loop_phase?: LoopPhase;
+  loop_metrics?: LoopMetrics;
 }
 
 export type DeltaKind = "text" | "thinking" | "tool_call_start" | "tool_call_args";
@@ -25,8 +48,28 @@ export interface DeltaEvent {
   text: string;
 }
 
+export interface CompletionMeta {
+  kind: string;
+  reason: string;
+  steps_used: number;
+  max_steps: number;
+  extensions_granted: number;
+  extension_block_steps: number;
+  extension_max_blocks: number;
+}
+
 export interface CompleteEvent {
   result: string;
+  loop_metrics?: LoopMetrics;
+  completion?: CompletionMeta;
+}
+
+export interface LoopHealthEvent {
+  depth: number;
+  step: number;
+  phase: LoopPhase;
+  metrics: LoopMetrics;
+  is_final: boolean;
 }
 
 export interface ErrorEvent {
@@ -130,8 +173,19 @@ export interface ReplayEntry {
 
 export type AgentEvent =
   | { type: "trace"; message: string }
-  | { type: "step"; depth: number; step: number; tool_name: string | null; tokens: TokenUsage; elapsed_ms: number; is_final: boolean }
+  | {
+      type: "step";
+      depth: number;
+      step: number;
+      tool_name: string | null;
+      tokens: TokenUsage;
+      elapsed_ms: number;
+      is_final: boolean;
+      loop_phase?: LoopPhase;
+      loop_metrics?: LoopMetrics;
+    }
   | { type: "delta"; kind: DeltaKind; text: string }
-  | { type: "complete"; result: string }
+  | { type: "complete"; result: string; loop_metrics?: LoopMetrics; completion?: CompletionMeta }
   | { type: "error"; message: string }
-  | { type: "wiki_updated"; nodes: GraphNode[]; edges: GraphEdge[] };
+  | { type: "wiki_updated"; nodes: GraphNode[]; edges: GraphEdge[] }
+  | { type: "loop_health"; depth: number; step: number; phase: LoopPhase; metrics: LoopMetrics; is_final: boolean };

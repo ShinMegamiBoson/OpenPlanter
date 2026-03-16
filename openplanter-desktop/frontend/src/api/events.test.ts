@@ -16,7 +16,9 @@ import {
   onAgentStep,
   onAgentDelta,
   onAgentComplete,
+  onAgentCompleteEvent,
   onAgentError,
+  onLoopHealth,
   onWikiUpdated,
 } from "./events";
 
@@ -46,7 +48,6 @@ describe("event listeners", () => {
 
     const handler = listeners.get("agent:step")!;
     const payload = {
-      type: "step",
       step: 1,
       depth: 0,
       tokens: { input_tokens: 100, output_tokens: 50 },
@@ -62,7 +63,7 @@ describe("event listeners", () => {
     await onAgentDelta(callback);
 
     const handler = listeners.get("agent:delta")!;
-    const payload = { type: "delta", kind: "text", text: "hello" };
+    const payload = { kind: "text", text: "hello" };
     handler({ payload });
     expect(callback).toHaveBeenCalledWith(payload);
   });
@@ -72,8 +73,43 @@ describe("event listeners", () => {
     await onAgentComplete(callback);
 
     const handler = listeners.get("agent:complete")!;
-    handler({ payload: { result: "final answer" } });
+    handler({
+      payload: {
+        result: "final answer",
+        loop_metrics: { final_rejections: 1 },
+      },
+    });
     expect(callback).toHaveBeenCalledWith("final answer");
+  });
+
+  it("onAgentCompleteEvent registers listener and forwards full payload", async () => {
+    const callback = vi.fn();
+    await onAgentCompleteEvent(callback);
+
+    const handler = listeners.get("agent:complete")!;
+    const payload = {
+      result: "final answer",
+      loop_metrics: {
+        steps: 2,
+        model_turns: 2,
+        tool_calls: 1,
+        investigate_steps: 1,
+        build_steps: 0,
+        iterate_steps: 0,
+        finalize_steps: 1,
+        recon_streak: 0,
+        max_recon_streak: 1,
+        guardrail_warnings: 0,
+        final_rejections: 1,
+        extensions_granted: 0,
+        extension_eligible_checks: 0,
+        extension_denials_no_progress: 0,
+        extension_denials_cap: 0,
+        termination_reason: "success",
+      },
+    };
+    handler({ payload });
+    expect(callback).toHaveBeenCalledWith(payload);
   });
 
   it("onAgentError registers listener and extracts message", async () => {
@@ -98,6 +134,38 @@ describe("event listeners", () => {
     expect(callback).toHaveBeenCalledWith(graphData);
   });
 
+  it("onLoopHealth registers listener and forwards payload", async () => {
+    const callback = vi.fn();
+    await onLoopHealth(callback);
+
+    const handler = listeners.get("agent:loop-health")!;
+    const payload = {
+      depth: 0,
+      step: 3,
+      phase: "investigate",
+      metrics: {
+        steps: 3,
+        model_turns: 3,
+        tool_calls: 2,
+        investigate_steps: 2,
+        build_steps: 0,
+        iterate_steps: 0,
+        finalize_steps: 0,
+        recon_streak: 2,
+        max_recon_streak: 2,
+        guardrail_warnings: 1,
+        final_rejections: 1,
+        extensions_granted: 0,
+        extension_eligible_checks: 1,
+        extension_denials_no_progress: 1,
+        extension_denials_cap: 0,
+        termination_reason: "budget_no_progress",
+      },
+      is_final: false,
+    };
+    handler({ payload });
+    expect(callback).toHaveBeenCalledWith(payload);
+  });
   it("all listeners return unlisten function", async () => {
     const noop = vi.fn();
     const unlistens = await Promise.all([
@@ -105,7 +173,9 @@ describe("event listeners", () => {
       onAgentStep(noop),
       onAgentDelta(noop),
       onAgentComplete(noop),
+      onAgentCompleteEvent(noop),
       onAgentError(noop),
+      onLoopHealth(noop),
       onWikiUpdated(noop),
     ]);
     for (const u of unlistens) {

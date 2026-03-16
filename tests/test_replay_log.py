@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -174,8 +175,34 @@ class ReplayLoggerUnitTests(unittest.TestCase):
             self.assertEqual(records[2]["conversation_id"], "root/d0s2")
             self.assertEqual(records[2]["model"], "m-child")
             self.assertEqual(records[3]["conversation_id"], "root/d0s2")
-            self.assertEqual(records[3]["seq"], 0)
+            self.assertEqual(records[3]["seq"], 1)
             self.assertIn("messages_snapshot", records[3])
+
+    def test_child_logger_owner_suffix_keeps_ids_unique(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "replay.jsonl"
+            parent = ReplayLogger(path=p)
+
+            left = parent.child(depth=0, step=2, owner="call_subtask:0")
+            right = parent.child(depth=0, step=2, owner="call_subtask:1")
+
+            self.assertNotEqual(left.conversation_id, right.conversation_id)
+            self.assertRegex(left.conversation_id, r"^root/d0s2/o[A-Za-z0-9._-]+_[0-9a-f]{8}$")
+            self.assertRegex(right.conversation_id, r"^root/d0s2/o[A-Za-z0-9._-]+_[0-9a-f]{8}$")
+
+    def test_child_logger_owner_suffix_normalizes_and_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "replay.jsonl"
+            parent = ReplayLogger(path=p)
+
+            same_left = parent.child(depth=0, step=2, owner="  odd owner/with spaces?  ")
+            same_right = parent.child(depth=0, step=2, owner="  odd owner/with spaces?  ")
+            collided_slug_a = parent.child(depth=0, step=2, owner="abc/def")
+            collided_slug_b = parent.child(depth=0, step=2, owner="abc:def")
+
+            self.assertEqual(same_left.conversation_id, same_right.conversation_id)
+            self.assertIn("/oodd_owner_with_spaces_", same_left.conversation_id)
+            self.assertNotEqual(collided_slug_a.conversation_id, collided_slug_b.conversation_id)
 
     def test_creates_parent_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -186,6 +213,149 @@ class ReplayLoggerUnitTests(unittest.TestCase):
                 tool_defs=[],
             )
             self.assertTrue(p.exists())
+
+    def test_initializes_seq_from_existing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "replay.jsonl"
+            p.write_text(
+                "\n".join([
+                    json.dumps({"type": "header", "conversation_id": "root"}),
+                    json.dumps({"type": "call", "conversation_id": "root", "seq": 3, "messages_snapshot": [{"role": "user", "content": "hi"}]}),
+                    "{malformed",
+                    json.dumps({"type": "call", "conversation_id": "other", "seq": 8, "messages_snapshot": [{"role": "user", "content": "x"}]}),
+                ])
+                + "\n",
+                encoding="utf-8",
+            )
+
+            logger = ReplayLogger(path=p)
+            logger.log_call(
+                depth=0,
+                step=2,
+                messages=[
+                    {"role": "user", "content": "hi"},
+                    {"role": "assistant", "content": "hello"},
+                ],
+                response={"r": 1},
+            )
+
+            records = []
+            for line in p.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+            calls = [r for r in records if r.get("type") == "call" and r.get("conversation_id") == "root"]
+            self.assertEqual(calls[-1]["seq"], 9)
+            self.assertIn("messages_delta", calls[-1])
+            self.assertEqual(calls[-1]["messages_delta"], [{"role": "assistant", "content": "hello"}])
+
+    def test_force_snapshot_first_call_resets_root_message_latch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "replay.jsonl"
+            first = ReplayLogger(path=p, force_snapshot_first_call=True)
+            first.log_call(
+                depth=0,
+                step=1,
+                messages=[{"role": "user", "content": "turn one"}],
+                response={"r": 1},
+            )
+
+            second = ReplayLogger(path=p, force_snapshot_first_call=True)
+            second.log_call(
+                depth=0,
+                step=1,
+                messages=[{"role": "user", "content": "turn two"}],
+                response={"r": 2},
+            )
+
+            calls = [r for r in self._read_records(p) if r.get("type") == "call" and r.get("conversation_id") == "root"]
+            self.assertEqual(calls[0]["seq"], 0)
+            self.assertIn("messages_snapshot", calls[0])
+            self.assertEqual(calls[1]["seq"], 1)
+            self.assertIn("messages_snapshot", calls[1])
+            self.assertNotIn("messages_delta", calls[1])
+
+    def test_force_snapshot_first_call_propagates_to_child_logger(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "replay.jsonl"
+
+            first = ReplayLogger(path=p, force_snapshot_first_call=True)
+            child_first = first.child(depth=0, step=1)
+            child_first.log_call(
+                depth=1,
+                step=1,
+                messages=[{"role": "user", "content": "child turn one"}],
+                response={"r": 1},
+            )
+
+            second = ReplayLogger(path=p, force_snapshot_first_call=True)
+            child_second = second.child(depth=0, step=1)
+            child_second.log_call(
+                depth=1,
+                step=1,
+                messages=[{"role": "user", "content": "child turn two"}],
+                response={"r": 2},
+            )
+
+            calls = [
+                r
+                for r in self._read_records(p)
+                if r.get("type") == "call" and r.get("conversation_id") == "root/d0s1"
+            ]
+            self.assertEqual(calls[0]["seq"], 0)
+            self.assertIn("messages_snapshot", calls[0])
+            self.assertEqual(calls[1]["seq"], 1)
+            self.assertIn("messages_snapshot", calls[1])
+            self.assertNotIn("messages_delta", calls[1])
+
+    def test_parallel_child_loggers_keep_seq_unique_and_contiguous(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "replay.jsonl"
+            parent = ReplayLogger(path=p)
+            parent.log_call(
+                depth=0,
+                step=1,
+                messages=[{"role": "user", "content": "root"}],
+                response={"r": "root"},
+            )
+
+            barrier = threading.Barrier(3)
+            errors: list[BaseException] = []
+
+            def _worker(step: int) -> None:
+                try:
+                    child = parent.child(depth=0, step=step)
+                    barrier.wait(timeout=5.0)
+                    child.log_call(
+                        depth=1,
+                        step=1,
+                        messages=[{"role": "user", "content": f"child-{step}"}],
+                        response={"r": step},
+                    )
+                except BaseException as exc:  # pragma: no cover - surfaced below
+                    errors.append(exc)
+
+            threads = [
+                threading.Thread(target=_worker, args=(1,)),
+                threading.Thread(target=_worker, args=(2,)),
+            ]
+            for thread in threads:
+                thread.start()
+            barrier.wait(timeout=5.0)
+            for thread in threads:
+                thread.join(timeout=5.0)
+
+            if errors:
+                raise errors[0]
+
+            call_records = [r for r in self._read_records(p) if r.get("type") == "call"]
+            seqs = [record["seq"] for record in call_records]
+            self.assertEqual(seqs, sorted(seqs))
+            self.assertEqual(seqs, list(range(len(call_records))))
 
 
 class ReplayLoggerIntegrationTests(unittest.TestCase):
@@ -275,6 +445,69 @@ class ReplayLoggerIntegrationTests(unittest.TestCase):
             self.assertEqual(len(child_calls), 1)
             self.assertEqual(child_calls[0]["depth"], 1)
 
+    def test_parallel_subtasks_log_distinct_child_conversations_for_same_step(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(
+                workspace=root,
+                max_depth=3,
+                max_steps_per_call=6,
+                recursive=True,
+                acceptance_criteria=False,
+            )
+            tools = WorkspaceTools(root=root)
+            model = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(tool_calls=[
+                        _tc("subtask", objective="task A", model="worker-a"),
+                        _tc("subtask", objective="task B", model="worker-b"),
+                    ]),
+                    ModelTurn(text="root done", stop_reason="end_turn"),
+                ]
+            )
+
+            def factory(model_name: str, _effort: str | None) -> ScriptedModel:
+                objective = "task A" if model_name == "worker-a" else "task B"
+                return ScriptedModel(
+                    scripted_turns=[
+                        ModelTurn(text=f"{objective} done", stop_reason="end_turn"),
+                    ]
+                )
+
+            engine = RLMEngine(model=model, tools=tools, config=cfg, model_factory=factory)
+            replay_path = root / "replay.jsonl"
+            replay_logger = ReplayLogger(path=replay_path)
+
+            result, _ = engine.solve_with_context(
+                objective="top level",
+                replay_logger=replay_logger,
+            )
+            self.assertEqual(result, "root done")
+
+            records = self._read_records(replay_path)
+            headers = [r for r in records if r["type"] == "header"]
+            calls = [r for r in records if r["type"] == "call"]
+
+            child_ids = sorted(
+                {
+                    record["conversation_id"]
+                    for record in headers
+                    if record["conversation_id"].startswith("root/d0s1/o")
+                }
+            )
+            self.assertEqual(len(child_ids), 2)
+            self.assertNotEqual(child_ids[0], child_ids[1])
+
+            root_calls = [c for c in calls if c["conversation_id"] == "root"]
+            self.assertEqual(len(root_calls), 2)
+            for child_id in child_ids:
+                child_headers = [h for h in headers if h["conversation_id"] == child_id]
+                child_calls = [c for c in calls if c["conversation_id"] == child_id]
+                self.assertEqual(len(child_headers), 1)
+                self.assertEqual(len(child_calls), 1)
+                self.assertEqual(child_calls[0]["depth"], 1)
+                self.assertIn("messages_snapshot", child_calls[0])
+
     def test_replay_log_via_runtime(self) -> None:
         """SessionRuntime.solve() creates replay.jsonl in session dir."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -303,6 +536,37 @@ class ReplayLoggerIntegrationTests(unittest.TestCase):
             types = [r["type"] for r in records]
             self.assertIn("header", types)
             self.assertIn("call", types)
+
+    def test_runtime_second_solve_starts_with_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(workspace=root, max_depth=1, max_steps_per_call=4)
+            tools = WorkspaceTools(root=root)
+            model = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(text="first", stop_reason="end_turn"),
+                    ModelTurn(text="second", stop_reason="end_turn"),
+                ]
+            )
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+
+            from agent.runtime import SessionRuntime
+
+            runtime = SessionRuntime.bootstrap(engine=engine, config=cfg, session_id="sess-replay-two", resume=False)
+            self.assertEqual(runtime.solve("first objective"), "first")
+            self.assertEqual(runtime.solve("second objective"), "second")
+
+            replay_path = (
+                root / cfg.session_root_dir / "sessions" / runtime.session_id / "replay.jsonl"
+            )
+            records = self._read_records(replay_path)
+            calls = [r for r in records if r.get("type") == "call" and r.get("conversation_id") == "root"]
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(calls[0]["seq"], 0)
+            self.assertIn("messages_snapshot", calls[0])
+            self.assertEqual(calls[1]["seq"], 1)
+            self.assertIn("messages_snapshot", calls[1])
+            self.assertNotIn("messages_delta", calls[1])
 
 
 if __name__ == "__main__":

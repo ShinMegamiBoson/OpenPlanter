@@ -4,13 +4,23 @@ import json
 import re
 import secrets
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 from .config import AgentConfig
 from .engine import ContentDeltaCallback, ExternalContext, RLMEngine, StepCallback, TurnSummary
+from .investigation_state import (
+    build_question_reasoning_packet,
+    default_state,
+    load_investigation_state,
+    migrate_legacy_state,
+    normalize_legacy_state,
+    save_investigation_state,
+    state_to_legacy_projection,
+    upsert_legacy_observations,
+)
 from .replay_log import ReplayLogger
 
 EventCallback = Callable[[str], None]
@@ -33,10 +43,24 @@ def _safe_component(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", text).strip("-") or "artifact"
 
 
+def _has_reasoning_content(packet: dict[str, Any]) -> bool:
+    findings = packet.get("findings", {})
+    if packet.get("focus_question_ids"):
+        return True
+    if packet.get("contradictions"):
+        return True
+    if packet.get("candidate_actions"):
+        return True
+    if not isinstance(findings, dict):
+        return False
+    return any(findings.get(key) for key in ("supported", "contested", "unresolved"))
+
+
 @dataclass
 class SessionStore:
     workspace: Path
     session_root_dir: str = ".openplanter"
+    _warnings: list[str] = field(default_factory=list, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.workspace = self.workspace.expanduser().resolve()
@@ -52,6 +76,9 @@ class SessionStore:
 
     def _state_path(self, session_id: str) -> Path:
         return self._session_dir(session_id) / "state.json"
+
+    def _investigation_state_path(self, session_id: str) -> Path:
+        return self._session_dir(session_id) / "investigation_state.json"
 
     def _events_path(self, session_id: str) -> Path:
         return self._session_dir(session_id) / "events.jsonl"
@@ -134,21 +161,112 @@ class SessionStore:
         state = self.load_state(sid)
         return sid, state, created_new
 
+    def _warn(self, message: str) -> None:
+        self._warnings.append(message)
+
+    def drain_warnings(self) -> list[str]:
+        warnings = list(self._warnings)
+        self._warnings.clear()
+        return warnings
+
+    def _try_load_investigation_state(
+        self,
+        investigation_path: Path,
+        *,
+        on_invalid: str,
+    ) -> dict[str, Any] | None:
+        try:
+            return load_investigation_state(investigation_path)
+        except json.JSONDecodeError:
+            self._warn(
+                f"Session investigation state is invalid JSON: {investigation_path}; {on_invalid}."
+            )
+            return None
+
     def load_state(self, session_id: str) -> dict[str, Any]:
+        investigation_path = self._investigation_state_path(session_id)
+        if investigation_path.exists():
+            typed_state = self._try_load_investigation_state(
+                investigation_path,
+                on_invalid="falling back to legacy state",
+            )
+            if typed_state is not None:
+                return state_to_legacy_projection(typed_state, session_id=session_id)
+
         state_path = self._state_path(session_id)
         if not state_path.exists():
             return {
                 "session_id": session_id,
+                "saved_at": _utc_now(),
                 "external_observations": [],
             }
         try:
-            return json.loads(state_path.read_text(encoding="utf-8"))
+            raw_state = json.loads(state_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise SessionError(f"Session state is invalid JSON: {state_path}") from exc
+        if not isinstance(raw_state, dict):
+            raise SessionError(f"Session state must be a JSON object: {state_path}")
+        return normalize_legacy_state(session_id, raw_state)
+
+    def load_typed_state(self, session_id: str) -> dict[str, Any]:
+        investigation_path = self._investigation_state_path(session_id)
+        if investigation_path.exists():
+            typed_state = self._try_load_investigation_state(
+                investigation_path,
+                on_invalid="continuing without typed reasoning state",
+            )
+            if typed_state is not None:
+                return typed_state
+
+        state_path = self._state_path(session_id)
+        if not state_path.exists():
+            return default_state(session_id=session_id)
+        try:
+            raw_state = json.loads(state_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise SessionError(f"Session state is invalid JSON: {state_path}") from exc
+        if not isinstance(raw_state, dict):
+            raise SessionError(f"Session state must be a JSON object: {state_path}")
+        return migrate_legacy_state(session_id=session_id, legacy_state=raw_state)
 
     def save_state(self, session_id: str, state: dict[str, Any]) -> None:
+        normalized_legacy = normalize_legacy_state(session_id, state)
         state_path = self._state_path(session_id)
-        state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        state_path.write_text(json.dumps(normalized_legacy, indent=2), encoding="utf-8")
+
+        investigation_path = self._investigation_state_path(session_id)
+        if investigation_path.exists():
+            typed_state = self._try_load_investigation_state(
+                investigation_path,
+                on_invalid="preserving the corrupt typed state file and writing legacy state only",
+            )
+            if typed_state is None:
+                self._touch_metadata(session_id)
+                return
+        else:
+            typed_state = migrate_legacy_state(session_id=session_id, legacy_state=normalized_legacy)
+
+        typed_state = upsert_legacy_observations(
+            typed_state,
+            normalized_legacy["external_observations"],
+            now=normalized_legacy.get("saved_at"),
+        )
+        legacy = typed_state.setdefault("legacy", {})
+        if not isinstance(legacy, dict):
+            legacy = {}
+            typed_state["legacy"] = legacy
+        legacy["turn_history"] = normalized_legacy.get("turn_history", [])
+        legacy["loop_metrics"] = normalized_legacy.get("loop_metrics", {})
+        legacy["extra_fields"] = {
+            key: value
+            for key, value in normalized_legacy.items()
+            if key not in {"session_id", "saved_at", "external_observations", "turn_history", "loop_metrics"}
+        }
+
+        typed_state["session_id"] = session_id
+        typed_state["updated_at"] = normalized_legacy.get("saved_at", _utc_now())
+        typed_state.setdefault("created_at", typed_state["updated_at"])
+        save_investigation_state(investigation_path, typed_state)
         self._touch_metadata(session_id)
 
     def append_event(self, session_id: str, event_type: str, payload: dict[str, Any]) -> None:
@@ -228,6 +346,21 @@ class SessionRuntime:
     max_persisted_observations: int = 400
     turn_history: list[TurnSummary] | None = None
     max_turn_summaries: int = 50
+    loop_metrics: dict[str, Any] | None = None
+
+    def _flush_store_warnings(self, emit: EventCallback | None = None) -> None:
+        for message in self.store.drain_warnings():
+            if emit is not None:
+                emit(message)
+                continue
+            try:
+                self.store.append_event(
+                    self.session_id,
+                    "trace",
+                    {"message": message},
+                )
+            except OSError:
+                pass
 
     @classmethod
     def bootstrap(
@@ -265,6 +398,24 @@ class SessionRuntime:
                     except (KeyError, TypeError):
                         pass
         max_turns = max(1, config.max_turn_summaries)
+        raw_loop_metrics = state.get("loop_metrics", {})
+        loop_metrics: dict[str, Any] = raw_loop_metrics if isinstance(raw_loop_metrics, dict) else {}
+        loop_metrics.setdefault("turns", 0)
+        loop_metrics.setdefault("steps", 0)
+        loop_metrics.setdefault("model_turns", 0)
+        loop_metrics.setdefault("tool_calls", 0)
+        loop_metrics.setdefault("guardrail_warnings", 0)
+        loop_metrics.setdefault("final_rejections", 0)
+        loop_metrics.setdefault("extensions_granted", 0)
+        loop_metrics.setdefault("extension_eligible_checks", 0)
+        loop_metrics.setdefault("extension_denials_no_progress", 0)
+        loop_metrics.setdefault("extension_denials_cap", 0)
+        loop_metrics.setdefault("termination_reason", "")
+        loop_metrics.setdefault("phase_counts", {})
+        if not isinstance(loop_metrics["phase_counts"], dict):
+            loop_metrics["phase_counts"] = {}
+        for phase in ("investigate", "build", "iterate", "finalize"):
+            loop_metrics["phase_counts"].setdefault(phase, 0)
 
         runtime = cls(
             engine=engine,
@@ -274,6 +425,7 @@ class SessionRuntime:
             max_persisted_observations=max_obs,
             turn_history=turn_history[-max_turns:],
             max_turn_summaries=max_turns,
+            loop_metrics=loop_metrics,
         )
         try:
             runtime.store.append_event(
@@ -283,10 +435,12 @@ class SessionRuntime:
             )
         except OSError:
             pass
+        runtime._flush_store_warnings()
         try:
             runtime._persist_state()
         except OSError:
             pass
+        runtime._flush_store_warnings()
         return runtime
 
     def solve(
@@ -359,8 +513,14 @@ class SessionRuntime:
                     pass
 
         replay_path = self.store._session_dir(self.session_id) / "replay.jsonl"
-        replay_logger = ReplayLogger(path=replay_path)
-        replay_seq_start = replay_logger._seq
+        replay_logger = ReplayLogger(path=replay_path, force_snapshot_first_call=True)
+        replay_seq_start = replay_logger.current_seq
+
+        typed_state = self.store.load_typed_state(self.session_id)
+        self._flush_store_warnings(_on_event)
+        question_reasoning_packet = build_question_reasoning_packet(typed_state)
+        if not _has_reasoning_content(question_reasoning_packet):
+            question_reasoning_packet = None
 
         result, updated_context = self.engine.solve_with_context(
             objective=objective,
@@ -370,15 +530,55 @@ class SessionRuntime:
             on_content_delta=on_content_delta,
             replay_logger=replay_logger,
             turn_history=self.turn_history,
+            question_reasoning_packet=question_reasoning_packet,
         )
         self.context = updated_context
+
+        latest_loop_metrics = self.engine.last_loop_metrics if isinstance(self.engine.last_loop_metrics, dict) else {}
+        if self.loop_metrics is None:
+            self.loop_metrics = {
+                "turns": 0,
+                "steps": 0,
+                "model_turns": 0,
+                "tool_calls": 0,
+                "guardrail_warnings": 0,
+                "final_rejections": 0,
+                "extensions_granted": 0,
+                "extension_eligible_checks": 0,
+                "extension_denials_no_progress": 0,
+                "extension_denials_cap": 0,
+                "termination_reason": "",
+                "phase_counts": {"investigate": 0, "build": 0, "iterate": 0, "finalize": 0},
+            }
+        self.loop_metrics["turns"] = int(self.loop_metrics.get("turns", 0)) + 1
+        self.loop_metrics["steps"] = int(self.loop_metrics.get("steps", 0)) + int(latest_loop_metrics.get("steps", 0))
+        self.loop_metrics["model_turns"] = int(self.loop_metrics.get("model_turns", 0)) + int(latest_loop_metrics.get("model_turns", 0))
+        self.loop_metrics["tool_calls"] = int(self.loop_metrics.get("tool_calls", 0)) + int(latest_loop_metrics.get("tool_calls", 0))
+        self.loop_metrics["guardrail_warnings"] = int(self.loop_metrics.get("guardrail_warnings", 0)) + int(latest_loop_metrics.get("guardrail_warnings", 0))
+        self.loop_metrics["final_rejections"] = int(self.loop_metrics.get("final_rejections", 0)) + int(latest_loop_metrics.get("final_rejections", 0))
+        self.loop_metrics["extensions_granted"] = int(self.loop_metrics.get("extensions_granted", 0)) + int(latest_loop_metrics.get("extensions_granted", 0))
+        self.loop_metrics["extension_eligible_checks"] = int(self.loop_metrics.get("extension_eligible_checks", 0)) + int(latest_loop_metrics.get("extension_eligible_checks", 0))
+        self.loop_metrics["extension_denials_no_progress"] = int(self.loop_metrics.get("extension_denials_no_progress", 0)) + int(latest_loop_metrics.get("extension_denials_no_progress", 0))
+        self.loop_metrics["extension_denials_cap"] = int(self.loop_metrics.get("extension_denials_cap", 0)) + int(latest_loop_metrics.get("extension_denials_cap", 0))
+        self.loop_metrics["termination_reason"] = str(latest_loop_metrics.get("termination_reason", ""))
+        phase_counts = self.loop_metrics.setdefault("phase_counts", {})
+        latest_phase_counts = latest_loop_metrics.get("phase_counts", {})
+        if not isinstance(phase_counts, dict):
+            phase_counts = {}
+            self.loop_metrics["phase_counts"] = phase_counts
+        if not isinstance(latest_phase_counts, dict):
+            latest_phase_counts = {}
+        for phase in ("investigate", "build", "iterate", "finalize"):
+            phase_counts[phase] = int(phase_counts.get(phase, 0)) + int(latest_phase_counts.get(phase, 0))
+        self.loop_metrics["last_turn"] = latest_loop_metrics
 
         # Generate turn summary
         if self.turn_history is None:
             self.turn_history = []
         turn_number = (self.turn_history[-1].turn_number + 1) if self.turn_history else 1
         result_preview = result[:200] + "..." if len(result) > 200 else result
-        steps_used = replay_logger._seq - replay_seq_start
+        replay_seq_end = replay_logger.current_seq
+        steps_used = max(0, replay_seq_end - replay_seq_start)
         summary = TurnSummary(
             turn_number=turn_number,
             objective=objective,
@@ -402,6 +602,7 @@ class SessionRuntime:
             self._persist_state()
         except OSError:
             pass
+        self._flush_store_warnings(_on_event)
         return result
 
     def _persist_state(self) -> None:
@@ -414,5 +615,6 @@ class SessionRuntime:
         }
         if self.turn_history:
             state["turn_history"] = [t.to_dict() for t in self.turn_history]
+        if self.loop_metrics:
+            state["loop_metrics"] = self.loop_metrics
         self.store.save_state(self.session_id, state)
-

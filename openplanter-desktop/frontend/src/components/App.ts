@@ -98,6 +98,9 @@ async function switchToNewSession(sessionList: HTMLElement): Promise<void> {
       outputTokens: 0,
       currentStep: 0,
       currentDepth: 0,
+      loopHealth: null,
+      lastLoopMetrics: null,
+      lastCompletion: null,
       inputQueue: [],
     }));
     // Dispatch event to clear ChatPane DOM
@@ -155,6 +158,9 @@ async function switchToSession(sessionId: string, sessionList: HTMLElement): Pro
       outputTokens: 0,
       currentStep: 0,
       currentDepth: 0,
+      loopHealth: null,
+      lastLoopMetrics: null,
+      lastCompletion: null,
       inputQueue: [],
     }));
     // Dispatch event to clear ChatPane DOM

@@ -32,6 +32,13 @@ fn env_int(key: &str, default: i64) -> i64 {
         .unwrap_or(default)
 }
 
+fn env_float(key: &str, default: f64) -> f64 {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
 fn env_bool(key: &str, default: bool) -> bool {
     match env::var(key) {
         Ok(v) => matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes"),
@@ -70,6 +77,9 @@ pub struct AgentConfig {
     // Limits
     pub max_depth: i64,
     pub max_steps_per_call: i64,
+    pub budget_extension_enabled: bool,
+    pub budget_extension_block_steps: i64,
+    pub budget_extension_max_blocks: i64,
     pub max_observation_chars: i64,
     pub command_timeout_sec: i64,
     pub shell: String,
@@ -80,6 +90,10 @@ pub struct AgentConfig {
     pub session_root_dir: String,
     pub max_persisted_observations: i64,
     pub max_solve_seconds: i64,
+    pub rate_limit_max_retries: i64,
+    pub rate_limit_backoff_base_sec: f64,
+    pub rate_limit_backoff_max_sec: f64,
+    pub rate_limit_retry_after_cap_sec: f64,
     pub recursive: bool,
     pub min_subtask_depth: i64,
     pub acceptance_criteria: bool,
@@ -111,6 +125,9 @@ impl Default for AgentConfig {
             voyage_api_key: None,
             max_depth: 4,
             max_steps_per_call: 100,
+            budget_extension_enabled: true,
+            budget_extension_block_steps: 20,
+            budget_extension_max_blocks: 2,
             max_observation_chars: 6000,
             command_timeout_sec: 45,
             shell: "/bin/sh".into(),
@@ -121,6 +138,10 @@ impl Default for AgentConfig {
             session_root_dir: ".openplanter".into(),
             max_persisted_observations: 400,
             max_solve_seconds: 0,
+            rate_limit_max_retries: 12,
+            rate_limit_backoff_base_sec: 1.0,
+            rate_limit_backoff_max_sec: 60.0,
+            rate_limit_retry_after_cap_sec: 120.0,
             recursive: true,
             min_subtask_depth: 0,
             acceptance_criteria: true,
@@ -209,6 +230,11 @@ impl AgentConfig {
             voyage_api_key,
             max_depth: env_int("OPENPLANTER_MAX_DEPTH", 4),
             max_steps_per_call: env_int("OPENPLANTER_MAX_STEPS", 100),
+            budget_extension_enabled: env_bool("OPENPLANTER_BUDGET_EXTENSION_ENABLED", true),
+            budget_extension_block_steps: env_int("OPENPLANTER_BUDGET_EXTENSION_BLOCK_STEPS", 20)
+                .max(1),
+            budget_extension_max_blocks: env_int("OPENPLANTER_BUDGET_EXTENSION_MAX_BLOCKS", 2)
+                .max(0),
             max_observation_chars: env_int("OPENPLANTER_MAX_OBS_CHARS", 6000),
             command_timeout_sec: env_int("OPENPLANTER_CMD_TIMEOUT", 45),
             shell: env_or("OPENPLANTER_SHELL", "/bin/sh"),
@@ -219,6 +245,13 @@ impl AgentConfig {
             session_root_dir: env_or("OPENPLANTER_SESSION_DIR", ".openplanter"),
             max_persisted_observations: env_int("OPENPLANTER_MAX_PERSISTED_OBS", 400),
             max_solve_seconds: env_int("OPENPLANTER_MAX_SOLVE_SECONDS", 0),
+            rate_limit_max_retries: env_int("OPENPLANTER_RATE_LIMIT_MAX_RETRIES", 12),
+            rate_limit_backoff_base_sec: env_float("OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC", 1.0),
+            rate_limit_backoff_max_sec: env_float("OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC", 60.0),
+            rate_limit_retry_after_cap_sec: env_float(
+                "OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC",
+                120.0,
+            ),
             recursive: env_bool("OPENPLANTER_RECURSIVE", true),
             min_subtask_depth: env_int("OPENPLANTER_MIN_SUBTASK_DEPTH", 0),
             acceptance_criteria: env_bool("OPENPLANTER_ACCEPTANCE_CRITERIA", true),
@@ -263,6 +296,13 @@ mod tests {
         assert_eq!(cfg.reasoning_effort, Some("high".into()));
         assert_eq!(cfg.max_depth, 4);
         assert_eq!(cfg.max_steps_per_call, 100);
+        assert!(cfg.budget_extension_enabled);
+        assert_eq!(cfg.budget_extension_block_steps, 20);
+        assert_eq!(cfg.budget_extension_max_blocks, 2);
+        assert_eq!(cfg.rate_limit_max_retries, 12);
+        assert_eq!(cfg.rate_limit_backoff_base_sec, 1.0);
+        assert_eq!(cfg.rate_limit_backoff_max_sec, 60.0);
+        assert_eq!(cfg.rate_limit_retry_after_cap_sec, 120.0);
         assert!(cfg.recursive);
         assert!(cfg.acceptance_criteria);
         assert!(!cfg.demo);
@@ -299,8 +339,15 @@ mod tests {
             "OPENPLANTER_ANTHROPIC_API_KEY",
             "ANTHROPIC_API_KEY",
             "OPENPLANTER_MAX_DEPTH",
+            "OPENPLANTER_BUDGET_EXTENSION_ENABLED",
+            "OPENPLANTER_BUDGET_EXTENSION_BLOCK_STEPS",
+            "OPENPLANTER_BUDGET_EXTENSION_MAX_BLOCKS",
             "OPENPLANTER_RECURSIVE",
             "OPENPLANTER_DEMO",
+            "OPENPLANTER_RATE_LIMIT_MAX_RETRIES",
+            "OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC",
+            "OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC",
+            "OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC",
         ];
         // Save original values
         let saved: Vec<_> = keys
@@ -321,6 +368,13 @@ mod tests {
         assert_eq!(cfg.model, "claude-opus-4-6");
         assert_eq!(cfg.reasoning_effort, Some("high".into()));
         assert_eq!(cfg.max_depth, 4);
+        assert!(cfg.budget_extension_enabled);
+        assert_eq!(cfg.budget_extension_block_steps, 20);
+        assert_eq!(cfg.budget_extension_max_blocks, 2);
+        assert_eq!(cfg.rate_limit_max_retries, 12);
+        assert_eq!(cfg.rate_limit_backoff_base_sec, 1.0);
+        assert_eq!(cfg.rate_limit_backoff_max_sec, 60.0);
+        assert_eq!(cfg.rate_limit_retry_after_cap_sec, 120.0);
         assert!(cfg.recursive);
         assert!(!cfg.demo);
         assert!(cfg.openai_api_key.is_none());
@@ -332,9 +386,16 @@ mod tests {
             env::set_var("OPENPLANTER_MODEL", "gpt-5.2");
             env::set_var("OPENPLANTER_REASONING_EFFORT", "low");
             env::set_var("OPENPLANTER_MAX_DEPTH", "8");
+            env::set_var("OPENPLANTER_BUDGET_EXTENSION_ENABLED", "false");
+            env::set_var("OPENPLANTER_BUDGET_EXTENSION_BLOCK_STEPS", "9");
+            env::set_var("OPENPLANTER_BUDGET_EXTENSION_MAX_BLOCKS", "1");
             env::set_var("OPENPLANTER_RECURSIVE", "false");
             env::set_var("OPENPLANTER_DEMO", "true");
             env::set_var("OPENAI_API_KEY", "sk-test123");
+            env::set_var("OPENPLANTER_RATE_LIMIT_MAX_RETRIES", "5");
+            env::set_var("OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC", "2.5");
+            env::set_var("OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC", "30.0");
+            env::set_var("OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC", "90.0");
         }
 
         let cfg = AgentConfig::from_env("/tmp");
@@ -342,6 +403,13 @@ mod tests {
         assert_eq!(cfg.model, "gpt-5.2");
         assert_eq!(cfg.reasoning_effort, Some("low".into()));
         assert_eq!(cfg.max_depth, 8);
+        assert!(!cfg.budget_extension_enabled);
+        assert_eq!(cfg.budget_extension_block_steps, 9);
+        assert_eq!(cfg.budget_extension_max_blocks, 1);
+        assert_eq!(cfg.rate_limit_max_retries, 5);
+        assert_eq!(cfg.rate_limit_backoff_base_sec, 2.5);
+        assert_eq!(cfg.rate_limit_backoff_max_sec, 30.0);
+        assert_eq!(cfg.rate_limit_retry_after_cap_sec, 90.0);
         assert!(!cfg.recursive);
         assert!(cfg.demo);
         assert_eq!(cfg.openai_api_key, Some("sk-test123".into()));

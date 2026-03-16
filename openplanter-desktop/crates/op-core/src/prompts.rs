@@ -214,8 +214,10 @@ logs you can read with read_file to recall prior work:
 - {session_dir}/events.jsonl — Trace events log (JSONL). Each record has a
   timestamp, event type ("objective", "trace", "step", "result"), and payload.
   Use this for a lightweight overview of objectives and results without full messages.
-- {session_dir}/state.json — Persisted external context observations from prior turns.
-  This is what feeds the external_context_summary in your initial message.
+- {session_dir}/investigation_state.json — Canonical typed session state with
+  structured evidence plus a legacy projection of prior observations.
+- {session_dir}/state.json — Legacy compatibility projection of session state.
+  This still feeds the external_context_summary in your initial message.
 
 These files grow throughout the session. If you need to recall prior analysis,
 check what you did before, or pick up where you left off, read these logs.
@@ -230,7 +232,7 @@ from prior turns in this session. Each entry has:
   - objective: the objective given to that turn
   - result_preview: first ~200 characters of the turn's result
   - timestamp: ISO 8601 UTC when the turn ran
-  - steps_used: how many engine steps were consumed
+  - steps_used: how many replayed model calls the turn produced, including delegated child conversations
   - replay_seq_start: starting sequence number in replay.jsonl
 
 Use turn history to:
@@ -241,6 +243,42 @@ Use turn history to:
 For full details of any prior turn, read the session logs:
   replay.jsonl (full transcript) or events.jsonl (lightweight trace)."#;
 
+pub const QUESTION_REASONING_SECTION: &str = r#"
+== QUESTION-CENTRIC REASONING ==
+Your initial message may contain a "question_reasoning_packet" derived from
+{session_dir}/investigation_state.json. Use question-centric reasoning over
+document-centric "read more then synthesize" behavior.
+
+Run this loop until step budget is low or high-priority questions are resolved:
+1) Select the next unresolved question from question_reasoning_packet.focus_question_ids
+   or question_reasoning_packet.unresolved_questions.
+2) Gather discriminating evidence targeted at that question.
+3) Update related claims in investigation_state.claims with explicit status
+   (supported / contested / unresolved), confidence, and cited evidence IDs.
+4) Record contradictions explicitly, preserving both supporting and contradictory
+   evidence with provenance IDs instead of collapsing disagreement.
+5) Only then synthesize, and repeat for remaining unresolved questions.
+
+Rules:
+- Ground reasoning in typed state references, not raw transcript quotes. Prefer
+  question IDs, claim IDs, evidence IDs, and provenance IDs.
+- Do not mark a claim supported without support evidence IDs.
+- Do not resolve a question without explicit claim/evidence linkage.
+- Prefer provenance-backed evidence over uncited notes.
+- `question_reasoning_packet.candidate_actions` is a machine-readable, read-only
+  planner surface. Use it to prioritize next steps, but do not assume those
+  actions were persisted as canonical tasks or executed actions yet.
+- Keep any use of `candidate_actions` structured: preserve rationale,
+  required_sources, expected_payoff, evidence_gap_refs, and ontology_object_refs
+  instead of turning them into prose recommendations.
+
+Final deliverables MUST separate findings into three sections:
+- Supported Findings
+- Contested Findings
+- Unresolved Findings
+
+Each item should cite the relevant evidence/provenance IDs."#;
+
 pub const WIKI_SECTION: &str = r#"
 == DATA SOURCES WIKI ==
 A runtime wiki of data source documentation is available at .openplanter/wiki/.
@@ -248,9 +286,14 @@ Read .openplanter/wiki/index.md at the start of any investigation to see what
 data sources are documented. Each entry describes access methods, schemas,
 coverage, and cross-reference potential.
 
-When you discover new information about a data source — updated URLs, new fields,
-cross-reference joins, data quality issues, or entirely new sources — update the
-relevant entry or create a new one using .openplanter/wiki/template.md.
+Treat the wiki as a derived knowledge surface, not your primary memory store.
+Primary continuity comes from {session_dir}/investigation_state.json and explicit
+evidence/provenance IDs.
+
+When you discover durable, non-duplicative information about a data source —
+updated URLs, new fields, cross-reference joins, data quality issues, or
+entirely new sources — update the relevant entry or create a new one using
+.openplanter/wiki/template.md. Avoid noisy repeat edits that do not add facts.
 
 === MANDATORY WIKI INDEXING ===
 For EVERY investigation, you MUST maintain the wiki as a living knowledge map:
@@ -393,6 +436,7 @@ pub fn build_system_prompt(recursive: bool, acceptance_criteria: bool, demo: boo
     prompt.push_str(SYSTEM_PROMPT_BASE);
     prompt.push_str(SESSION_LOGS_SECTION);
     prompt.push_str(TURN_HISTORY_SECTION);
+    prompt.push_str(QUESTION_REASONING_SECTION);
     prompt.push_str(WIKI_SECTION);
     if recursive {
         prompt.push_str(RECURSIVE_SECTION);
@@ -416,6 +460,8 @@ mod tests {
         assert!(prompt.contains("You are OpenPlanter"));
         assert!(prompt.contains("SESSION LOGS AND TRANSCRIPTS"));
         assert!(prompt.contains("TURN HISTORY"));
+        assert!(prompt.contains("QUESTION-CENTRIC REASONING"));
+        assert!(prompt.contains("candidate_actions"));
         assert!(prompt.contains("DATA SOURCES WIKI"));
         assert!(!prompt.contains("REPL STRUCTURE"));
         assert!(!prompt.contains("ACCEPTANCE CRITERIA"));
@@ -447,6 +493,7 @@ mod tests {
         let base_pos = prompt.find("You are OpenPlanter").unwrap();
         let session_pos = prompt.find("SESSION LOGS AND TRANSCRIPTS").unwrap();
         let turn_pos = prompt.find("TURN HISTORY").unwrap();
+        let question_pos = prompt.find("QUESTION-CENTRIC REASONING").unwrap();
         let wiki_pos = prompt.find("DATA SOURCES WIKI").unwrap();
         let repl_pos = prompt.find("REPL STRUCTURE").unwrap();
         let accept_pos = prompt.find("ACCEPTANCE CRITERIA").unwrap();
@@ -454,7 +501,8 @@ mod tests {
 
         assert!(base_pos < session_pos);
         assert!(session_pos < turn_pos);
-        assert!(turn_pos < wiki_pos);
+        assert!(turn_pos < question_pos);
+        assert!(question_pos < wiki_pos);
         assert!(wiki_pos < repl_pos);
         assert!(repl_pos < accept_pos);
         assert!(accept_pos < demo_pos);

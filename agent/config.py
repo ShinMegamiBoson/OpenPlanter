@@ -35,6 +35,9 @@ class AgentConfig:
     voyage_api_key: str | None = None
     max_depth: int = 4
     max_steps_per_call: int = 100
+    budget_extension_enabled: bool = True
+    budget_extension_block_steps: int = 20
+    budget_extension_max_blocks: int = 2
     max_observation_chars: int = 6000
     command_timeout_sec: int = 45
     shell: str = "/bin/sh"
@@ -45,6 +48,10 @@ class AgentConfig:
     session_root_dir: str = ".openplanter"
     max_persisted_observations: int = 400
     max_solve_seconds: int = 0
+    rate_limit_max_retries: int = 12
+    rate_limit_backoff_base_sec: float = 1.0
+    rate_limit_backoff_max_sec: float = 60.0
+    rate_limit_retry_after_cap_sec: float = 120.0
     recursive: bool = True
     min_subtask_depth: int = 0
     acceptance_criteria: bool = True
@@ -68,6 +75,18 @@ class AgentConfig:
             "OPENPLANTER_BASE_URL",
             "https://api.openai.com/v1",
         )
+        budget_extension_enabled = (
+            os.getenv("OPENPLANTER_BUDGET_EXTENSION_ENABLED", "true").strip().lower()
+            in {"1", "true", "yes"}
+        )
+        budget_extension_block_steps = max(
+            1,
+            int(os.getenv("OPENPLANTER_BUDGET_EXTENSION_BLOCK_STEPS", "20")),
+        )
+        budget_extension_max_blocks = max(
+            0,
+            int(os.getenv("OPENPLANTER_BUDGET_EXTENSION_MAX_BLOCKS", "2")),
+        )
         return cls(
             workspace=ws,
             provider=os.getenv("OPENPLANTER_PROVIDER", "auto").strip().lower() or "auto",
@@ -89,6 +108,9 @@ class AgentConfig:
             voyage_api_key=voyage_api_key,
             max_depth=int(os.getenv("OPENPLANTER_MAX_DEPTH", "4")),
             max_steps_per_call=int(os.getenv("OPENPLANTER_MAX_STEPS", "100")),
+            budget_extension_enabled=budget_extension_enabled,
+            budget_extension_block_steps=budget_extension_block_steps,
+            budget_extension_max_blocks=budget_extension_max_blocks,
             max_observation_chars=int(os.getenv("OPENPLANTER_MAX_OBS_CHARS", "6000")),
             command_timeout_sec=int(os.getenv("OPENPLANTER_CMD_TIMEOUT", "45")),
             shell=os.getenv("OPENPLANTER_SHELL", "/bin/sh"),
@@ -99,6 +121,16 @@ class AgentConfig:
             session_root_dir=os.getenv("OPENPLANTER_SESSION_DIR", ".openplanter"),
             max_persisted_observations=int(os.getenv("OPENPLANTER_MAX_PERSISTED_OBS", "400")),
             max_solve_seconds=int(os.getenv("OPENPLANTER_MAX_SOLVE_SECONDS", "0")),
+            rate_limit_max_retries=int(os.getenv("OPENPLANTER_RATE_LIMIT_MAX_RETRIES", "12")),
+            rate_limit_backoff_base_sec=float(
+                os.getenv("OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC", "1.0")
+            ),
+            rate_limit_backoff_max_sec=float(
+                os.getenv("OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC", "60.0")
+            ),
+            rate_limit_retry_after_cap_sec=float(
+                os.getenv("OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC", "120.0")
+            ),
             recursive=os.getenv("OPENPLANTER_RECURSIVE", "true").strip().lower() in ("1", "true", "yes"),
             min_subtask_depth=int(os.getenv("OPENPLANTER_MIN_SUBTASK_DEPTH", "0")),
             acceptance_criteria=os.getenv("OPENPLANTER_ACCEPTANCE_CRITERIA", "true").strip().lower() in ("1", "true", "yes"),

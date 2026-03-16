@@ -8,7 +8,7 @@ from unittest.mock import patch
 from conftest import _tc
 from agent.config import AgentConfig
 from agent.engine import RLMEngine, ExternalContext
-from agent.model import ModelTurn, ScriptedModel
+from agent.model import Conversation, ModelTurn, RateLimitError, ScriptedModel, ToolResult
 from agent.tools import WorkspaceTools
 
 
@@ -33,7 +33,88 @@ class EngineComplexTests(unittest.TestCase):
             )
             engine = RLMEngine(model=model, tools=tools, config=cfg)
             result = engine.solve("infinite thinking")
-            self.assertIn("Step budget exhausted", result)
+            self.assertIn("Partial completion for objective", result)
+            self.assertEqual(engine.last_loop_metrics.get("termination_reason"), "budget_no_progress")
+
+    def test_budget_extension_granted_on_real_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(
+                workspace=root,
+                max_depth=1,
+                max_steps_per_call=2,
+                budget_extension_enabled=True,
+                budget_extension_block_steps=2,
+                budget_extension_max_blocks=1,
+            )
+            tools = WorkspaceTools(root=root)
+            model = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(tool_calls=[_tc("run_shell", command="printf 'alpha\\n'")]),
+                    ModelTurn(tool_calls=[_tc("write_file", path="artifact.txt", content="artifact")]),
+                    ModelTurn(text="done after extension", stop_reason="end_turn"),
+                ]
+            )
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            result = engine.solve("real progress")
+            self.assertEqual(result, "done after extension")
+            self.assertEqual(engine.last_loop_metrics.get("extensions_granted"), 1)
+            self.assertEqual(engine.last_loop_metrics.get("termination_reason"), "success")
+
+    def test_budget_extension_denied_on_high_failure_ratio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(
+                workspace=root,
+                max_depth=1,
+                max_steps_per_call=3,
+                budget_extension_enabled=True,
+                budget_extension_block_steps=2,
+                budget_extension_max_blocks=1,
+            )
+            tools = WorkspaceTools(root=root)
+            model = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(tool_calls=[_tc("read_file", path="missing-a.txt")]),
+                    ModelTurn(tool_calls=[_tc("read_file", path="missing-b.txt")]),
+                    ModelTurn(tool_calls=[_tc("run_shell", command="printf 'ok\\n'")]),
+                ]
+            )
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            result = engine.solve("failure-heavy objective")
+            self.assertIn("Partial completion for objective", result)
+            blockers = engine.last_loop_metrics.get("last_budget_extension_eval", {}).get("blockers", [])
+            self.assertIn("high_failure_ratio", blockers)
+
+    def test_budget_extension_cap_produces_partial_completion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(
+                workspace=root,
+                max_depth=1,
+                max_steps_per_call=2,
+                budget_extension_enabled=True,
+                budget_extension_block_steps=2,
+                budget_extension_max_blocks=1,
+            )
+            tools = WorkspaceTools(root=root)
+            model = ScriptedModel(
+                scripted_turns=[
+                    ModelTurn(tool_calls=[_tc("write_file", path="one.txt", content="one")]),
+                    ModelTurn(tool_calls=[_tc("write_file", path="two.txt", content="two")]),
+                    ModelTurn(tool_calls=[_tc("write_file", path="three.txt", content="three")]),
+                    ModelTurn(tool_calls=[_tc("write_file", path="four.txt", content="four")]),
+                ]
+            )
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            result = engine.solve("cap objective")
+            self.assertIn("Partial completion for objective", result)
+            self.assertEqual(engine.last_loop_metrics.get("termination_reason"), "budget_cap")
+            self.assertEqual(engine.last_loop_metrics.get("extensions_granted"), 1)
+            self.assertLessEqual(
+                int(engine.last_loop_metrics.get("steps", 0)),
+                cfg.max_steps_per_call + cfg.budget_extension_block_steps * cfg.budget_extension_max_blocks,
+            )
 
     # ------------------------------------------------------------------
     # 2. Nested subtasks at depth 2 (3-level recursion)
@@ -617,7 +698,7 @@ class EngineComplexTests(unittest.TestCase):
             )
             engine = RLMEngine(model=model, tools=tools, config=cfg)
             result = engine.solve("my specific objective")
-            self.assertIn("Step budget exhausted", result)
+            self.assertIn("Partial completion for objective", result)
             self.assertIn("my specific objective", result)
 
     # ------------------------------------------------------------------
@@ -639,6 +720,117 @@ class EngineComplexTests(unittest.TestCase):
             result, returned_ctx = engine.solve_with_context("think test", context=ctx)
             self.assertEqual(result, "done")
             self.assertIn("Thought noted: my thought", returned_ctx.observations[0])
+
+    # ------------------------------------------------------------------
+    # 30. Rate-limit retries succeed without consuming extra step budget
+    # ------------------------------------------------------------------
+    def test_rate_limit_retries_then_succeeds(self) -> None:
+        class RetryThenSuccessModel:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def create_conversation(self, system_prompt: str, initial_user_message: str) -> Conversation:
+                return Conversation(_provider_messages=[{"role": "user", "content": initial_user_message}])
+
+            def complete(self, conversation: Conversation) -> ModelTurn:
+                self.calls += 1
+                if self.calls == 1:
+                    raise RateLimitError(
+                        "rate limit",
+                        status_code=429,
+                        provider_code="1302",
+                    )
+                return ModelTurn(text="done", stop_reason="end_turn")
+
+            def append_assistant_turn(self, conversation: Conversation, turn: ModelTurn) -> None:
+                pass
+
+            def append_tool_results(self, conversation: Conversation, results: list[ToolResult]) -> None:
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(
+                workspace=root,
+                max_depth=1,
+                max_steps_per_call=1,
+                rate_limit_max_retries=3,
+                rate_limit_backoff_base_sec=0.0,
+                rate_limit_backoff_max_sec=0.0,
+                rate_limit_retry_after_cap_sec=0.0,
+            )
+            tools = WorkspaceTools(root=root)
+            model = RetryThenSuccessModel()
+            engine = RLMEngine(model=model, tools=tools, config=cfg)
+            with patch("agent.engine.random.uniform", return_value=0.0):
+                result = engine.solve("retry test")
+            self.assertEqual(result, "done")
+            self.assertEqual(model.calls, 2)
+
+    # ------------------------------------------------------------------
+    # 31. Exhausted rate-limit retries surfaces model error
+    # ------------------------------------------------------------------
+    def test_rate_limit_retries_exhausted_returns_model_error(self) -> None:
+        class AlwaysRateLimitModel:
+            def create_conversation(self, system_prompt: str, initial_user_message: str) -> Conversation:
+                return Conversation(_provider_messages=[{"role": "user", "content": initial_user_message}])
+
+            def complete(self, conversation: Conversation) -> ModelTurn:
+                raise RateLimitError("still rate limited", status_code=429, provider_code="1302")
+
+            def append_assistant_turn(self, conversation: Conversation, turn: ModelTurn) -> None:
+                pass
+
+            def append_tool_results(self, conversation: Conversation, results: list[ToolResult]) -> None:
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(
+                workspace=root,
+                max_depth=1,
+                max_steps_per_call=1,
+                rate_limit_max_retries=2,
+                rate_limit_backoff_base_sec=0.0,
+                rate_limit_backoff_max_sec=0.0,
+                rate_limit_retry_after_cap_sec=0.0,
+            )
+            tools = WorkspaceTools(root=root)
+            engine = RLMEngine(model=AlwaysRateLimitModel(), tools=tools, config=cfg)
+            with patch("agent.engine.random.uniform", return_value=0.0):
+                result = engine.solve("retry test")
+            self.assertIn("Model error at depth 0, step 1", result)
+
+    # ------------------------------------------------------------------
+    # 32. Deadline exits gracefully during rate-limit wait
+    # ------------------------------------------------------------------
+    def test_rate_limit_wait_respects_deadline(self) -> None:
+        class SlowRateLimitModel:
+            def create_conversation(self, system_prompt: str, initial_user_message: str) -> Conversation:
+                return Conversation(_provider_messages=[{"role": "user", "content": initial_user_message}])
+
+            def complete(self, conversation: Conversation) -> ModelTurn:
+                raise RateLimitError("wait", status_code=429, retry_after_sec=10.0)
+
+            def append_assistant_turn(self, conversation: Conversation, turn: ModelTurn) -> None:
+                pass
+
+            def append_tool_results(self, conversation: Conversation, results: list[ToolResult]) -> None:
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            cfg = AgentConfig(
+                workspace=root,
+                max_depth=1,
+                max_steps_per_call=1,
+                max_solve_seconds=1,
+                rate_limit_max_retries=3,
+            )
+            tools = WorkspaceTools(root=root)
+            engine = RLMEngine(model=SlowRateLimitModel(), tools=tools, config=cfg)
+            result = engine.solve("deadline retry test")
+            self.assertIn("Time limit exceeded", result)
 
 
 if __name__ == "__main__":
