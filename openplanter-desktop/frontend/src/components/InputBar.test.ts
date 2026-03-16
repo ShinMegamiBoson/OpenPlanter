@@ -21,13 +21,7 @@ describe("createInputBar", () => {
 
   beforeEach(() => {
     uuidCounter = 0;
-    appState.set({
-      ...originalState,
-      messages: [],
-      inputHistory: [],
-      inputQueue: [],
-      initGateState: "ready",
-    });
+    appState.set({ ...originalState, messages: [], inputHistory: [], inputQueue: [] });
     // Default handlers to prevent unhandled rejection
     __setHandler("solve", () => {});
     __setHandler("cancel", () => {});
@@ -388,45 +382,6 @@ describe("createInputBar", () => {
     await vi.waitFor(() => {
       expect(solvedText).toBe("queued objective");
       expect(appState.get().isRunning).toBe(true);
-    });
-
-    document.body.removeChild(bar);
-  });
-
-  it("blocks normal objective submit until init is ready", async () => {
-    appState.update((s) => ({ ...s, initGateState: "requires_action" }));
-    const bar = createInputBar();
-    document.body.appendChild(bar);
-    const textarea = bar.querySelector("textarea")!;
-
-    textarea.value = "blocked objective";
-    bar.querySelectorAll("button")[0].click();
-
-    await vi.waitFor(() => {
-      expect(appState.get().isRunning).toBe(false);
-      expect(
-        appState.get().messages.some((m) =>
-          m.content.includes("Workspace initialization is required")
-        )
-      ).toBe(true);
-    });
-
-    document.body.removeChild(bar);
-  });
-
-  it("blocks non-init slash commands until init is ready", async () => {
-    appState.update((s) => ({ ...s, initGateState: "requires_action" }));
-    const bar = createInputBar();
-    document.body.appendChild(bar);
-    const textarea = bar.querySelector("textarea")!;
-
-    textarea.value = "/status";
-    bar.querySelectorAll("button")[0].click();
-
-    await vi.waitFor(() => {
-      expect(
-        appState.get().messages.some((m) => m.content.includes("Use /init first"))
-      ).toBe(true);
     });
 
     document.body.removeChild(bar);

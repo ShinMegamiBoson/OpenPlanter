@@ -78,15 +78,4 @@ export const COMMAND_COMPLETIONS: CompletionItem[] = [
     description: "Set reasoning effort",
     children: REASONING_LEVELS,
   },
-  {
-    value: "/init",
-    description: "Workspace initialization and migration",
-    children: [
-      { value: "status", description: "Show init status" },
-      { value: "standard", description: "Initialize the current workspace" },
-      { value: "migrate", description: "Open the migration init panel" },
-      { value: "open", description: "Open the init panel" },
-      { value: "done", description: "Mark the first-run gate complete" },
-    ],
-  },
 ];

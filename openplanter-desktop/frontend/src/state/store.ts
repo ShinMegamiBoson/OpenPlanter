@@ -1,13 +1,9 @@
 /** Simple observable state store. */
 import type {
   CompletionMeta,
-  InitStatusView,
   LoopMetrics,
   LoopHealthEvent,
-  MigrationInitResultView,
-  MigrationProgressEvent,
 } from "../api/types";
-
 type Listener<T> = (value: T) => void;
 
 export class Store<T> {
@@ -89,13 +85,6 @@ export interface AppState {
   lastCompletion: CompletionMeta | null;
   inputHistory: string[];
   inputQueue: string[];
-  initGateState: "ready" | "requires_action" | "blocked";
-  initStatus: InitStatusView | null;
-  isInitBusy: boolean;
-  initGateVisible: boolean;
-  initGateMode: "standard" | "migration";
-  migrationProgress: MigrationProgressEvent | null;
-  migrationResult: MigrationInitResultView | null;
 }
 
 export const appState = new Store<AppState>({
@@ -120,11 +109,4 @@ export const appState = new Store<AppState>({
   lastCompletion: null,
   inputHistory: [],
   inputQueue: [],
-  initGateState: "ready",
-  initStatus: null,
-  isInitBusy: false,
-  initGateVisible: false,
-  initGateMode: "standard",
-  migrationProgress: null,
-  migrationResult: null,
 });

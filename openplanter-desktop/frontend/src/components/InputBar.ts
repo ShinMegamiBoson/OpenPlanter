@@ -55,15 +55,6 @@ export function createInputBar(): HTMLElement {
 
     // Check for slash commands
     if (text.startsWith("/")) {
-      const initRequired = appState.get().initGateState !== "ready";
-      const lower = text.toLowerCase();
-      if (initRequired && !lower.startsWith("/init") && !lower.startsWith("/help")) {
-        textarea.value = "";
-        autoResize();
-        addSystemMessage("Workspace initialization is required. Use /init first.");
-        return;
-      }
-
       textarea.value = "";
       autoResize();
 
@@ -86,13 +77,6 @@ export function createInputBar(): HTMLElement {
       if (result.lines.length > 0) {
         addSystemMessage(result.lines.join("\n"));
       }
-      return;
-    }
-
-    if (appState.get().initGateState !== "ready") {
-      addSystemMessage(
-        "Workspace initialization is required before starting an objective. Use /init."
-      );
       return;
     }
 
@@ -285,9 +269,7 @@ export function createInputBar(): HTMLElement {
     cancelBtn.style.display = running ? "" : "none";
     textarea.placeholder = running
       ? "Type to queue..."
-      : appState.get().initGateState !== "ready"
-        ? "Complete workspace init or use /init..."
-        : "Enter objective or /command...";
+      : "Enter objective or /command...";
     // Keep textarea enabled during execution for queuing
     submitBtn.disabled = false;
   });

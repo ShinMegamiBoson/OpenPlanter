@@ -21,7 +21,6 @@ describe("dispatchSlashCommand", () => {
       webSearchProvider: "exa",
       sessionId: "20260101-120000-deadbeef",
       reasoningEffort: "medium",
-      initGateState: "ready",
     });
   });
 
@@ -166,47 +165,5 @@ describe("dispatchSlashCommand", () => {
     expect(result!.lines.some((l) => l.includes("New session:"))).toBe(true);
 
     (globalThis as any).window = origWindow;
-  });
-
-  it("/init status dispatches", async () => {
-    __setHandler("get_init_status", () => ({
-      runtime_workspace: "/tmp/ws",
-      gate_state: "requires_action",
-      onboarding_completed: false,
-      has_openplanter_root: true,
-      has_runtime_wiki: true,
-      has_runtime_index: true,
-      init_state_path: "/tmp/ws/.openplanter/init-state.json",
-      last_migration_target: null,
-      warnings: [],
-    }));
-    const result = await dispatchSlashCommand("/init status");
-    expect(result).not.toBeNull();
-    expect(result!.lines.some((l) => l.includes("Gate:"))).toBe(true);
-  });
-
-  it("/init standard dispatches", async () => {
-    __setHandler("run_standard_init", () => ({
-      workspace: "/tmp/ws",
-      created_paths: [],
-      copied_paths: [],
-      skipped_existing: 0,
-      errors: [],
-      onboarding_required: false,
-    }));
-    __setHandler("get_init_status", () => ({
-      runtime_workspace: "/tmp/ws",
-      gate_state: "ready",
-      onboarding_completed: true,
-      has_openplanter_root: true,
-      has_runtime_wiki: true,
-      has_runtime_index: true,
-      init_state_path: "/tmp/ws/.openplanter/init-state.json",
-      last_migration_target: null,
-      warnings: [],
-    }));
-    const result = await dispatchSlashCommand("/init standard");
-    expect(result).not.toBeNull();
-    expect(result!.lines.some((l) => l.includes("Standard init completed"))).toBe(true);
   });
 });

@@ -12,7 +12,6 @@ use op_core::engine::investigation_state::{
 };
 use op_core::engine::{SolveEmitter, SolveInitialContext};
 use op_core::session::replay::{ReplayEntry, ReplayLogger};
-use op_core::workspace_init;
 
 async fn build_solve_initial_context(
     session_dir: &Path,
@@ -49,29 +48,15 @@ pub async fn solve(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let cfg = state.config.lock().await.clone();
-    let init_status = workspace_init::get_init_status(&cfg.workspace, &cfg.session_root_dir)
-        .map_err(|e| e.to_string())?;
-    if init_status.gate_state != "ready" {
-        return Err("Workspace initialization is not complete. Run /init first.".to_string());
-    }
-
-    {
-        let mut running = state.agent_running.lock().await;
-        if *running {
-            return Err("An agent task is already running.".to_string());
-        }
-        *running = true;
-    }
-
     // Create a fresh cancellation token for this solve run
     let token = CancellationToken::new();
     {
         let mut current = state.cancel_token.lock().await;
         *current = token.clone();
     }
+
+    let cfg = state.config.lock().await.clone();
     let error_handle = app.clone();
-    let running_flag = state.agent_running.clone();
 
     // Set up replay logging for this session
     let session_dir = sessions_dir(&state).await.join(&session_id);
@@ -133,11 +118,6 @@ pub async fn solve(
             .await;
         })
         .await;
-
-        {
-            let mut running = running_flag.lock().await;
-            *running = false;
-        }
 
         // If the inner task panicked, emit an error so the frontend
         // doesn't get stuck in "running" state forever.

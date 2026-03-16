@@ -6,7 +6,6 @@ import type {
   DeltaEvent,
   GraphData,
   LoopHealthEvent,
-  MigrationProgressEvent,
   StepEvent,
 } from "./types";
 
@@ -63,15 +62,6 @@ export function onCuratorUpdate(
     callback(e.payload)
   );
 }
-
-export function onMigrationProgress(
-  callback: (event: MigrationProgressEvent) => void
-): Promise<UnlistenFn> {
-  return listen<MigrationProgressEvent>("init:migration-progress", (e) =>
-    callback(e.payload)
-  );
-}
-
 export function onLoopHealth(
   callback: (event: LoopHealthEvent) => void
 ): Promise<UnlistenFn> {

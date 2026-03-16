@@ -44,17 +44,7 @@ describe("createApp", () => {
 
   beforeEach(() => {
     uuidCounter = 0;
-    appState.set({
-      ...originalState,
-      messages: [],
-      sessionId: null,
-      initGateVisible: false,
-      initGateState: "ready",
-      initStatus: null,
-      isInitBusy: false,
-      migrationProgress: null,
-      migrationResult: null,
-    });
+    appState.set({ ...originalState, messages: [], sessionId: null });
     __setHandler("list_sessions", () => [SESSION_B, SESSION_A]);
     __setHandler("get_credentials_status", () => ({
       openai: true, anthropic: true, openrouter: false,
@@ -147,34 +137,6 @@ describe("createApp", () => {
       const items = root.querySelectorAll(".session-list .session-item");
       expect(items.length).toBe(1);
       expect(items[0].textContent).toBe("No sessions yet");
-    });
-  });
-
-  it("renders workspace init gate when requested", async () => {
-    appState.update((s) => ({
-      ...s,
-      initGateVisible: true,
-      initGateState: "requires_action",
-      initStatus: {
-        runtime_workspace: "/tmp/ws",
-        gate_state: "requires_action",
-        onboarding_completed: false,
-        has_openplanter_root: true,
-        has_runtime_wiki: true,
-        has_runtime_index: true,
-        init_state_path: "/tmp/ws/.openplanter/init-state.json",
-        last_migration_target: null,
-        warnings: [],
-      },
-    }));
-    const root = document.createElement("div");
-    document.body.appendChild(root);
-    createApp(root);
-
-    await vi.waitFor(() => {
-      const gate = root.querySelector(".workspace-init-gate") as HTMLElement;
-      expect(gate).not.toBeNull();
-      expect(gate.style.display).toBe("flex");
     });
   });
 });

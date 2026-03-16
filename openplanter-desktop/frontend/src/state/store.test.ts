@@ -71,9 +71,6 @@ describe("appState", () => {
     expect(state.maxDepth).toBe(4);
     expect(state.maxStepsPerCall).toBe(100);
     expect(state.inputQueue).toEqual([]);
-    expect(state.initGateState).toBe("ready");
-    expect(state.isInitBusy).toBe(false);
-    expect(state.initGateVisible).toBe(false);
   });
 
   it("message append via update", () => {

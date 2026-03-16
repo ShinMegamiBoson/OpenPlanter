@@ -243,116 +243,6 @@ pub struct SlashResult {
     pub success: bool,
 }
 
-/// Frontend gate state for workspace initialization.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum InitGateState {
-    Ready,
-    RequiresAction,
-    Blocked,
-}
-
-/// Report returned by standard workspace initialization.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct StandardInitReportView {
-    pub workspace: String,
-    pub created_paths: Vec<String>,
-    pub copied_paths: Vec<String>,
-    pub skipped_existing: u64,
-    pub errors: Vec<String>,
-    pub onboarding_required: bool,
-}
-
-/// Current initialization state for the runtime workspace.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct InitStatusView {
-    pub runtime_workspace: String,
-    pub gate_state: String,
-    pub onboarding_completed: bool,
-    pub has_openplanter_root: bool,
-    pub has_runtime_wiki: bool,
-    pub has_runtime_index: bool,
-    pub init_state_path: String,
-    pub last_migration_target: Option<String>,
-    pub warnings: Vec<String>,
-}
-
-/// Migration source classification.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum MigrationSourceKind {
-    OpenPlanterWorkspace,
-    ManualResearch,
-    Unknown,
-}
-
-/// Inspection data for a migration source.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct MigrationSourceInspection {
-    pub path: String,
-    pub kind: String,
-    pub has_sessions: bool,
-    pub has_settings: bool,
-    pub has_credentials: bool,
-    pub has_runtime_wiki: bool,
-    pub has_baseline_wiki: bool,
-    pub markdown_files: u64,
-    pub warnings: Vec<String>,
-}
-
-/// A user-selected migration source.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct MigrationSourceInput {
-    pub path: String,
-}
-
-/// Request payload for migration init.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct MigrationInitRequest {
-    pub target_workspace: String,
-    pub sources: Vec<MigrationSourceInput>,
-}
-
-/// Progress stages emitted during migration.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum MigrationProgressStage {
-    Inspect,
-    Copy,
-    MergeSessions,
-    MergeSettings,
-    MergeCredentials,
-    Synthesize,
-    Rewrite,
-    Done,
-}
-
-/// Progress event emitted while migration runs.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct MigrationProgressEvent {
-    pub stage: String,
-    pub message: String,
-    pub current: u32,
-    pub total: u32,
-}
-
-/// Result payload returned after migration init completes.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-pub struct MigrationInitResultView {
-    pub target_workspace: String,
-    pub sources: Vec<String>,
-    pub sessions_copied: u64,
-    pub sessions_renamed: u64,
-    pub settings_merged_fields: Vec<String>,
-    pub credentials_merged_fields: Vec<String>,
-    pub wiki_files_synthesized: u64,
-    pub raw_preservation_root: String,
-    pub rewrite_summary: String,
-    pub restart_required: bool,
-    pub restart_message: String,
-    pub warnings: Vec<String>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -453,7 +343,6 @@ mod tests {
         assert_eq!(parsed["tool_name"], "read_file");
         assert_eq!(parsed["tokens"]["input_tokens"], 1234);
     }
-
     #[test]
     fn test_loop_metrics_deserialize_backfills_new_fields() {
         let parsed: LoopMetrics = serde_json::from_str(
@@ -492,22 +381,6 @@ mod tests {
                 extension_denials_cap: 0,
                 termination_reason: String::new(),
             }
-        );
-    }
-
-    #[test]
-    fn test_init_gate_state_serialization() {
-        assert_eq!(
-            serde_json::to_string(&InitGateState::RequiresAction).unwrap(),
-            "\"requires_action\""
-        );
-    }
-
-    #[test]
-    fn test_migration_progress_stage_serialization() {
-        assert_eq!(
-            serde_json::to_string(&MigrationProgressStage::MergeSessions).unwrap(),
-            "\"merge_sessions\""
         );
     }
 }

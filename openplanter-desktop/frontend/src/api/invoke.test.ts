@@ -18,11 +18,7 @@ import {
   openSession,
   deleteSession,
   getGraphData,
-  getInitStatus,
-  inspectMigrationSource,
   debugLog,
-  runMigrationInit,
-  runStandardInit,
 } from "./invoke";
 
 describe("invoke wrappers", () => {
@@ -213,84 +209,6 @@ describe("invoke wrappers", () => {
       expect(msg).toBe("test message");
     });
     await debugLog("test message");
-  });
-
-  it("getInitStatus calls invoke", async () => {
-    __setHandler("get_init_status", () => ({
-      runtime_workspace: "/tmp/ws",
-      gate_state: "requires_action",
-      onboarding_completed: false,
-      has_openplanter_root: true,
-      has_runtime_wiki: true,
-      has_runtime_index: true,
-      init_state_path: "/tmp/ws/.openplanter/init-state.json",
-      last_migration_target: null,
-      warnings: [],
-    }));
-    const status = await getInitStatus();
-    expect(status.runtime_workspace).toBe("/tmp/ws");
-    expect(status.gate_state).toBe("requires_action");
-  });
-
-  it("runStandardInit calls invoke", async () => {
-    __setHandler("run_standard_init", () => ({
-      workspace: "/tmp/ws",
-      created_paths: ["/tmp/ws/.openplanter"],
-      copied_paths: ["/tmp/ws/.openplanter/wiki/index.md"],
-      skipped_existing: 0,
-      errors: [],
-      onboarding_required: false,
-    }));
-    const report = await runStandardInit();
-    expect(report.workspace).toBe("/tmp/ws");
-    expect(report.created_paths).toHaveLength(1);
-  });
-
-  it("inspectMigrationSource sends path", async () => {
-    __setHandler("inspect_migration_source", ({ path }: any) => {
-      expect(path).toBe("/tmp/source");
-      return {
-        path,
-        kind: "manual_research",
-        has_sessions: false,
-        has_settings: false,
-        has_credentials: false,
-        has_runtime_wiki: false,
-        has_baseline_wiki: false,
-        markdown_files: 4,
-        warnings: [],
-      };
-    });
-    const inspection = await inspectMigrationSource("/tmp/source");
-    expect(inspection.kind).toBe("manual_research");
-    expect(inspection.markdown_files).toBe(4);
-  });
-
-  it("runMigrationInit sends request payload", async () => {
-    __setHandler("run_migration_init", ({ request }: any) => {
-      expect(request.target_workspace).toBe("/tmp/target");
-      expect(request.sources).toEqual([{ path: "/tmp/a" }, { path: "/tmp/b" }]);
-      return {
-        target_workspace: "/tmp/target",
-        sources: ["/tmp/a", "/tmp/b"],
-        sessions_copied: 2,
-        sessions_renamed: 1,
-        settings_merged_fields: ["default_model"],
-        credentials_merged_fields: ["openai_api_key"],
-        wiki_files_synthesized: 3,
-        raw_preservation_root: "/tmp/target/.openplanter/migration/raw",
-        rewrite_summary: "Curator rewrote 3 wiki files from imported sources.",
-        restart_required: true,
-        restart_message: "Restart required",
-        warnings: [],
-      };
-    });
-    const result = await runMigrationInit({
-      target_workspace: "/tmp/target",
-      sources: [{ path: "/tmp/a" }, { path: "/tmp/b" }],
-    });
-    expect(result.sessions_copied).toBe(2);
-    expect(result.restart_required).toBe(true);
   });
 
   it("unhandled command rejects", async () => {

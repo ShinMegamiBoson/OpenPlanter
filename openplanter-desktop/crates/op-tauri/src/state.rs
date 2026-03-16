@@ -1,11 +1,11 @@
-use op_core::config::AgentConfig;
-use op_core::config_hydration::{apply_settings_to_config, merge_credentials_into_config};
-use op_core::credentials::CredentialBundle;
-use op_core::credentials::{credentials_from_env, discover_env_candidates, parse_env_file};
-#[cfg(test)]
-use op_core::settings::PersistentSettings;
-use op_core::settings::SettingsStore;
-use op_core::workspace_init;
+use op_core::config::{
+    AgentConfig, FOUNDRY_OPENAI_API_KEY_PLACEHOLDER, normalize_web_search_provider,
+    normalize_zai_plan, resolve_openai_api_key, resolve_zai_base_url,
+};
+use op_core::credentials::{
+    CredentialBundle, credentials_from_env, discover_env_candidates, parse_env_file,
+};
+use op_core::settings::{PersistentSettings, SettingsStore};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,6 +35,124 @@ struct LegacyMigrationReport {
     copied_files: u64,
     skipped_existing: u64,
     errors: Vec<String>,
+}
+
+/// Merge credentials into an AgentConfig.
+/// Priority: existing config value > env_creds > file_creds.
+pub fn merge_credentials_into_config(
+    cfg: &mut AgentConfig,
+    env_creds: &CredentialBundle,
+    file_creds: &CredentialBundle,
+) {
+    if cfg.openai_oauth_token.is_none() {
+        cfg.openai_oauth_token = env_creds
+            .openai_oauth_token
+            .clone()
+            .or_else(|| file_creds.openai_oauth_token.clone());
+    }
+    cfg.openai_api_key = cfg
+        .openai_api_key
+        .clone()
+        .filter(|value| {
+            let trimmed = value.trim();
+            !trimmed.is_empty() && trimmed != FOUNDRY_OPENAI_API_KEY_PLACEHOLDER
+        })
+        .or_else(|| env_creds.openai_api_key.clone())
+        .or_else(|| file_creds.openai_api_key.clone())
+        .or_else(|| cfg.openai_api_key.clone());
+    cfg.openai_api_key = resolve_openai_api_key(
+        cfg.openai_api_key.clone(),
+        &cfg.openai_base_url,
+        cfg.openai_oauth_token.clone(),
+    );
+    cfg.api_key = resolve_openai_api_key(
+        cfg.openai_api_key
+            .clone()
+            .filter(|value| {
+                let trimmed = value.trim();
+                !trimmed.is_empty() && trimmed != FOUNDRY_OPENAI_API_KEY_PLACEHOLDER
+            })
+            .or_else(|| {
+                cfg.api_key.clone().filter(|value| {
+                    let trimmed = value.trim();
+                    !trimmed.is_empty() && trimmed != FOUNDRY_OPENAI_API_KEY_PLACEHOLDER
+                })
+            })
+            .or_else(|| cfg.openai_api_key.clone())
+            .or_else(|| cfg.api_key.clone()),
+        &cfg.base_url,
+        cfg.openai_oauth_token.clone(),
+    );
+
+    macro_rules! merge {
+        ($field:ident) => {
+            if cfg.$field.is_none() {
+                cfg.$field = env_creds
+                    .$field
+                    .clone()
+                    .or_else(|| file_creds.$field.clone());
+            }
+        };
+    }
+    merge!(anthropic_api_key);
+    merge!(openrouter_api_key);
+    merge!(cerebras_api_key);
+    merge!(zai_api_key);
+    merge!(exa_api_key);
+    merge!(firecrawl_api_key);
+    merge!(brave_api_key);
+    merge!(tavily_api_key);
+    merge!(voyage_api_key);
+}
+
+fn has_env_value(keys: &[&str]) -> bool {
+    keys.iter().any(|key| {
+        env::var(key)
+            .ok()
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false)
+    })
+}
+
+fn apply_settings_to_config(cfg: &mut AgentConfig, settings: &PersistentSettings) {
+    if !has_env_value(&["OPENPLANTER_REASONING_EFFORT"]) {
+        if let Some(reasoning_effort) = settings.default_reasoning_effort.clone() {
+            cfg.reasoning_effort = Some(reasoning_effort);
+        }
+    }
+
+    if !has_env_value(&["OPENPLANTER_ZAI_PLAN"]) {
+        if let Some(plan) = settings.zai_plan.as_deref() {
+            cfg.zai_plan = normalize_zai_plan(Some(plan));
+        }
+    }
+
+    if !has_env_value(&["OPENPLANTER_ZAI_BASE_URL"]) {
+        cfg.zai_base_url = resolve_zai_base_url(
+            &cfg.zai_plan,
+            &cfg.zai_paygo_base_url,
+            &cfg.zai_coding_base_url,
+        );
+    }
+
+    if !has_env_value(&["OPENPLANTER_WEB_SEARCH_PROVIDER"]) {
+        if let Some(provider) = settings.web_search_provider.as_deref() {
+            cfg.web_search_provider = normalize_web_search_provider(Some(provider));
+        }
+    }
+
+    if !has_env_value(&["OPENPLANTER_MODEL"]) {
+        let saved_model = if cfg.provider == "auto" {
+            settings.default_model.as_deref()
+        } else {
+            settings
+                .default_model_for_provider(cfg.provider.as_str())
+                .or(settings.default_model.as_deref())
+        };
+        if let Some(model) = saved_model {
+            cfg.model = model.to_string();
+        }
+    }
 }
 
 fn canonicalize_or_self(path: &Path) -> PathBuf {
@@ -254,8 +372,6 @@ pub struct AppState {
     pub config: Arc<Mutex<AgentConfig>>,
     pub session_id: Arc<Mutex<Option<String>>>,
     pub cancel_token: Arc<Mutex<CancellationToken>>,
-    pub agent_running: Arc<Mutex<bool>>,
-    pub init_lock: Arc<Mutex<()>>,
     startup_trace: String,
 }
 
@@ -265,11 +381,6 @@ impl AppState {
         let resolved_workspace = resolve_desktop_workspace();
         let mut cfg = AgentConfig::from_env(&resolved_workspace.path);
         let migration = migrate_legacy_desktop_state(&cfg.workspace, &cfg.session_root_dir);
-        if let Err(err) =
-            workspace_init::run_standard_init(&cfg.workspace, &cfg.session_root_dir, false)
-        {
-            eprintln!("[startup:init] {err}");
-        }
 
         // Load .env files and merge credentials into config
         let env_creds = credentials_from_env();
@@ -292,8 +403,6 @@ impl AppState {
             config: Arc::new(Mutex::new(cfg)),
             session_id: Arc::new(Mutex::new(None)),
             cancel_token: Arc::new(Mutex::new(CancellationToken::new())),
-            agent_running: Arc::new(Mutex::new(false)),
-            init_lock: Arc::new(Mutex::new(())),
             startup_trace: format_startup_trace(&current_dir, &resolved_workspace, &migration),
         }
     }
