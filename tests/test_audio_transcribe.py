@@ -90,15 +90,15 @@ class TestAudioTranscribeTool:
 
     def test_audio_transcribe_auto_chunks_oversize_files(self, tmp_path: Path) -> None:
         audio = tmp_path / "clip.wav"
-        _write_audio(audio, payload=b"x" * 512)
+        _write_audio(audio, payload=b"x" * 1_200_000)
         tools = _make_tools(
             tmp_path,
-            mistral_transcription_max_bytes=64,
+            mistral_transcription_max_bytes=1_100_000,
         )
 
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(tools, "_ensure_media_tools", lambda: None)
-            mp.setattr(tools, "_probe_media_duration", lambda _: 58.0)
+            mp.setattr(tools, "_probe_media_duration", lambda _: 50.0)
 
             def fake_extract(
                 source: Path,
@@ -155,8 +155,12 @@ class TestAudioTranscribeTool:
         assert parsed["chunking"]["total_chunks"] == 2
         assert parsed["response"]["segments"][0]["speaker"] == "c0_speaker_a"
         assert parsed["response"]["segments"][1]["speaker"] == "c1_speaker_a"
-        assert parsed["response"]["segments"][1]["start"] == 30.0
-        assert parsed["response"]["segments"][1]["end"] == 32.0
+        assert parsed["response"]["segments"][1]["start"] == pytest.approx(
+            parsed["chunking"]["chunk_seconds"], abs=0.01
+        )
+        assert parsed["response"]["segments"][1]["end"] == pytest.approx(
+            parsed["chunking"]["chunk_seconds"] + 2.0, abs=0.01
+        )
 
     def test_audio_transcribe_off_keeps_oversize_rejection(self, tmp_path: Path) -> None:
         audio = tmp_path / "clip.wav"
@@ -167,6 +171,56 @@ class TestAudioTranscribeTool:
         )
         out = tools.audio_transcribe("clip.wav", chunking="off")
         assert "Audio file too large" in out
+
+    def test_audio_transcribe_preserves_byte_budgeted_chunk_size(
+        self, tmp_path: Path
+    ) -> None:
+        audio = tmp_path / "clip.wav"
+        _write_audio(audio, payload=b"x" * 512)
+        tools = _make_tools(
+            tmp_path,
+            mistral_transcription_max_bytes=300_000,
+        )
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(tools, "_ensure_media_tools", lambda: None)
+            mp.setattr(tools, "_probe_media_duration", lambda _: 35.0)
+
+            def fake_extract(
+                source: Path,
+                output: Path,
+                *,
+                start_sec: float,
+                duration_sec: float,
+            ) -> None:
+                output.write_bytes(b"x" * int(duration_sec * 32_000))
+
+            observed_sizes: list[int] = []
+
+            def fake_request(*, resolved: Path, **_: object) -> dict[str, object]:
+                observed_sizes.append(resolved.stat().st_size)
+                if observed_sizes[-1] > tools.mistral_transcription_max_bytes:
+                    raise ToolError(
+                        f"Audio file too large: {observed_sizes[-1]:,} bytes "
+                        f"(max {tools.mistral_transcription_max_bytes:,} bytes)"
+                    )
+                return {"text": f"chunk {len(observed_sizes)}"}
+
+            mp.setattr(tools, "_extract_audio_chunk", fake_extract)
+            mp.setattr(tools, "_mistral_transcription_request", fake_request)
+
+            raw = tools.audio_transcribe(
+                "clip.wav",
+                chunking="force",
+                chunk_max_seconds=30,
+                chunk_overlap_seconds=0,
+            )
+
+        parsed = json.loads(raw)
+        assert parsed["mode"] == "chunked"
+        assert parsed["chunking"]["chunk_seconds"] < 30
+        assert observed_sizes
+        assert max(observed_sizes) <= tools.mistral_transcription_max_bytes
 
     def test_audio_transcribe_force_chunks_even_when_under_limit(self, tmp_path: Path) -> None:
         audio = tmp_path / "clip.wav"
@@ -263,15 +317,15 @@ class TestAudioTranscribeTool:
 
     def test_audio_transcribe_fail_fast_on_chunk_error(self, tmp_path: Path) -> None:
         audio = tmp_path / "clip.wav"
-        _write_audio(audio, payload=b"x" * 512)
+        _write_audio(audio, payload=b"x" * 1_200_000)
         tools = _make_tools(
             tmp_path,
-            mistral_transcription_max_bytes=64,
+            mistral_transcription_max_bytes=1_100_000,
         )
 
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(tools, "_ensure_media_tools", lambda: None)
-            mp.setattr(tools, "_probe_media_duration", lambda _: 58.0)
+            mp.setattr(tools, "_probe_media_duration", lambda _: 50.0)
 
             def fake_extract(
                 source: Path,
@@ -302,15 +356,15 @@ class TestAudioTranscribeTool:
 
     def test_audio_transcribe_can_return_partial_chunked_output(self, tmp_path: Path) -> None:
         audio = tmp_path / "clip.wav"
-        _write_audio(audio, payload=b"x" * 512)
+        _write_audio(audio, payload=b"x" * 1_200_000)
         tools = _make_tools(
             tmp_path,
-            mistral_transcription_max_bytes=64,
+            mistral_transcription_max_bytes=1_100_000,
         )
 
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(tools, "_ensure_media_tools", lambda: None)
-            mp.setattr(tools, "_probe_media_duration", lambda _: 86.0)
+            mp.setattr(tools, "_probe_media_duration", lambda _: 60.0)
 
             def fake_extract(
                 source: Path,

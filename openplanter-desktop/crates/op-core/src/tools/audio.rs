@@ -1008,15 +1008,11 @@ pub async fn audio_transcribe(
     };
     let requested_chunk_seconds = (chunk_max_seconds.unwrap_or(default_chunk_max_seconds) as f64)
         .min(AUDIO_MAX_CHUNK_SECONDS);
-    let mut effective_chunk_seconds =
+    let effective_chunk_seconds =
         match audio_chunk_seconds_budget(max_bytes, requested_chunk_seconds) {
             Ok(value) => value,
             Err(error) => return ToolResult::error(error),
         };
-    if duration_sec > AUDIO_MIN_CHUNK_SECONDS {
-        effective_chunk_seconds =
-            effective_chunk_seconds.max(duration_sec.min(AUDIO_MIN_CHUNK_SECONDS));
-    }
     let effective_overlap_seconds = chunk_overlap_seconds
         .unwrap_or(default_chunk_overlap_seconds)
         .min((effective_chunk_seconds - 0.001).max(0.0));
@@ -1220,12 +1216,33 @@ mod tests {
         let ffmpeg = root.join("ffmpeg");
         std::fs::write(
             &ffprobe,
-            "#!/bin/sh\nprintf '{\"format\":{\"duration\":\"58.0\"}}'\n",
+            "#!/bin/sh\nprintf '{\"format\":{\"duration\":\"50.0\"}}'\n",
         )
         .unwrap();
         std::fs::write(
             &ffmpeg,
             "#!/bin/sh\nout=\"\"\nfor arg in \"$@\"; do out=\"$arg\"; done\nprintf 'chunk' > \"$out\"\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&ffprobe, std::fs::Permissions::from_mode(0o755)).unwrap();
+            std::fs::set_permissions(&ffmpeg, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+
+    fn install_budget_sensitive_media_tools(root: &Path, duration_seconds: f64) {
+        let ffprobe = root.join("ffprobe");
+        let ffmpeg = root.join("ffmpeg");
+        std::fs::write(
+            &ffprobe,
+            format!("#!/bin/sh\nprintf '{{\"format\":{{\"duration\":\"{duration_seconds}\"}}}}'\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            &ffmpeg,
+            "#!/bin/sh\nout=\"\"\nduration=\"\"\nprev=\"\"\nfor arg in \"$@\"; do\n  if [ \"$prev\" = \"-t\" ]; then duration=\"$arg\"; fi\n  prev=\"$arg\"\n  out=\"$arg\"\ndone\nif [ -n \"$duration\" ]; then\n  bytes=$(awk \"BEGIN { printf \\\"%d\\\", $duration * 32000 }\")\n  dd if=/dev/zero of=\"$out\" bs=1 count=\"$bytes\" status=none\nelse\n  printf 'chunk' > \"$out\"\nfi\n",
         )
         .unwrap();
         #[cfg(unix)]
@@ -1369,7 +1386,7 @@ mod tests {
         });
 
         let audio = dir.path().join("clip.wav");
-        std::fs::write(&audio, vec![b'x'; 512]).unwrap();
+        std::fs::write(&audio, vec![b'x'; 1_200_000]).unwrap();
         let root = dir.path().to_path_buf();
         let mut files_read = HashSet::new();
 
@@ -1378,7 +1395,7 @@ mod tests {
             Some("mistral-key"),
             &format!("http://{}", addr),
             "voxtral-mini-latest",
-            64,
+            1_100_000,
             900,
             2.0,
             48,
@@ -1415,5 +1432,83 @@ mod tests {
         assert_eq!(parsed["chunking"]["total_chunks"], 2);
         assert_eq!(parsed["response"]["segments"][0]["speaker"], "c0_speaker_a");
         assert_eq!(parsed["response"]["segments"][1]["speaker"], "c1_speaker_a");
+    }
+
+    #[tokio::test]
+    async fn test_audio_transcribe_preserves_byte_budgeted_chunk_size() {
+        let dir = tempdir().unwrap();
+        install_budget_sensitive_media_tools(dir.path(), 35.0);
+        let original_path = std::env::var_os("PATH");
+        unsafe {
+            let mut parts = vec![dir.path().to_path_buf()];
+            if let Some(existing) = &original_path {
+                parts.extend(std::env::split_paths(existing));
+            }
+            std::env::set_var("PATH", std::env::join_paths(parts).unwrap());
+        }
+
+        let counter = Arc::new(Mutex::new(0usize));
+        let counter_clone = counter.clone();
+        let app = Router::new().route(
+            "/v1/audio/transcriptions",
+            post(move |_body: Bytes| {
+                let counter = counter_clone.clone();
+                async move {
+                    let mut state = counter.lock().unwrap();
+                    *state += 1;
+                    Json(json!({
+                        "text": format!("chunk {}", *state),
+                    }))
+                }
+            }),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let audio = dir.path().join("clip.wav");
+        std::fs::write(&audio, vec![b'x'; 512]).unwrap();
+        let root = dir.path().to_path_buf();
+        let mut files_read = HashSet::new();
+
+        let result = audio_transcribe(
+            &root,
+            Some("mistral-key"),
+            &format!("http://{}", addr),
+            "voxtral-mini-latest",
+            300_000,
+            900,
+            0.0,
+            48,
+            "clip.wav",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("force"),
+            Some(30),
+            Some(0.0),
+            None,
+            None,
+            20_000,
+            5,
+            5,
+            &mut files_read,
+        )
+        .await;
+
+        if let Some(value) = original_path {
+            unsafe { std::env::set_var("PATH", value) };
+        }
+
+        assert!(!result.is_error, "unexpected error: {}", result.content);
+        let parsed: Value = serde_json::from_str(&result.content).unwrap();
+        assert_eq!(parsed["mode"], "chunked");
+        assert!(parsed["chunking"]["chunk_seconds"].as_f64().unwrap() < 30.0);
+        assert!(parsed["chunking"]["total_chunks"].as_u64().unwrap() >= 5);
     }
 }

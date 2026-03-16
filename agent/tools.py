@@ -1370,11 +1370,6 @@ class WorkspaceTools:
                 effective_chunk_seconds = self._audio_chunk_seconds_budget(
                     requested_chunk_seconds
                 )
-                if duration_sec > self._AUDIO_MIN_CHUNK_SECONDS:
-                    effective_chunk_seconds = max(
-                        min(duration_sec, effective_chunk_seconds),
-                        min(duration_sec, self._AUDIO_MIN_CHUNK_SECONDS),
-                    )
                 effective_overlap_seconds = min(
                     float(
                         chunk_overlap_seconds
