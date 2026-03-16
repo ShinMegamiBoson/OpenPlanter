@@ -13,7 +13,7 @@ use axum::routing::post;
 use axum::Router;
 use tokio_util::sync::CancellationToken;
 
-use op_core::events::{DeltaEvent, DeltaKind};
+use op_core::events::{CompletionMeta, DeltaEvent, DeltaKind, LoopMetrics};
 use op_core::model::openai::OpenAIModel;
 use op_core::model::anthropic::AnthropicModel;
 use op_core::model::{BaseModel, Message};
@@ -448,7 +448,12 @@ async fn test_solve_with_mock_anthropic() {
         fn emit_step(&self, event: StepEvent) {
             self.events.lock().unwrap().push(Ev::Step(event));
         }
-        fn emit_complete(&self, result: &str) {
+        fn emit_complete(
+            &self,
+            result: &str,
+            _: Option<LoopMetrics>,
+            _: Option<CompletionMeta>,
+        ) {
             self.events.lock().unwrap().push(Ev::Complete(result.to_string()));
         }
         fn emit_error(&self, message: &str) {
@@ -539,7 +544,12 @@ async fn test_solve_with_mock_openai() {
         fn emit_step(&self, event: StepEvent) {
             self.events.lock().unwrap().push(Ev2::Step(event));
         }
-        fn emit_complete(&self, result: &str) {
+        fn emit_complete(
+            &self,
+            result: &str,
+            _: Option<LoopMetrics>,
+            _: Option<CompletionMeta>,
+        ) {
             self.events.lock().unwrap().push(Ev2::Complete(result.to_string()));
         }
         fn emit_error(&self, message: &str) {
@@ -619,7 +629,7 @@ async fn test_solve_http_error_emits_error() {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, _: &str) {}
+        fn emit_complete(&self, _: &str, _: Option<LoopMetrics>, _: Option<CompletionMeta>) {}
         fn emit_error(&self, msg: &str) {
             self.errors.lock().unwrap().push(msg.to_string());
         }
@@ -664,7 +674,7 @@ async fn test_solve_cancel_emits_cancelled() {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, _: &str) {}
+        fn emit_complete(&self, _: &str, _: Option<LoopMetrics>, _: Option<CompletionMeta>) {}
         fn emit_error(&self, msg: &str) {
             self.events.lock().unwrap().push(msg.to_string());
         }
@@ -707,7 +717,12 @@ async fn test_solve_demo_mode_bypasses_llm() {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, result: &str) {
+        fn emit_complete(
+            &self,
+            result: &str,
+            _: Option<LoopMetrics>,
+            _: Option<CompletionMeta>,
+        ) {
             self.events.lock().unwrap().push(result.to_string());
         }
         fn emit_error(&self, msg: &str) {
@@ -746,7 +761,7 @@ async fn test_solve_missing_key_emits_error() {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, _: &str) {}
+        fn emit_complete(&self, _: &str, _: Option<LoopMetrics>, _: Option<CompletionMeta>) {}
         fn emit_error(&self, msg: &str) {
             self.errors.lock().unwrap().push(msg.to_string());
         }
@@ -872,7 +887,12 @@ async fn test_solve_multi_step_agentic_loop() {
         fn emit_step(&self, event: StepEvent) {
             self.events.lock().unwrap().push(Ev3::Step(event));
         }
-        fn emit_complete(&self, result: &str) {
+        fn emit_complete(
+            &self,
+            result: &str,
+            _: Option<LoopMetrics>,
+            _: Option<CompletionMeta>,
+        ) {
             self.events.lock().unwrap().push(Ev3::Complete(result.to_string()));
         }
         fn emit_error(&self, message: &str) {

@@ -15,6 +15,23 @@ class ModelError(RuntimeError):
     pass
 
 
+class RateLimitError(ModelError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        provider_code: str | int | None = None,
+        body: str = "",
+        retry_after_sec: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.provider_code = provider_code
+        self.body = body
+        self.retry_after_sec = retry_after_sec
+
+
 # ---------------------------------------------------------------------------
 # Core data types
 # ---------------------------------------------------------------------------
