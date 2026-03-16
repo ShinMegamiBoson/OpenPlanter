@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import socket
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -103,37 +104,83 @@ def _extract_content(content: object) -> str:
     return ""
 
 
+def _parse_retry_after(exc: urllib.error.HTTPError, default: int = 5) -> int:
+    """Parse Retry-After header from an HTTPError, clamped to [1, 120]."""
+    raw = exc.headers.get("Retry-After")
+    if raw is None:
+        return default
+    try:
+        return max(1, min(120, int(raw)))
+    except (ValueError, TypeError):
+        return default
+
+
+def _notify_retry(on_retry: "Callable[[str], None] | None", msg: str) -> None:
+    """Fire on_retry callback, swallowing any exception."""
+    if on_retry is not None:
+        try:
+            on_retry(msg)
+        except Exception:
+            pass
+
+
+def _sleep_with_countdown(
+    seconds: int,
+    attempt: int,
+    max_attempts: int,
+    on_retry: "Callable[[str], None] | None",
+) -> None:
+    """Sleep for *seconds*, firing on_retry with a countdown each second."""
+    for remaining in range(seconds, 0, -1):
+        _notify_retry(
+            on_retry,
+            f"Rate limited (attempt {attempt}/{max_attempts}). "
+            f"Retrying in {remaining}s...",
+        )
+        time.sleep(1)
+
+
 def _http_json(
     url: str,
     method: str,
     headers: dict[str, str],
     payload: dict[str, Any] | None = None,
     timeout_sec: int = 90,
+    max_rate_limit_retries: int = 5,
 ) -> dict[str, Any]:
-    req = urllib.request.Request(
-        url=url,
-        data=(json.dumps(payload).encode("utf-8") if payload is not None else None),
-        headers=headers,
-        method=method,
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as exc:  # pragma: no cover - network path
-        body = exc.read().decode("utf-8", errors="replace")
-        raise ModelError(f"HTTP {exc.code} calling {url}: {body}") from exc
-    except urllib.error.URLError as exc:  # pragma: no cover - network path
-        raise ModelError(f"Connection error calling {url}: {exc}") from exc
-    except OSError as exc:  # pragma: no cover - bare socket.timeout, etc.
-        raise ModelError(f"Network error calling {url}: {exc}") from exc
+    for rate_limit_attempt in range(1, max_rate_limit_retries + 1):
+        req = urllib.request.Request(
+            url=url,
+            data=(json.dumps(payload).encode("utf-8") if payload is not None else None),
+            headers=headers,
+            method=method,
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429:
+                retry_after = _parse_retry_after(exc)
+                _sleep_with_countdown(retry_after, rate_limit_attempt, max_rate_limit_retries, None)
+                continue
+            body = exc.read().decode("utf-8", errors="replace")[:8192]
+            raise ModelError(f"HTTP {exc.code} calling {url}: {body}") from exc
+        except urllib.error.URLError as exc:  # pragma: no cover - network path
+            raise ModelError(f"Connection error calling {url}: {exc}") from exc
+        except OSError as exc:  # pragma: no cover - bare socket.timeout, etc.
+            raise ModelError(f"Network error calling {url}: {exc}") from exc
 
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ModelError(f"Non-JSON response from {url}: {raw[:500]}") from exc
-    if not isinstance(parsed, dict):
-        raise ModelError(f"Unexpected non-object JSON from {url}: {type(parsed)!r}")
-    return parsed
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ModelError(f"Non-JSON response from {url}: {raw[:500]}") from exc
+        if not isinstance(parsed, dict):
+            raise ModelError(f"Unexpected non-object JSON from {url}: {type(parsed)!r}")
+        return parsed
+
+    raise ModelError(
+        f"HTTP 429 calling {url}: rate limited, exhausted {max_rate_limit_retries} retries"
+    )
 
 
 def _extend_socket_timeout(resp: Any, timeout: float) -> None:
@@ -220,32 +267,54 @@ def _http_stream_sse(
     stream_timeout: float = 120,
     max_retries: int = 3,
     on_sse_event: "Callable[[str, dict[str, Any]], None] | None" = None,
+    on_retry: "Callable[[str], None] | None" = None,
+    max_rate_limit_retries: int = 5,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Stream an SSE endpoint with first-byte timeout and retry logic."""
     data = json.dumps(payload).encode("utf-8")
 
-    last_exc: Exception | None = None
-    for attempt in range(max_retries):
-        req = urllib.request.Request(url=url, data=data, headers=headers, method=method)
-        try:
-            resp = urllib.request.urlopen(req, timeout=first_byte_timeout)
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            raise ModelError(f"HTTP {exc.code} calling {url}: {body}") from exc
-        except (socket.timeout, urllib.error.URLError, OSError) as exc:
-            # Timeout or connection error — retry
-            last_exc = exc
+    for rate_limit_attempt in range(1, max_rate_limit_retries + 1):
+        got_429 = False
+        retry_after = 0
+
+        last_exc: Exception | None = None
+        for attempt in range(max_retries):
+            req = urllib.request.Request(url=url, data=data, headers=headers, method=method)
+            try:
+                resp = urllib.request.urlopen(req, timeout=first_byte_timeout)
+            except urllib.error.HTTPError as exc:
+                if exc.code == 429:
+                    retry_after = _parse_retry_after(exc)
+                    got_429 = True
+                    break
+                body = exc.read().decode("utf-8", errors="replace")[:8192]
+                raise ModelError(f"HTTP {exc.code} calling {url}: {body}") from exc
+            except (socket.timeout, urllib.error.URLError, OSError) as exc:
+                # Timeout or connection error — retry
+                last_exc = exc
+                continue
+
+            # First byte received — extend timeout for the rest of the stream
+            _extend_socket_timeout(resp, stream_timeout)
+            try:
+                return _read_sse_events(resp, on_sse_event=on_sse_event)
+            finally:
+                resp.close()
+        else:
+            if not got_429:
+                raise ModelError(
+                    f"Timed out after {max_retries} attempts calling {url}: {last_exc}"
+                )
+
+        if got_429:
+            _sleep_with_countdown(retry_after, rate_limit_attempt, max_rate_limit_retries, on_retry)
             continue
 
-        # First byte received — extend timeout for the rest of the stream
-        _extend_socket_timeout(resp, stream_timeout)
-        try:
-            return _read_sse_events(resp, on_sse_event=on_sse_event)
-        finally:
-            resp.close()
+        # If we reach here without got_429 and without returning, something went wrong
+        break  # pragma: no cover
 
     raise ModelError(
-        f"Timed out after {max_retries} attempts calling {url}: {last_exc}"
+        f"HTTP 429 calling {url}: rate limited, exhausted {max_rate_limit_retries} retries"
     )
 
 
@@ -634,6 +703,7 @@ class OpenAICompatibleModel:
     strict_tools: bool = True
     tool_defs: list[dict[str, Any]] | None = None
     on_content_delta: Callable[[str, str], None] | None = None
+    on_retry: Callable[[str], None] | None = None
 
     def _is_reasoning_model(self) -> bool:
         """OpenAI reasoning models (o-series, gpt-5 series) have different API constraints."""
@@ -725,6 +795,7 @@ class OpenAICompatibleModel:
                 first_byte_timeout=self.first_byte_timeout,
                 stream_timeout=self.timeout_sec,
                 on_sse_event=sse_cb,
+                on_retry=self.on_retry,
             )
             parsed = _accumulate_openai_stream(events)
         except ModelError as exc:
@@ -745,6 +816,7 @@ class OpenAICompatibleModel:
                 first_byte_timeout=self.first_byte_timeout,
                 stream_timeout=self.timeout_sec,
                 on_sse_event=sse_cb,
+                on_retry=self.on_retry,
             )
             parsed = _accumulate_openai_stream(events)
 
@@ -858,6 +930,7 @@ class AnthropicModel:
     timeout_sec: int = 300
     tool_defs: list[dict[str, Any]] | None = None
     on_content_delta: Callable[[str, str], None] | None = None
+    on_retry: Callable[[str], None] | None = None
 
     def create_conversation(self, system_prompt: str, initial_user_message: str) -> Conversation:
         messages: list[Any] = [
@@ -947,6 +1020,7 @@ class AnthropicModel:
                 payload=payload,
                 stream_timeout=self.timeout_sec,
                 on_sse_event=sse_cb,
+                on_retry=self.on_retry,
             )
             parsed = _accumulate_anthropic_stream(events)
         except ModelError as exc:
@@ -967,6 +1041,7 @@ class AnthropicModel:
                 payload=payload,
                 stream_timeout=self.timeout_sec,
                 on_sse_event=sse_cb,
+                on_retry=self.on_retry,
             )
             parsed = _accumulate_anthropic_stream(events)
 
