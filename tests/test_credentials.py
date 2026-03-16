@@ -29,6 +29,7 @@ class CredentialTests(unittest.TestCase):
                         "FIRECRAWL_API_KEY=fc-key",
                         "BRAVE_API_KEY=brave-key",
                         "OPENPLANTER_TAVILY_API_KEY=tavily-key",
+                        "MISTRAL_API_KEY=mistral-key",
                     ]
                 ),
                 encoding="utf-8",
@@ -43,6 +44,7 @@ class CredentialTests(unittest.TestCase):
             self.assertEqual(creds.firecrawl_api_key, "fc-key")
             self.assertEqual(creds.brave_api_key, "brave-key")
             self.assertEqual(creds.tavily_api_key, "tavily-key")
+            self.assertEqual(creds.mistral_transcription_api_key, "mistral-key")
 
     def test_parse_env_assignments_preserves_generic_workspace_keys(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -74,6 +76,7 @@ class CredentialTests(unittest.TestCase):
                 firecrawl_api_key="fc",
                 brave_api_key="brave",
                 tavily_api_key="tavily",
+                mistral_transcription_api_key="mistral",
             )
             store.save(creds)
             loaded = store.load()

@@ -203,14 +203,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_build_solve_initial_context_degrades_to_no_packet_on_load_failure() {
+    async fn test_build_solve_initial_context_ignores_invalid_typed_state_without_warning() {
         let tmp = tempdir().unwrap();
         fs::write(tmp.path().join("investigation_state.json"), "{not-json")
             .await
             .unwrap();
 
         let (context, warning) = build_solve_initial_context(tmp.path(), "sid").await;
-        assert!(warning.is_some());
+        assert!(warning.is_none());
         assert!(context.question_reasoning_packet.is_none());
         assert_eq!(context.session_id, Some("sid".to_string()));
         assert_eq!(context.session_dir, Some(tmp.path().display().to_string()));

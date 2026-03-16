@@ -253,6 +253,7 @@ def _load_credentials(
         brave_api_key=user_creds.brave_api_key,
         tavily_api_key=user_creds.tavily_api_key,
         voyage_api_key=user_creds.voyage_api_key,
+        mistral_transcription_api_key=user_creds.mistral_transcription_api_key,
     )
 
     store = CredentialStore(workspace=cfg.workspace, session_root_dir=cfg.session_root_dir)
@@ -279,6 +280,8 @@ def _load_credentials(
         creds.tavily_api_key = stored.tavily_api_key
     if stored.voyage_api_key:
         creds.voyage_api_key = stored.voyage_api_key
+    if stored.mistral_transcription_api_key:
+        creds.mistral_transcription_api_key = stored.mistral_transcription_api_key
 
     env_creds = credentials_from_env()
     if env_creds.openai_api_key:
@@ -303,6 +306,8 @@ def _load_credentials(
         creds.tavily_api_key = env_creds.tavily_api_key
     if env_creds.voyage_api_key:
         creds.voyage_api_key = env_creds.voyage_api_key
+    if env_creds.mistral_transcription_api_key:
+        creds.mistral_transcription_api_key = env_creds.mistral_transcription_api_key
 
     for env_path in discover_env_candidates(cfg.workspace):
         file_creds = parse_env_file(env_path)
@@ -386,6 +391,7 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
     cfg.brave_api_key = creds.brave_api_key
     cfg.tavily_api_key = creds.tavily_api_key
     cfg.voyage_api_key = creds.voyage_api_key
+    cfg.mistral_transcription_api_key = creds.mistral_transcription_api_key
     cfg.api_key = cfg.openai_api_key
 
     if args.zai_plan:

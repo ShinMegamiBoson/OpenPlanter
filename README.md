@@ -155,20 +155,67 @@ export OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC=120.0
 export OPENPLANTER_ZAI_STREAM_MAX_RETRIES=10
 ```
 
-Additional service keys: `EXA_API_KEY`, `FIRECRAWL_API_KEY`, `BRAVE_API_KEY`, `TAVILY_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings).
+Additional service keys: `EXA_API_KEY`, `FIRECRAWL_API_KEY`, `BRAVE_API_KEY`, `TAVILY_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings), `MISTRAL_TRANSCRIPTION_API_KEY` or `MISTRAL_API_KEY` (audio transcription).
+
+### Audio Transcription
+
+OpenPlanter includes an `audio_transcribe` tool backed by Mistral's offline transcription API. It uploads local workspace audio files to `POST /v1/audio/transcriptions`, defaults to `voxtral-mini-latest`, and returns transcript text plus any timestamp or diarization metadata that Mistral includes.
+
+Long-form recordings can now be chunked automatically. When `chunking` is left at its default of `auto`, OpenPlanter keeps the current single-upload path for smaller files and switches to overlapping chunked transcription when the upload would exceed the configured Mistral size cap. `chunking: "force"` always chunks, and `chunking: "off"` keeps the single-upload path.
+
+Configure it with:
+
+```bash
+export MISTRAL_API_KEY=...
+# Optional overrides
+export OPENPLANTER_MISTRAL_TRANSCRIPTION_BASE_URL=https://api.mistral.ai
+export OPENPLANTER_MISTRAL_TRANSCRIPTION_MODEL=voxtral-mini-latest
+export OPENPLANTER_MISTRAL_TRANSCRIPTION_MAX_BYTES=104857600
+export OPENPLANTER_MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS=900
+export OPENPLANTER_MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS=2.0
+export OPENPLANTER_MISTRAL_TRANSCRIPTION_MAX_CHUNKS=48
+export OPENPLANTER_MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC=180
+```
+
+Example tool call:
+
+```json
+{
+  "name": "audio_transcribe",
+  "arguments": {
+    "path": "recordings/interview.wav",
+    "chunking": "auto",
+    "chunk_max_seconds": 900,
+    "chunk_overlap_seconds": 2.0,
+    "diarize": true,
+    "timestamp_granularities": ["segment"]
+  }
+}
+```
+
+Notes:
+- The tool only accepts local workspace files.
+- Long-form chunking requires `ffmpeg` and `ffprobe` to be available at runtime.
+- Video inputs (`.mp4`, `.webm`, `.mov`, `.mkv`, `.avi`, `.m4v`) are audio-extracted with `ffmpeg` before transcription.
+- `language` cannot be combined with `timestamp_granularities`.
+- `context_bias` is normalized to up to 100 phrases before upload.
+- Chunked diarization uses chunk-local speaker labels (for example `c1_speaker_a`) and does not attempt cross-chunk speaker identity merging.
+- If `continue_on_chunk_error` is `true`, the tool can return partial chunked output with warnings instead of failing immediately.
 
 All keys can also be set with an `OPENPLANTER_` prefix (e.g. `OPENPLANTER_OPENAI_API_KEY`), via `.env` files in the workspace, or via CLI flags.
 Provider base URLs can also be overridden with `OPENPLANTER_*_BASE_URL`, including `OPENPLANTER_TAVILY_BASE_URL`.
 
 ## Agent Tools
 
-The agent has access to 19 tools, organized around its investigation workflow:
+The agent has access to 20 tools, organized around its investigation workflow:
 
 **Dataset ingestion & workspace** — `list_files`, `search_files`, `repo_map`, `read_file`, `write_file`, `edit_file`, `hashline_edit`, `apply_patch` — load, inspect, and transform source datasets; write structured findings.
 
 **Shell execution** — `run_shell`, `run_shell_bg`, `check_shell_bg`, `kill_shell_bg` — run analysis scripts, data pipelines, and validation checks.
 
 **Web** — `web_search` (Exa, Firecrawl, Brave, or Tavily), `fetch_url` — pull public records, verify entities, and retrieve supplementary data.
+
+**Audio** — `audio_transcribe` — transcribe local audio/video with Mistral, including optional timestamps, diarization, and automatic chunking for long recordings.
 
 **Planning & delegation** — `think`, `subtask`, `execute`, `list_artifacts`, `read_artifact` — decompose investigations into focused sub-tasks, each with acceptance criteria and independent verification.
 

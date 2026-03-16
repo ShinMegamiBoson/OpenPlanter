@@ -22,6 +22,7 @@ class CredentialBundle:
     brave_api_key: str | None = None
     tavily_api_key: str | None = None
     voyage_api_key: str | None = None
+    mistral_transcription_api_key: str | None = None
 
     def has_any(self) -> bool:
         return bool(
@@ -36,6 +37,10 @@ class CredentialBundle:
             or (self.brave_api_key and self.brave_api_key.strip())
             or (self.tavily_api_key and self.tavily_api_key.strip())
             or (self.voyage_api_key and self.voyage_api_key.strip())
+            or (
+                self.mistral_transcription_api_key
+                and self.mistral_transcription_api_key.strip()
+            )
         )
 
     def merge_missing(self, other: "CredentialBundle") -> None:
@@ -61,6 +66,11 @@ class CredentialBundle:
             self.tavily_api_key = other.tavily_api_key
         if not self.voyage_api_key and other.voyage_api_key:
             self.voyage_api_key = other.voyage_api_key
+        if (
+            not self.mistral_transcription_api_key
+            and other.mistral_transcription_api_key
+        ):
+            self.mistral_transcription_api_key = other.mistral_transcription_api_key
 
     def to_json(self) -> dict[str, str]:
         out: dict[str, str] = {}
@@ -86,6 +96,8 @@ class CredentialBundle:
             out["tavily_api_key"] = self.tavily_api_key
         if self.voyage_api_key:
             out["voyage_api_key"] = self.voyage_api_key
+        if self.mistral_transcription_api_key:
+            out["mistral_transcription_api_key"] = self.mistral_transcription_api_key
         return out
 
     @classmethod
@@ -104,6 +116,10 @@ class CredentialBundle:
             brave_api_key=(payload.get("brave_api_key") or "").strip() or None,
             tavily_api_key=(payload.get("tavily_api_key") or "").strip() or None,
             voyage_api_key=(payload.get("voyage_api_key") or "").strip() or None,
+            mistral_transcription_api_key=(
+                payload.get("mistral_transcription_api_key") or ""
+            ).strip()
+            or None,
         )
 
 
@@ -159,6 +175,13 @@ def parse_env_file(path: Path) -> CredentialBundle:
         brave_api_key=(env.get("BRAVE_API_KEY") or env.get("OPENPLANTER_BRAVE_API_KEY") or "").strip() or None,
         tavily_api_key=(env.get("TAVILY_API_KEY") or env.get("OPENPLANTER_TAVILY_API_KEY") or "").strip() or None,
         voyage_api_key=(env.get("VOYAGE_API_KEY") or env.get("OPENPLANTER_VOYAGE_API_KEY") or "").strip() or None,
+        mistral_transcription_api_key=(
+            env.get("OPENPLANTER_MISTRAL_TRANSCRIPTION_API_KEY")
+            or env.get("MISTRAL_TRANSCRIPTION_API_KEY")
+            or env.get("MISTRAL_API_KEY")
+            or ""
+        ).strip()
+        or None,
     )
 
 
@@ -198,6 +221,13 @@ def credentials_from_env() -> CredentialBundle:
         brave_api_key=(os.getenv("OPENPLANTER_BRAVE_API_KEY") or os.getenv("BRAVE_API_KEY") or "").strip() or None,
         tavily_api_key=(os.getenv("OPENPLANTER_TAVILY_API_KEY") or os.getenv("TAVILY_API_KEY") or "").strip() or None,
         voyage_api_key=(os.getenv("OPENPLANTER_VOYAGE_API_KEY") or os.getenv("VOYAGE_API_KEY") or "").strip() or None,
+        mistral_transcription_api_key=(
+            os.getenv("OPENPLANTER_MISTRAL_TRANSCRIPTION_API_KEY")
+            or os.getenv("MISTRAL_TRANSCRIPTION_API_KEY")
+            or os.getenv("MISTRAL_API_KEY")
+            or ""
+        ).strip()
+        or None,
     )
 
 
@@ -293,6 +323,7 @@ def prompt_for_credentials(
         brave_api_key=existing.brave_api_key,
         tavily_api_key=existing.tavily_api_key,
         voyage_api_key=existing.voyage_api_key,
+        mistral_transcription_api_key=existing.mistral_transcription_api_key,
     )
 
     should_prompt = force or not current.has_any()
@@ -331,6 +362,9 @@ def prompt_for_credentials(
     current.brave_api_key = _ask("Brave", current.brave_api_key)
     current.tavily_api_key = _ask("Tavily", current.tavily_api_key)
     current.voyage_api_key = _ask("Voyage", current.voyage_api_key)
+    current.mistral_transcription_api_key = _ask(
+        "Mistral Transcription", current.mistral_transcription_api_key
+    )
     if not force and current.has_any() and not existing.has_any():
         changed = True
     return current, changed

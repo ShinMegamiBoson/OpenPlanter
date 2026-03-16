@@ -12,6 +12,12 @@ FOUNDRY_OPENAI_API_KEY_PLACEHOLDER = "dont-worry-this-key-will-be-auto-injected"
 FOUNDRY_ANTHROPIC_API_KEY_PLACEHOLDER = "dont-worry-it-will-be-injected"
 ZAI_PAYGO_BASE_URL = "https://api.z.ai/api/paas/v4"
 ZAI_CODING_BASE_URL = "https://api.z.ai/api/coding/paas/v4"
+MISTRAL_TRANSCRIPTION_BASE_URL = "https://api.mistral.ai"
+MISTRAL_TRANSCRIPTION_DEFAULT_MODEL = "voxtral-mini-latest"
+MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS = 900
+MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS = 2.0
+MISTRAL_TRANSCRIPTION_MAX_CHUNKS = 48
+MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC = 180
 
 PROVIDER_DEFAULT_MODELS: dict[str, str] = {
     "openai": "azure-foundry/gpt-5.4",
@@ -113,6 +119,7 @@ class AgentConfig:
     firecrawl_base_url: str = "https://api.firecrawl.dev/v1"
     brave_base_url: str = "https://api.search.brave.com/res/v1"
     tavily_base_url: str = "https://api.tavily.com"
+    mistral_transcription_base_url: str = MISTRAL_TRANSCRIPTION_BASE_URL
     openai_api_key: str | None = None
     openai_oauth_token: str | None = None
     anthropic_api_key: str | None = None
@@ -125,6 +132,17 @@ class AgentConfig:
     tavily_api_key: str | None = None
     web_search_provider: str = "exa"
     voyage_api_key: str | None = None
+    mistral_transcription_api_key: str | None = None
+    mistral_transcription_model: str = MISTRAL_TRANSCRIPTION_DEFAULT_MODEL
+    mistral_transcription_max_bytes: int = 100 * 1024 * 1024
+    mistral_transcription_chunk_max_seconds: int = MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS
+    mistral_transcription_chunk_overlap_seconds: float = (
+        MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS
+    )
+    mistral_transcription_max_chunks: int = MISTRAL_TRANSCRIPTION_MAX_CHUNKS
+    mistral_transcription_request_timeout_sec: int = (
+        MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC
+    )
     max_depth: int = 4
     max_steps_per_call: int = 100
     budget_extension_enabled: bool = True
@@ -187,6 +205,11 @@ class AgentConfig:
         brave_api_key = os.getenv("OPENPLANTER_BRAVE_API_KEY") or os.getenv("BRAVE_API_KEY")
         tavily_api_key = os.getenv("OPENPLANTER_TAVILY_API_KEY") or os.getenv("TAVILY_API_KEY")
         voyage_api_key = os.getenv("OPENPLANTER_VOYAGE_API_KEY") or os.getenv("VOYAGE_API_KEY")
+        mistral_transcription_api_key = (
+            os.getenv("OPENPLANTER_MISTRAL_TRANSCRIPTION_API_KEY")
+            or os.getenv("MISTRAL_TRANSCRIPTION_API_KEY")
+            or os.getenv("MISTRAL_API_KEY")
+        )
         openai_base_url = os.getenv("OPENPLANTER_OPENAI_BASE_URL") or os.getenv(
             "OPENPLANTER_BASE_URL",
             FOUNDRY_OPENAI_BASE_URL,
@@ -245,6 +268,12 @@ class AgentConfig:
             firecrawl_base_url=os.getenv("OPENPLANTER_FIRECRAWL_BASE_URL", "https://api.firecrawl.dev/v1"),
             brave_base_url=os.getenv("OPENPLANTER_BRAVE_BASE_URL", "https://api.search.brave.com/res/v1"),
             tavily_base_url=os.getenv("OPENPLANTER_TAVILY_BASE_URL", "https://api.tavily.com"),
+            mistral_transcription_base_url=os.getenv(
+                "OPENPLANTER_MISTRAL_TRANSCRIPTION_BASE_URL",
+                os.getenv("MISTRAL_TRANSCRIPTION_BASE_URL")
+                or os.getenv("MISTRAL_BASE_URL")
+                or MISTRAL_TRANSCRIPTION_BASE_URL,
+            ),
             openai_api_key=openai_api_key,
             openai_oauth_token=(openai_oauth_token or "").strip() or None,
             anthropic_api_key=anthropic_api_key,
@@ -257,6 +286,39 @@ class AgentConfig:
             tavily_api_key=tavily_api_key,
             web_search_provider=web_search_provider,
             voyage_api_key=voyage_api_key,
+            mistral_transcription_api_key=(mistral_transcription_api_key or "").strip() or None,
+            mistral_transcription_model=(
+                os.getenv("OPENPLANTER_MISTRAL_TRANSCRIPTION_MODEL")
+                or os.getenv("MISTRAL_TRANSCRIPTION_MODEL")
+                or MISTRAL_TRANSCRIPTION_DEFAULT_MODEL
+            ),
+            mistral_transcription_max_bytes=int(
+                os.getenv("OPENPLANTER_MISTRAL_TRANSCRIPTION_MAX_BYTES", "104857600")
+            ),
+            mistral_transcription_chunk_max_seconds=int(
+                os.getenv(
+                    "OPENPLANTER_MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS",
+                    str(MISTRAL_TRANSCRIPTION_CHUNK_MAX_SECONDS),
+                )
+            ),
+            mistral_transcription_chunk_overlap_seconds=float(
+                os.getenv(
+                    "OPENPLANTER_MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS",
+                    str(MISTRAL_TRANSCRIPTION_CHUNK_OVERLAP_SECONDS),
+                )
+            ),
+            mistral_transcription_max_chunks=int(
+                os.getenv(
+                    "OPENPLANTER_MISTRAL_TRANSCRIPTION_MAX_CHUNKS",
+                    str(MISTRAL_TRANSCRIPTION_MAX_CHUNKS),
+                )
+            ),
+            mistral_transcription_request_timeout_sec=int(
+                os.getenv(
+                    "OPENPLANTER_MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC",
+                    str(MISTRAL_TRANSCRIPTION_REQUEST_TIMEOUT_SEC),
+                )
+            ),
             max_depth=int(os.getenv("OPENPLANTER_MAX_DEPTH", "4")),
             max_steps_per_call=int(os.getenv("OPENPLANTER_MAX_STEPS", "100")),
             budget_extension_enabled=budget_extension_enabled,

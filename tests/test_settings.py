@@ -4,7 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from agent.__main__ import _resolve_provider
 from agent.builder import _validate_model_provider, infer_provider_for_model
+from agent.credentials import CredentialBundle
 from agent.model import ModelError
 from agent.settings import PersistentSettings, SettingsStore, normalize_reasoning_effort
 from agent.tui import SLASH_COMMANDS, _compute_suggestions
@@ -238,6 +240,12 @@ class ValidateModelProviderTests(unittest.TestCase):
     def test_unknown_model_passes(self) -> None:
         _validate_model_provider("my-custom-model", "openai")
         _validate_model_provider("some-random-model", "anthropic")
+
+
+class ResolveProviderTests(unittest.TestCase):
+    def test_mistral_transcription_key_does_not_change_chat_provider(self) -> None:
+        creds = CredentialBundle(mistral_transcription_api_key="mistral-test")
+        self.assertEqual(_resolve_provider("auto", creds), "anthropic")
 
 
 if __name__ == "__main__":

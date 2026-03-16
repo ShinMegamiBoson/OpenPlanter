@@ -436,6 +436,7 @@ def _clip_event(text: str) -> str:
 _KEY_ARGS: dict[str, str] = {
     "read_file": "path",
     "read_image": "path",
+    "audio_transcribe": "path",
     "write_file": "path",
     "edit_file": "path",
     "hashline_edit": "path",

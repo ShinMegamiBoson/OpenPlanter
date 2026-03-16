@@ -73,6 +73,7 @@ pub fn merge_credentials_into_config(
     merge!(brave_api_key);
     merge!(tavily_api_key);
     merge!(voyage_api_key);
+    merge!(mistral_transcription_api_key);
 }
 
 pub fn apply_settings_to_config(cfg: &mut AgentConfig, settings: &PersistentSettings) {

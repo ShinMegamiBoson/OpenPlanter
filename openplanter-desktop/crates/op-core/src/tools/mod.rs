@@ -2,6 +2,7 @@
 ///
 /// The `WorkspaceTools` struct is the central dispatcher that owns tool state
 /// (files-read set, background jobs) and routes tool calls to the appropriate module.
+pub mod audio;
 pub mod defs;
 pub mod filesystem;
 pub mod patching;
@@ -62,6 +63,14 @@ pub struct WorkspaceTools {
     brave_base_url: String,
     tavily_api_key: Option<String>,
     tavily_base_url: String,
+    mistral_transcription_api_key: Option<String>,
+    mistral_transcription_base_url: String,
+    mistral_transcription_model: String,
+    mistral_transcription_max_bytes: usize,
+    mistral_transcription_chunk_max_seconds: i64,
+    mistral_transcription_chunk_overlap_seconds: f64,
+    mistral_transcription_max_chunks: i64,
+    mistral_transcription_request_timeout_sec: u64,
     files_read: HashSet<PathBuf>,
     bg_jobs: shell::BgJobs,
 }
@@ -96,6 +105,17 @@ impl WorkspaceTools {
             brave_base_url: config.brave_base_url.clone(),
             tavily_api_key: config.tavily_api_key.clone(),
             tavily_base_url: config.tavily_base_url.clone(),
+            mistral_transcription_api_key: config.mistral_transcription_api_key.clone(),
+            mistral_transcription_base_url: config.mistral_transcription_base_url.clone(),
+            mistral_transcription_model: config.mistral_transcription_model.clone(),
+            mistral_transcription_max_bytes: config.mistral_transcription_max_bytes as usize,
+            mistral_transcription_chunk_max_seconds: config.mistral_transcription_chunk_max_seconds,
+            mistral_transcription_chunk_overlap_seconds: config
+                .mistral_transcription_chunk_overlap_seconds,
+            mistral_transcription_max_chunks: config.mistral_transcription_max_chunks,
+            mistral_transcription_request_timeout_sec: config
+                .mistral_transcription_request_timeout_sec
+                as u64,
             files_read: HashSet::new(),
             bg_jobs: shell::BgJobs::new(),
         }
@@ -126,6 +146,17 @@ impl WorkspaceTools {
             brave_base_url: config.brave_base_url.clone(),
             tavily_api_key: config.tavily_api_key.clone(),
             tavily_base_url: config.tavily_base_url.clone(),
+            mistral_transcription_api_key: config.mistral_transcription_api_key.clone(),
+            mistral_transcription_base_url: config.mistral_transcription_base_url.clone(),
+            mistral_transcription_model: config.mistral_transcription_model.clone(),
+            mistral_transcription_max_bytes: config.mistral_transcription_max_bytes as usize,
+            mistral_transcription_chunk_max_seconds: config.mistral_transcription_chunk_max_seconds,
+            mistral_transcription_chunk_overlap_seconds: config
+                .mistral_transcription_chunk_overlap_seconds,
+            mistral_transcription_max_chunks: config.mistral_transcription_max_chunks,
+            mistral_transcription_request_timeout_sec: config
+                .mistral_transcription_request_timeout_sec
+                as u64,
             files_read: HashSet::new(),
             bg_jobs: shell::BgJobs::new(),
         }
@@ -206,6 +237,101 @@ impl WorkspaceTools {
                     self.max_search_hits,
                     self.command_timeout_sec,
                 )
+            }
+            "audio_transcribe" => {
+                let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                let diarize = args.get("diarize").and_then(|v| v.as_bool());
+                let timestamp_granularities: Option<Vec<String>> = args
+                    .get("timestamp_granularities")
+                    .and_then(|v| {
+                        if let Some(values) = v.as_array() {
+                            Some(
+                                values
+                                    .iter()
+                                    .filter_map(|value| {
+                                        value.as_str().map(|s| s.trim().to_string())
+                                    })
+                                    .filter(|value| !value.is_empty())
+                                    .collect::<Vec<_>>(),
+                            )
+                        } else {
+                            v.as_str().map(|value| vec![value.trim().to_string()])
+                        }
+                    })
+                    .filter(|values| !values.is_empty());
+                let context_bias: Option<Vec<String>> = args
+                    .get("context_bias")
+                    .and_then(|v| {
+                        if let Some(values) = v.as_array() {
+                            Some(
+                                values
+                                    .iter()
+                                    .filter_map(|value| {
+                                        value.as_str().map(|s| s.trim().to_string())
+                                    })
+                                    .filter(|value| !value.is_empty())
+                                    .collect::<Vec<_>>(),
+                            )
+                        } else {
+                            v.as_str().map(|value| {
+                                value
+                                    .split(',')
+                                    .map(str::trim)
+                                    .filter(|part| !part.is_empty())
+                                    .map(ToString::to_string)
+                                    .collect::<Vec<_>>()
+                            })
+                        }
+                    })
+                    .filter(|values| !values.is_empty());
+                let language = args
+                    .get("language")
+                    .and_then(|v| v.as_str())
+                    .filter(|value| !value.trim().is_empty());
+                let model = args
+                    .get("model")
+                    .and_then(|v| v.as_str())
+                    .filter(|value| !value.trim().is_empty());
+                let temperature = args.get("temperature").and_then(|v| v.as_f64());
+                let chunking = args
+                    .get("chunking")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty());
+                let chunk_max_seconds = args.get("chunk_max_seconds").and_then(|v| v.as_i64());
+                let chunk_overlap_seconds =
+                    args.get("chunk_overlap_seconds").and_then(|v| v.as_f64());
+                let max_chunks = args.get("max_chunks").and_then(|v| v.as_i64());
+                let continue_on_chunk_error = args
+                    .get("continue_on_chunk_error")
+                    .and_then(|v| v.as_bool());
+                audio::audio_transcribe(
+                    &self.root,
+                    self.mistral_transcription_api_key.as_deref(),
+                    &self.mistral_transcription_base_url,
+                    &self.mistral_transcription_model,
+                    self.mistral_transcription_max_bytes,
+                    self.mistral_transcription_chunk_max_seconds,
+                    self.mistral_transcription_chunk_overlap_seconds,
+                    self.mistral_transcription_max_chunks,
+                    path,
+                    diarize,
+                    timestamp_granularities.as_deref(),
+                    context_bias.as_deref(),
+                    language,
+                    model,
+                    temperature,
+                    chunking,
+                    chunk_max_seconds,
+                    chunk_overlap_seconds,
+                    max_chunks,
+                    continue_on_chunk_error,
+                    self.max_file_chars.min(self.max_observation_chars),
+                    self.command_timeout_sec,
+                    self.mistral_transcription_request_timeout_sec,
+                    &mut self.files_read,
+                )
+                .await
             }
 
             // Shell

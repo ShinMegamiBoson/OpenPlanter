@@ -32,6 +32,7 @@ _RECON_TOOL_NAMES = {
     "fetch_url",
     "read_file",
     "read_image",
+    "audio_transcribe",
     "list_artifacts",
     "read_artifact",
 }
@@ -1260,6 +1261,80 @@ class RLMEngine:
             if b64 is not None and media_type is not None:
                 self._pending_image.data = (b64, media_type)
             return False, text
+
+        if name == "audio_transcribe":
+            path = str(args.get("path", "")).strip()
+            if not path:
+                return False, "audio_transcribe requires path"
+            diarize = args.get("diarize")
+            diarize = diarize if isinstance(diarize, bool) else None
+            raw_timestamps = args.get("timestamp_granularities")
+            if isinstance(raw_timestamps, list):
+                timestamp_granularities = [
+                    str(v).strip() for v in raw_timestamps if str(v).strip()
+                ]
+            elif isinstance(raw_timestamps, str) and raw_timestamps.strip():
+                timestamp_granularities = [raw_timestamps.strip()]
+            else:
+                timestamp_granularities = None
+            raw_context_bias = args.get("context_bias")
+            if isinstance(raw_context_bias, list):
+                context_bias = [
+                    str(v).strip() for v in raw_context_bias if str(v).strip()
+                ]
+            elif isinstance(raw_context_bias, str) and raw_context_bias.strip():
+                context_bias = [
+                    part.strip()
+                    for part in raw_context_bias.split(",")
+                    if part.strip()
+                ]
+            else:
+                context_bias = None
+            language = str(args.get("language", "")).strip() or None
+            model = str(args.get("model", "")).strip() or None
+            raw_temperature = args.get("temperature")
+            temperature = None
+            if isinstance(raw_temperature, (int, float)) and not isinstance(
+                raw_temperature, bool
+            ):
+                temperature = float(raw_temperature)
+            chunking = str(args.get("chunking", "")).strip().lower() or None
+            raw_chunk_max_seconds = args.get("chunk_max_seconds")
+            chunk_max_seconds = None
+            if isinstance(raw_chunk_max_seconds, int) and not isinstance(
+                raw_chunk_max_seconds, bool
+            ):
+                chunk_max_seconds = raw_chunk_max_seconds
+            raw_chunk_overlap_seconds = args.get("chunk_overlap_seconds")
+            chunk_overlap_seconds = None
+            if isinstance(raw_chunk_overlap_seconds, (int, float)) and not isinstance(
+                raw_chunk_overlap_seconds, bool
+            ):
+                chunk_overlap_seconds = float(raw_chunk_overlap_seconds)
+            raw_max_chunks = args.get("max_chunks")
+            max_chunks = None
+            if isinstance(raw_max_chunks, int) and not isinstance(raw_max_chunks, bool):
+                max_chunks = raw_max_chunks
+            raw_continue_on_chunk_error = args.get("continue_on_chunk_error")
+            continue_on_chunk_error = (
+                raw_continue_on_chunk_error
+                if isinstance(raw_continue_on_chunk_error, bool)
+                else None
+            )
+            return False, self.tools.audio_transcribe(
+                path=path,
+                diarize=diarize,
+                timestamp_granularities=timestamp_granularities,
+                context_bias=context_bias,
+                language=language,
+                model=model,
+                temperature=temperature,
+                chunking=chunking,
+                chunk_max_seconds=chunk_max_seconds,
+                chunk_overlap_seconds=chunk_overlap_seconds,
+                max_chunks=max_chunks,
+                continue_on_chunk_error=continue_on_chunk_error,
+            )
 
         if name == "write_file":
             path = str(args.get("path", "")).strip()

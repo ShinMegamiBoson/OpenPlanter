@@ -32,6 +32,11 @@ describe("inferProvider", () => {
     expect(inferProvider("llama3.2")).toBe("ollama");
   });
 
+  it("mistral chat models stay ollama while voxtral stays tool-only", () => {
+    expect(inferProvider("mistral")).toBe("ollama");
+    expect(inferProvider("voxtral-mini-latest")).toBeNull();
+  });
+
   it("qwen-3 returns cerebras", () => {
     expect(inferProvider("qwen-3-235b-a22b-instruct-2507")).toBe("cerebras");
   });

@@ -135,6 +135,72 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "audio_transcribe",
+        "description": (
+            "Transcribe a local audio file with Mistral's offline transcription API. "
+            "Supports diarization, timestamp granularity, context bias, language, "
+            "model override, temperature, and optional chunking for long-form audio/video."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Relative or absolute path to the audio file within the workspace.",
+                },
+                "diarize": {
+                    "type": "boolean",
+                    "description": "Whether to request speaker diarization.",
+                },
+                "timestamp_granularities": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional timestamp granularity values such as 'segment' or 'word'.",
+                },
+                "context_bias": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional bias phrases to steer transcription toward expected terms.",
+                },
+                "language": {
+                    "type": "string",
+                    "description": "Optional ISO language hint. Cannot be combined with timestamp_granularities.",
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Optional transcription model override.",
+                },
+                "temperature": {
+                    "type": "number",
+                    "description": "Optional decoding temperature.",
+                },
+                "chunking": {
+                    "type": "string",
+                    "description": "Long-form handling mode: 'auto', 'off', or 'force'.",
+                    "enum": ["auto", "off", "force"],
+                },
+                "chunk_max_seconds": {
+                    "type": "integer",
+                    "description": "Maximum chunk duration in seconds for chunked transcription.",
+                },
+                "chunk_overlap_seconds": {
+                    "type": "number",
+                    "description": "Overlap between adjacent chunks in seconds.",
+                },
+                "max_chunks": {
+                    "type": "integer",
+                    "description": "Maximum number of chunks allowed for a transcription run.",
+                },
+                "continue_on_chunk_error": {
+                    "type": "boolean",
+                    "description": "Continue remaining chunks and return partial output if a chunk fails.",
+                },
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "write_file",
         "description": "Create or overwrite a file in the workspace with the given content.",
         "parameters": {

@@ -460,6 +460,17 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_provider_auto_ignores_mistral_transcription_key() {
+        let cfg = AgentConfig {
+            provider: "auto".into(),
+            model: "some-unknown-model".into(),
+            mistral_transcription_api_key: Some("mistral-test".into()),
+            ..Default::default()
+        };
+        assert_eq!(resolve_provider(&cfg).unwrap(), "anthropic");
+    }
+
+    #[test]
     fn test_resolve_provider_anthropic_key_preferred_first() {
         let cfg = AgentConfig {
             provider: "auto".into(),

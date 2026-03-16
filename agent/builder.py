@@ -251,6 +251,15 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
         brave_base_url=cfg.brave_base_url,
         tavily_api_key=cfg.tavily_api_key,
         tavily_base_url=cfg.tavily_base_url,
+        mistral_transcription_api_key=cfg.mistral_transcription_api_key,
+        mistral_transcription_base_url=cfg.mistral_transcription_base_url,
+        mistral_transcription_model=cfg.mistral_transcription_model,
+        mistral_transcription_max_bytes=cfg.mistral_transcription_max_bytes,
+        mistral_transcription_chunk_max_seconds=cfg.mistral_transcription_chunk_max_seconds,
+        mistral_transcription_chunk_overlap_seconds=cfg.mistral_transcription_chunk_overlap_seconds,
+        mistral_transcription_max_chunks=cfg.mistral_transcription_max_chunks,
+        mistral_transcription_request_timeout_sec=cfg.mistral_transcription_request_timeout_sec,
+        max_observation_chars=cfg.max_observation_chars,
     )
 
     try:

@@ -481,6 +481,7 @@ fn is_recon_tool(name: &str) -> bool {
             | "fetch_url"
             | "read_file"
             | "read_image"
+            | "audio_transcribe"
             | "list_artifacts"
             | "read_artifact"
     )
