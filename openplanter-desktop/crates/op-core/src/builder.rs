@@ -7,13 +7,10 @@ use std::collections::HashMap;
 use regex::Regex;
 use std::sync::LazyLock;
 
-use crate::config::{
-    ANTHROPIC_FOUNDRY_MODEL_PREFIX, AZURE_FOUNDRY_MODEL_PREFIX, AgentConfig,
-    PROVIDER_DEFAULT_MODELS, resolve_anthropic_api_key, resolve_openai_api_key,
-};
+use crate::config::{AgentConfig, PROVIDER_DEFAULT_MODELS};
 use crate::model::BaseModel;
+use crate::model::openai::OpenAIModel;
 use crate::model::anthropic::AnthropicModel;
-use crate::model::openai::{OpenAIModel, ZaiRuntimeConfig};
 
 /// Error type for model/builder operations.
 #[derive(Debug, thiserror::Error)]
@@ -23,16 +20,14 @@ pub enum ModelError {
 }
 
 // Provider inference regexes — order matters (Cerebras `qwen-3` before Ollama `qwen`).
-static ANTHROPIC_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^claude").unwrap());
+static ANTHROPIC_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^claude").unwrap());
 
-static OPENAI_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^(gpt|o[1-4]-|o[1-4]$|chatgpt|dall-e|tts-|whisper)").unwrap()
-});
+static OPENAI_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^(gpt|o[1-4]-|o[1-4]$|chatgpt|dall-e|tts-|whisper)").unwrap());
 
 static CEREBRAS_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^(llama.*cerebras|qwen-3|gpt-oss)").unwrap());
-
-static ZAI_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(glm|zai-glm)").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i)^(llama.*cerebras|qwen-3|gpt-oss|zai-glm)").unwrap());
 
 // Ollama regex: `qwen` without lookahead — Cerebras check runs first, so
 // `qwen-3*` is already caught before we reach this regex.
@@ -45,13 +40,6 @@ static OLLAMA_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 /// Infer the likely provider for a model name, or `None` if ambiguous.
 pub fn infer_provider_for_model(model: &str) -> Option<&'static str> {
-    let lowered = model.trim().to_lowercase();
-    if lowered.starts_with(ANTHROPIC_FOUNDRY_MODEL_PREFIX) {
-        return Some("anthropic");
-    }
-    if lowered.starts_with(AZURE_FOUNDRY_MODEL_PREFIX) {
-        return Some("openai");
-    }
     if model.contains('/') {
         return Some("openrouter");
     }
@@ -60,9 +48,6 @@ pub fn infer_provider_for_model(model: &str) -> Option<&'static str> {
     }
     if CEREBRAS_RE.is_match(model) {
         return Some("cerebras");
-    }
-    if ZAI_RE.is_match(model) {
-        return Some("zai");
     }
     if OPENAI_RE.is_match(model) {
         return Some("openai");
@@ -101,12 +86,12 @@ pub fn resolve_model_name(cfg: &AgentConfig) -> Result<String, ModelError> {
         // For now, fall through to defaults.
         return Ok(PROVIDER_DEFAULT_MODELS
             .get(cfg.provider.as_str())
-            .unwrap_or(&"anthropic-foundry/claude-opus-4-6")
+            .unwrap_or(&"claude-opus-4-6")
             .to_string());
     }
     Ok(PROVIDER_DEFAULT_MODELS
         .get(cfg.provider.as_str())
-        .unwrap_or(&"anthropic-foundry/claude-opus-4-6")
+        .unwrap_or(&"claude-opus-4-6")
         .to_string())
 }
 
@@ -132,7 +117,6 @@ pub fn resolve_provider(cfg: &AgentConfig) -> Result<String, ModelError> {
         ("openai", &cfg.openai_api_key),
         ("openrouter", &cfg.openrouter_api_key),
         ("cerebras", &cfg.cerebras_api_key),
-        ("zai", &cfg.zai_api_key),
         ("ollama", &None), // ollama is always last — no key needed
     ];
 
@@ -147,36 +131,38 @@ pub fn resolve_provider(cfg: &AgentConfig) -> Result<String, ModelError> {
 }
 
 /// Resolve the base URL and API key for the given provider.
-pub fn resolve_endpoint(cfg: &AgentConfig, provider: &str) -> Result<(String, String), ModelError> {
+pub fn resolve_endpoint(
+    cfg: &AgentConfig,
+    provider: &str,
+) -> Result<(String, String), ModelError> {
     match provider {
         "anthropic" => {
-            let key = resolve_anthropic_api_key(
-                cfg.anthropic_api_key
-                    .clone()
-                    .or_else(|| cfg.api_key.clone()),
-                &cfg.anthropic_base_url,
-            )
-            .ok_or_else(|| {
-                ModelError::Message(
-                    "No Anthropic API key. Set ANTHROPIC_API_KEY or OPENPLANTER_ANTHROPIC_API_KEY."
-                        .into(),
-                )
-            })?;
+            let key = cfg
+                .anthropic_api_key
+                .as_deref()
+                .or(cfg.api_key.as_deref())
+                .filter(|k| !k.is_empty())
+                .ok_or_else(|| {
+                    ModelError::Message(
+                        "No Anthropic API key. Set ANTHROPIC_API_KEY or OPENPLANTER_ANTHROPIC_API_KEY.".into(),
+                    )
+                })?;
             // Anthropic base URL does NOT include /v1 suffix for /messages endpoint —
             // the model adapter appends /messages itself. The config stores it with /v1.
-            Ok((cfg.anthropic_base_url.clone(), key))
+            Ok((cfg.anthropic_base_url.clone(), key.to_string()))
         }
         "openai" => {
-            let key = resolve_openai_api_key(
-                cfg.openai_api_key.clone().or_else(|| cfg.api_key.clone()),
-                &cfg.openai_base_url,
-            )
-            .ok_or_else(|| {
-                ModelError::Message(
-                    "No OpenAI API key. Set OPENAI_API_KEY or OPENPLANTER_OPENAI_API_KEY.".into(),
-                )
-            })?;
-            Ok((cfg.openai_base_url.clone(), key))
+            let key = cfg
+                .openai_api_key
+                .as_deref()
+                .or(cfg.api_key.as_deref())
+                .filter(|k| !k.is_empty())
+                .ok_or_else(|| {
+                    ModelError::Message(
+                        "No OpenAI API key. Set OPENAI_API_KEY or OPENPLANTER_OPENAI_API_KEY.".into(),
+                    )
+                })?;
+            Ok((cfg.openai_base_url.clone(), key.to_string()))
         }
         "openrouter" => {
             let key = cfg
@@ -204,19 +190,6 @@ pub fn resolve_endpoint(cfg: &AgentConfig, provider: &str) -> Result<(String, St
                 })?;
             Ok((cfg.cerebras_base_url.clone(), key.to_string()))
         }
-        "zai" => {
-            let key = cfg
-                .zai_api_key
-                .as_deref()
-                .or(cfg.api_key.as_deref())
-                .filter(|k| !k.is_empty())
-                .ok_or_else(|| {
-                    ModelError::Message(
-                        "No Z.AI API key. Set ZAI_API_KEY or OPENPLANTER_ZAI_API_KEY.".into(),
-                    )
-                })?;
-            Ok((cfg.zai_base_url.clone(), key.to_string()))
-        }
         "ollama" => {
             // Ollama doesn't need a real key — use a dummy
             Ok((cfg.ollama_base_url.clone(), "ollama".to_string()))
@@ -239,7 +212,7 @@ pub fn build_model(cfg: &AgentConfig) -> Result<Box<dyn BaseModel>, ModelError> 
             api_key,
             cfg.reasoning_effort.clone(),
         ))),
-        "openai" | "openrouter" | "cerebras" | "zai" | "ollama" => {
+        _ => {
             // OpenAI-compatible: openai, openrouter, cerebras, ollama
             let mut extra_headers = HashMap::new();
             if provider == "openrouter" {
@@ -249,29 +222,15 @@ pub fn build_model(cfg: &AgentConfig) -> Result<Box<dyn BaseModel>, ModelError> 
                 );
                 extra_headers.insert("X-Title".to_string(), "OpenPlanter".to_string());
             }
-            if provider == "zai" {
-                extra_headers.insert("Accept-Language".to_string(), "en-US,en".to_string());
-            }
-            let model = OpenAIModel::new(
+            Ok(Box::new(OpenAIModel::new(
                 model_name,
-                provider.clone(),
+                provider,
                 base_url,
                 api_key,
                 cfg.reasoning_effort.clone(),
                 extra_headers,
-            );
-            let model = if provider == "zai" {
-                model.with_zai_runtime(ZaiRuntimeConfig {
-                    paygo_base_url: cfg.zai_paygo_base_url.clone(),
-                    coding_base_url: cfg.zai_coding_base_url.clone(),
-                    stream_max_retries: cfg.zai_stream_max_retries.max(0) as usize,
-                })
-            } else {
-                model
-            };
-            Ok(Box::new(model))
+            )))
         }
-        _ => Err(ModelError::Message(format!("Unknown provider: {provider}"))),
     }
 }
 
@@ -283,10 +242,6 @@ mod tests {
     fn test_infer_anthropic() {
         assert_eq!(
             infer_provider_for_model("claude-opus-4-6"),
-            Some("anthropic")
-        );
-        assert_eq!(
-            infer_provider_for_model("anthropic-foundry/claude-opus-4-6"),
             Some("anthropic")
         );
         assert_eq!(
@@ -302,10 +257,6 @@ mod tests {
     #[test]
     fn test_infer_openai() {
         assert_eq!(infer_provider_for_model("gpt-5.2"), Some("openai"));
-        assert_eq!(
-            infer_provider_for_model("azure-foundry/gpt-5.3-codex"),
-            Some("openai")
-        );
         assert_eq!(infer_provider_for_model("o1-preview"), Some("openai"));
         assert_eq!(infer_provider_for_model("o3"), Some("openai"));
         assert_eq!(infer_provider_for_model("chatgpt-4o"), Some("openai"));
@@ -332,12 +283,6 @@ mod tests {
     }
 
     #[test]
-    fn test_infer_zai() {
-        assert_eq!(infer_provider_for_model("glm-5"), Some("zai"));
-        assert_eq!(infer_provider_for_model("zai-glm-4.6"), Some("zai"));
-    }
-
-    #[test]
     fn test_infer_ollama() {
         assert_eq!(infer_provider_for_model("llama3.2"), Some("ollama"));
         assert_eq!(infer_provider_for_model("mistral"), Some("ollama"));
@@ -352,7 +297,6 @@ mod tests {
         // qwen-3 → cerebras, qwen (no -3) → ollama
         assert_eq!(infer_provider_for_model("qwen-3"), Some("cerebras"));
         assert_eq!(infer_provider_for_model("qwen2"), Some("ollama"));
-        assert_eq!(infer_provider_for_model("zai-glm"), Some("zai"));
     }
 
     #[test]
@@ -382,14 +326,11 @@ mod tests {
     #[test]
     fn test_resolve_model_name_explicit() {
         let cfg = AgentConfig {
-            model: "azure-foundry/gpt-5.3-codex".into(),
+            model: "gpt-5.2".into(),
             provider: "openai".into(),
             ..Default::default()
         };
-        assert_eq!(
-            resolve_model_name(&cfg).unwrap(),
-            "azure-foundry/gpt-5.3-codex"
-        );
+        assert_eq!(resolve_model_name(&cfg).unwrap(), "gpt-5.2");
     }
 
     #[test]
@@ -399,10 +340,7 @@ mod tests {
             provider: "openai".into(),
             ..Default::default()
         };
-        assert_eq!(
-            resolve_model_name(&cfg).unwrap(),
-            "azure-foundry/gpt-5.3-codex"
-        );
+        assert_eq!(resolve_model_name(&cfg).unwrap(), "gpt-5.2");
     }
 
     // ── resolve_provider ──
@@ -420,7 +358,7 @@ mod tests {
     fn test_resolve_provider_auto_infers_from_model() {
         let cfg = AgentConfig {
             provider: "auto".into(),
-            model: "anthropic-foundry/claude-opus-4-6".into(),
+            model: "claude-opus-4-6".into(),
             ..Default::default()
         };
         assert_eq!(resolve_provider(&cfg).unwrap(), "anthropic");
@@ -431,37 +369,21 @@ mod tests {
         let cfg = AgentConfig {
             provider: "auto".into(),
             model: "some-unknown-model".into(),
-            zai_api_key: Some("zai-test".into()),
-            openai_api_key: None,
-            anthropic_api_key: None,
-            openrouter_api_key: None,
-            cerebras_api_key: None,
-            ..Default::default()
-        };
-        assert_eq!(resolve_provider(&cfg).unwrap(), "zai");
-    }
-
-    #[test]
-    fn test_resolve_provider_auto_falls_back_to_openai_before_zai() {
-        let cfg = AgentConfig {
-            provider: "auto".into(),
-            model: "some-unknown-model".into(),
             openai_api_key: Some("sk-test".into()),
-            anthropic_api_key: None,
-            zai_api_key: Some("zai-test".into()),
             ..Default::default()
         };
+        // anthropic checked first but no key, openai has key
         assert_eq!(resolve_provider(&cfg).unwrap(), "openai");
     }
 
     #[test]
-    fn test_resolve_provider_auto_no_keys_defaults_to_foundry_anthropic() {
+    fn test_resolve_provider_auto_no_keys_defaults_ollama() {
         let cfg = AgentConfig {
             provider: "auto".into(),
             model: "some-unknown-model".into(),
             ..Default::default()
         };
-        assert_eq!(resolve_provider(&cfg).unwrap(), "anthropic");
+        assert_eq!(resolve_provider(&cfg).unwrap(), "ollama");
     }
 
     #[test]
@@ -485,7 +407,7 @@ mod tests {
             ..Default::default()
         };
         let (url, key) = resolve_endpoint(&cfg, "anthropic").unwrap();
-        assert_eq!(url, crate::config::FOUNDRY_ANTHROPIC_BASE_URL);
+        assert_eq!(url, "https://api.anthropic.com/v1");
         assert_eq!(key, "sk-ant-key");
     }
 
@@ -493,8 +415,6 @@ mod tests {
     fn test_resolve_endpoint_anthropic_fallback_to_api_key() {
         let cfg = AgentConfig {
             api_key: Some("fallback-key".into()),
-            anthropic_api_key: None,
-            anthropic_base_url: "https://api.anthropic.com/v1".into(),
             ..Default::default()
         };
         let (_, key) = resolve_endpoint(&cfg, "anthropic").unwrap();
@@ -503,20 +423,10 @@ mod tests {
 
     #[test]
     fn test_resolve_endpoint_anthropic_missing_key() {
-        let cfg = AgentConfig {
-            anthropic_api_key: None,
-            api_key: None,
-            anthropic_base_url: "https://api.anthropic.com/v1".into(),
-            ..Default::default()
-        };
+        let cfg = AgentConfig::default();
         let result = resolve_endpoint(&cfg, "anthropic");
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Anthropic API key")
-        );
+        assert!(result.unwrap_err().to_string().contains("Anthropic API key"));
     }
 
     #[test]
@@ -526,19 +436,8 @@ mod tests {
             ..Default::default()
         };
         let (url, key) = resolve_endpoint(&cfg, "openai").unwrap();
-        assert_eq!(url, crate::config::FOUNDRY_OPENAI_BASE_URL);
+        assert_eq!(url, "https://api.openai.com/v1");
         assert_eq!(key, "sk-openai");
-    }
-
-    #[test]
-    fn test_resolve_endpoint_zai() {
-        let cfg = AgentConfig {
-            zai_api_key: Some("zai-key".into()),
-            ..Default::default()
-        };
-        let (url, key) = resolve_endpoint(&cfg, "zai").unwrap();
-        assert_eq!(url, "https://api.z.ai/api/paas/v4");
-        assert_eq!(key, "zai-key");
     }
 
     #[test]
@@ -586,19 +485,6 @@ mod tests {
     }
 
     #[test]
-    fn test_build_model_zai() {
-        let cfg = AgentConfig {
-            provider: "zai".into(),
-            model: "glm-5".into(),
-            zai_api_key: Some("zai-key".into()),
-            ..Default::default()
-        };
-        let model = build_model(&cfg).unwrap();
-        assert_eq!(model.model_name(), "glm-5");
-        assert_eq!(model.provider_name(), "zai");
-    }
-
-    #[test]
     fn test_build_model_ollama_no_key_needed() {
         let cfg = AgentConfig {
             provider: "ollama".into(),
@@ -628,9 +514,7 @@ mod tests {
         let cfg = AgentConfig {
             provider: "openai".into(),
             model: "gpt-4o".into(),
-            openai_base_url: "https://api.openai.com/v1".into(),
-            openai_api_key: None,
-            api_key: None,
+            // No key set
             ..Default::default()
         };
         let result = build_model(&cfg);
@@ -651,10 +535,7 @@ mod tests {
             Err(e) => e.to_string(),
             Ok(_) => panic!("expected error"),
         };
-        assert!(
-            err_msg.contains("openai"),
-            "error should mention openai: {err_msg}"
-        );
+        assert!(err_msg.contains("openai"), "error should mention openai: {err_msg}");
     }
 
     #[test]

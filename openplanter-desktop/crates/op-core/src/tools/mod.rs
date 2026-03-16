@@ -2,16 +2,17 @@
 ///
 /// The `WorkspaceTools` struct is the central dispatcher that owns tool state
 /// (files-read set, background jobs) and routes tool calls to the appropriate module.
+
 pub mod defs;
 pub mod filesystem;
-pub mod patching;
 pub mod shell;
 pub mod web;
+pub mod patching;
 
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use crate::config::{AgentConfig, normalize_web_search_provider};
+use crate::config::AgentConfig;
 
 /// Result of executing a tool call.
 #[derive(Debug, Clone)]
@@ -36,16 +37,9 @@ impl ToolResult {
     }
 }
 
-#[derive(Debug, Clone)]
-enum ToolScope {
-    FullWorkspace,
-    CuratorWikiOnly { allowed_root: PathBuf },
-}
-
 /// Central dispatcher for workspace tools.
 pub struct WorkspaceTools {
     root: PathBuf,
-    scope: ToolScope,
     shell_path: String,
     command_timeout_sec: u64,
     max_shell_output_chars: usize,
@@ -53,33 +47,16 @@ pub struct WorkspaceTools {
     max_files_listed: usize,
     max_search_hits: usize,
     max_observation_chars: usize,
-    web_search_provider: String,
     exa_api_key: Option<String>,
     exa_base_url: String,
-    firecrawl_api_key: Option<String>,
-    firecrawl_base_url: String,
-    brave_api_key: Option<String>,
-    brave_base_url: String,
-    tavily_api_key: Option<String>,
-    tavily_base_url: String,
     files_read: HashSet<PathBuf>,
     bg_jobs: shell::BgJobs,
-}
-
-fn clip(text: &str, max_chars: usize) -> String {
-    if text.len() <= max_chars {
-        return text.to_string();
-    }
-    let end = text.floor_char_boundary(max_chars);
-    let omitted = text.len() - end;
-    format!("{}\n\n...[truncated {omitted} chars]...", &text[..end])
 }
 
 impl WorkspaceTools {
     pub fn new(config: &AgentConfig) -> Self {
         Self {
             root: config.workspace.clone(),
-            scope: ToolScope::FullWorkspace,
             shell_path: config.shell.clone(),
             command_timeout_sec: config.command_timeout_sec as u64,
             max_shell_output_chars: config.max_shell_output_chars as usize,
@@ -87,81 +64,24 @@ impl WorkspaceTools {
             max_files_listed: config.max_files_listed as usize,
             max_search_hits: config.max_search_hits as usize,
             max_observation_chars: config.max_observation_chars as usize,
-            web_search_provider: normalize_web_search_provider(Some(&config.web_search_provider)),
             exa_api_key: config.exa_api_key.clone(),
             exa_base_url: config.exa_base_url.clone(),
-            firecrawl_api_key: config.firecrawl_api_key.clone(),
-            firecrawl_base_url: config.firecrawl_base_url.clone(),
-            brave_api_key: config.brave_api_key.clone(),
-            brave_base_url: config.brave_base_url.clone(),
-            tavily_api_key: config.tavily_api_key.clone(),
-            tavily_base_url: config.tavily_base_url.clone(),
             files_read: HashSet::new(),
             bg_jobs: shell::BgJobs::new(),
-        }
-    }
-
-    pub fn new_curator(config: &AgentConfig) -> Self {
-        let allowed_root = filesystem::resolve_path(
-            &config.workspace,
-            &format!("{}/wiki", config.session_root_dir),
-        )
-        .unwrap_or_else(|_| config.workspace.join(&config.session_root_dir).join("wiki"));
-        Self {
-            root: config.workspace.clone(),
-            scope: ToolScope::CuratorWikiOnly { allowed_root },
-            shell_path: config.shell.clone(),
-            command_timeout_sec: config.command_timeout_sec as u64,
-            max_shell_output_chars: config.max_shell_output_chars as usize,
-            max_file_chars: config.max_file_chars as usize,
-            max_files_listed: config.max_files_listed as usize,
-            max_search_hits: config.max_search_hits as usize,
-            max_observation_chars: config.max_observation_chars as usize,
-            web_search_provider: normalize_web_search_provider(Some(&config.web_search_provider)),
-            exa_api_key: config.exa_api_key.clone(),
-            exa_base_url: config.exa_base_url.clone(),
-            firecrawl_api_key: config.firecrawl_api_key.clone(),
-            firecrawl_base_url: config.firecrawl_base_url.clone(),
-            brave_api_key: config.brave_api_key.clone(),
-            brave_base_url: config.brave_base_url.clone(),
-            tavily_api_key: config.tavily_api_key.clone(),
-            tavily_base_url: config.tavily_base_url.clone(),
-            files_read: HashSet::new(),
-            bg_jobs: shell::BgJobs::new(),
-        }
-    }
-
-    fn enforce_write_scope(&self, raw_path: &str) -> Result<(), ToolResult> {
-        match &self.scope {
-            ToolScope::FullWorkspace => Ok(()),
-            ToolScope::CuratorWikiOnly { allowed_root } => {
-                let resolved =
-                    filesystem::resolve_path(&self.root, raw_path).map_err(ToolResult::error)?;
-                if resolved == *allowed_root || resolved.starts_with(allowed_root) {
-                    Ok(())
-                } else {
-                    Err(ToolResult::error(
-                        "Curator writes are restricted to .openplanter/wiki/**".to_string(),
-                    ))
-                }
-            }
         }
     }
 
     /// Execute a tool by name with JSON arguments string.
     /// Returns the tool result, clipped to max_observation_chars.
     pub async fn execute(&mut self, name: &str, args_json: &str) -> ToolResult {
-        let args: serde_json::Value = serde_json::from_str(args_json)
-            .unwrap_or(serde_json::Value::Object(Default::default()));
+        let args: serde_json::Value =
+            serde_json::from_str(args_json).unwrap_or(serde_json::Value::Object(Default::default()));
 
         let result = match name {
             // Filesystem
             "read_file" => {
                 let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
-                let hashline = args
-                    .get("hashline")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(true);
+                let hashline = args.get("hashline").and_then(|v| v.as_bool()).unwrap_or(true);
                 filesystem::read_file(
                     &self.root,
                     path,
@@ -173,19 +93,19 @@ impl WorkspaceTools {
             "write_file" => {
                 let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
                 let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                if let Err(result) = self.enforce_write_scope(path) {
-                    return result;
-                }
                 filesystem::write_file(&self.root, path, content, &mut self.files_read)
             }
             "edit_file" => {
                 let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
                 let old_text = args.get("old_text").and_then(|v| v.as_str()).unwrap_or("");
                 let new_text = args.get("new_text").and_then(|v| v.as_str()).unwrap_or("");
-                if let Err(result) = self.enforce_write_scope(path) {
-                    return result;
-                }
-                filesystem::edit_file(&self.root, path, old_text, new_text, &mut self.files_read)
+                filesystem::edit_file(
+                    &self.root,
+                    path,
+                    old_text,
+                    new_text,
+                    &mut self.files_read,
+                )
             }
             "list_files" => {
                 let glob = args.get("glob").and_then(|v| v.as_str());
@@ -225,7 +145,12 @@ impl WorkspaceTools {
             }
             "run_shell_bg" => {
                 let command = args.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                shell::run_shell_bg(&self.root, &self.shell_path, command, &mut self.bg_jobs)
+                shell::run_shell_bg(
+                    &self.root,
+                    &self.shell_path,
+                    command,
+                    &mut self.bg_jobs,
+                )
             }
             "check_shell_bg" => {
                 let job_id = args.get("job_id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
@@ -239,24 +164,11 @@ impl WorkspaceTools {
             // Web
             "web_search" => {
                 let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                let num_results = args
-                    .get("num_results")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(10);
-                let include_text = args
-                    .get("include_text")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
+                let num_results = args.get("num_results").and_then(|v| v.as_i64()).unwrap_or(10);
+                let include_text = args.get("include_text").and_then(|v| v.as_bool()).unwrap_or(false);
                 web::web_search(
-                    &self.web_search_provider,
                     self.exa_api_key.as_deref(),
                     &self.exa_base_url,
-                    self.firecrawl_api_key.as_deref(),
-                    &self.firecrawl_base_url,
-                    self.brave_api_key.as_deref(),
-                    &self.brave_base_url,
-                    self.tavily_api_key.as_deref(),
-                    &self.tavily_base_url,
                     query,
                     num_results,
                     include_text,
@@ -276,15 +188,8 @@ impl WorkspaceTools {
                     })
                     .unwrap_or_default();
                 web::fetch_url(
-                    &self.web_search_provider,
                     self.exa_api_key.as_deref(),
                     &self.exa_base_url,
-                    self.firecrawl_api_key.as_deref(),
-                    &self.firecrawl_base_url,
-                    self.brave_api_key.as_deref(),
-                    &self.brave_base_url,
-                    self.tavily_api_key.as_deref(),
-                    &self.tavily_base_url,
                     &urls,
                     self.max_file_chars,
                     self.command_timeout_sec,
@@ -318,8 +223,12 @@ impl WorkspaceTools {
 
         // Clip observation to max_observation_chars
         if result.content.len() > self.max_observation_chars {
+            let omitted = result.content.len() - self.max_observation_chars;
             ToolResult {
-                content: clip(&result.content, self.max_observation_chars),
+                content: format!(
+                    "{}\n\n...[truncated {omitted} chars]...",
+                    &result.content[..self.max_observation_chars]
+                ),
                 is_error: result.is_error,
             }
         } else {
@@ -330,104 +239,5 @@ impl WorkspaceTools {
     /// Clean up background jobs on shutdown.
     pub fn cleanup(&mut self) {
         self.bg_jobs.cleanup();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-
-    fn test_config(root: &std::path::Path) -> AgentConfig {
-        AgentConfig::from_env(root)
-    }
-
-    #[tokio::test]
-    async fn test_curator_scope_allows_wiki_writes() {
-        let tmp = tempdir().unwrap();
-        let cfg = test_config(tmp.path());
-        let mut tools = WorkspaceTools::new_curator(&cfg);
-
-        let result = tools
-            .execute(
-                "write_file",
-                r#"{"path":".openplanter/wiki/source.md","content":"hello"}"#,
-            )
-            .await;
-
-        assert!(!result.is_error, "unexpected error: {}", result.content);
-        assert_eq!(
-            std::fs::read_to_string(tmp.path().join(".openplanter/wiki/source.md")).unwrap(),
-            "hello"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_curator_scope_rejects_non_wiki_writes() {
-        let tmp = tempdir().unwrap();
-        let cfg = test_config(tmp.path());
-        let mut tools = WorkspaceTools::new_curator(&cfg);
-
-        let result = tools
-            .execute("write_file", r#"{"path":"notes.md","content":"nope"}"#)
-            .await;
-
-        assert!(result.is_error);
-        assert!(result.content.contains(".openplanter/wiki"));
-        assert!(!tmp.path().join("notes.md").exists());
-    }
-
-    #[tokio::test]
-    async fn test_curator_scope_rejects_traversal() {
-        let tmp = tempdir().unwrap();
-        let cfg = test_config(tmp.path());
-        let mut tools = WorkspaceTools::new_curator(&cfg);
-
-        let result = tools
-            .execute(
-                "write_file",
-                r#"{"path":".openplanter/wiki/../../escape.md","content":"nope"}"#,
-            )
-            .await;
-
-        assert!(result.is_error);
-        assert!(!tmp.path().join("escape.md").exists());
-    }
-
-    #[tokio::test]
-    async fn test_full_workspace_scope_unchanged() {
-        let tmp = tempdir().unwrap();
-        let cfg = test_config(tmp.path());
-        let mut tools = WorkspaceTools::new(&cfg);
-
-        let result = tools
-            .execute("write_file", r#"{"path":"notes.md","content":"allowed"}"#)
-            .await;
-
-        assert!(!result.is_error, "unexpected error: {}", result.content);
-        assert_eq!(
-            std::fs::read_to_string(tmp.path().join("notes.md")).unwrap(),
-            "allowed"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_execute_clips_observations_on_char_boundary() {
-        let tmp = tempdir().unwrap();
-        let mut cfg = test_config(tmp.path());
-        cfg.max_observation_chars = 6000;
-        let mut tools = WorkspaceTools::new(&cfg);
-
-        let mut content = "a".repeat(5999);
-        content.push('─');
-        std::fs::write(tmp.path().join("unicode.txt"), content).unwrap();
-
-        let result = tools
-            .execute("read_file", r#"{"path":"unicode.txt","hashline":false}"#)
-            .await;
-
-        assert!(!result.is_error, "unexpected error: {}", result.content);
-        assert!(result.content.contains("[truncated"));
-        assert!(std::str::from_utf8(result.content.as_bytes()).is_ok());
     }
 }

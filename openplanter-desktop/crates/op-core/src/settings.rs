@@ -4,8 +4,6 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::{normalize_web_search_provider, normalize_zai_plan};
-
 const VALID_REASONING_EFFORTS: &[&str] = &["low", "medium", "high"];
 
 /// Normalize and validate a reasoning effort value.
@@ -40,10 +38,7 @@ pub struct PersistentSettings {
     pub default_model_anthropic: Option<String>,
     pub default_model_openrouter: Option<String>,
     pub default_model_cerebras: Option<String>,
-    pub default_model_zai: Option<String>,
     pub default_model_ollama: Option<String>,
-    pub zai_plan: Option<String>,
-    pub web_search_provider: Option<String>,
 }
 
 impl PersistentSettings {
@@ -54,7 +49,6 @@ impl PersistentSettings {
             "anthropic" => self.default_model_anthropic.as_deref(),
             "openrouter" => self.default_model_openrouter.as_deref(),
             "cerebras" => self.default_model_cerebras.as_deref(),
-            "zai" => self.default_model_zai.as_deref(),
             "ollama" => self.default_model_ollama.as_deref(),
             _ => None,
         };
@@ -73,16 +67,8 @@ impl PersistentSettings {
             .filter(|s| !s.is_empty())
             .map(String::from);
 
-        let effort = normalize_reasoning_effort(self.default_reasoning_effort.as_deref())?;
-
-        let web_search_provider = self
-            .web_search_provider
-            .as_deref()
-            .map(|value| normalize_web_search_provider(Some(value)));
-        let zai_plan = self
-            .zai_plan
-            .as_deref()
-            .map(|value| normalize_zai_plan(Some(value)));
+        let effort =
+            normalize_reasoning_effort(self.default_reasoning_effort.as_deref())?;
 
         fn trim_opt(v: &Option<String>) -> Option<String> {
             v.as_deref()
@@ -98,10 +84,7 @@ impl PersistentSettings {
             default_model_anthropic: trim_opt(&self.default_model_anthropic),
             default_model_openrouter: trim_opt(&self.default_model_openrouter),
             default_model_cerebras: trim_opt(&self.default_model_cerebras),
-            default_model_zai: trim_opt(&self.default_model_zai),
             default_model_ollama: trim_opt(&self.default_model_ollama),
-            zai_plan,
-            web_search_provider,
         })
     }
 
@@ -121,10 +104,7 @@ impl PersistentSettings {
         add!(default_model_anthropic, "default_model_anthropic");
         add!(default_model_openrouter, "default_model_openrouter");
         add!(default_model_cerebras, "default_model_cerebras");
-        add!(default_model_zai, "default_model_zai");
         add!(default_model_ollama, "default_model_ollama");
-        add!(zai_plan, "zai_plan");
-        add!(web_search_provider, "web_search_provider");
         payload
     }
 
@@ -149,10 +129,7 @@ impl PersistentSettings {
             default_model_anthropic: get_str(obj, "default_model_anthropic"),
             default_model_openrouter: get_str(obj, "default_model_openrouter"),
             default_model_cerebras: get_str(obj, "default_model_cerebras"),
-            default_model_zai: get_str(obj, "default_model_zai"),
             default_model_ollama: get_str(obj, "default_model_ollama"),
-            zai_plan: get_str(obj, "zai_plan"),
-            web_search_provider: get_str(obj, "web_search_provider"),
         };
         settings.normalized()
     }
@@ -188,9 +165,9 @@ impl SettingsStore {
     }
 
     pub fn save(&self, settings: &PersistentSettings) -> std::io::Result<()> {
-        let normalized = settings
-            .normalized()
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+        let normalized = settings.normalized().map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, e)
+        })?;
         let json = serde_json::to_string_pretty(&normalized.to_json())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         fs::write(&self.settings_path, json)
@@ -236,7 +213,6 @@ mod tests {
         let settings = PersistentSettings {
             default_model: Some("global-model".into()),
             default_model_openai: Some("gpt-5.2".into()),
-            default_model_zai: Some("glm-5".into()),
             ..Default::default()
         };
         assert_eq!(
@@ -247,7 +223,6 @@ mod tests {
             settings.default_model_for_provider("anthropic"),
             Some("global-model")
         );
-        assert_eq!(settings.default_model_for_provider("zai"), Some("glm-5"));
         assert_eq!(
             settings.default_model_for_provider("unknown"),
             Some("global-model")
@@ -261,18 +236,12 @@ mod tests {
         let settings = PersistentSettings {
             default_model: Some("gpt-5.2".into()),
             default_reasoning_effort: Some("high".into()),
-            default_model_zai: Some("glm-5".into()),
-            zai_plan: Some("coding".into()),
-            web_search_provider: Some("firecrawl".into()),
             ..Default::default()
         };
         store.save(&settings).unwrap();
         let loaded = store.load();
         assert_eq!(loaded.default_model, Some("gpt-5.2".into()));
         assert_eq!(loaded.default_reasoning_effort, Some("high".into()));
-        assert_eq!(loaded.default_model_zai, Some("glm-5".into()));
-        assert_eq!(loaded.zai_plan, Some("coding".into()));
-        assert_eq!(loaded.web_search_provider, Some("firecrawl".into()));
     }
 
     #[test]
@@ -301,9 +270,6 @@ mod tests {
             default_model: Some("gpt-5.2".into()),
             default_reasoning_effort: Some("high".into()),
             default_model_openai: Some("gpt-5.2".into()),
-            default_model_zai: Some("glm-5".into()),
-            zai_plan: Some("coding".into()),
-            web_search_provider: Some("firecrawl".into()),
             ..Default::default()
         };
         let json_val = serde_json::to_value(settings.to_json()).unwrap();
@@ -311,28 +277,5 @@ mod tests {
         assert_eq!(loaded.default_model, Some("gpt-5.2".into()));
         assert_eq!(loaded.default_reasoning_effort, Some("high".into()));
         assert_eq!(loaded.default_model_openai, Some("gpt-5.2".into()));
-        assert_eq!(loaded.default_model_zai, Some("glm-5".into()));
-        assert_eq!(loaded.zai_plan, Some("coding".into()));
-        assert_eq!(loaded.web_search_provider, Some("firecrawl".into()));
-    }
-
-    #[test]
-    fn test_web_search_provider_normalized() {
-        let settings = PersistentSettings {
-            web_search_provider: Some("unexpected".into()),
-            ..Default::default()
-        };
-        let normalized = settings.normalized().unwrap();
-        assert_eq!(normalized.web_search_provider, Some("exa".into()));
-    }
-
-    #[test]
-    fn test_zai_plan_normalized() {
-        let settings = PersistentSettings {
-            zai_plan: Some("unexpected".into()),
-            ..Default::default()
-        };
-        let normalized = settings.normalized().unwrap();
-        assert_eq!(normalized.zai_plan, Some("paygo".into()));
     }
 }

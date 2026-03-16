@@ -77,7 +77,6 @@ class ToolTests(unittest.TestCase):
             with patch.object(WorkspaceTools, "_exa_request", return_value=mocked):
                 raw = tools.web_search("test query", num_results=3, include_text=True)
             parsed = json.loads(raw)
-            self.assertEqual(parsed["provider"], "exa")
             self.assertEqual(parsed["query"], "test query")
             self.assertEqual(parsed["total"], 1)
             self.assertEqual(parsed["results"][0]["url"], "https://example.com")
@@ -99,161 +98,8 @@ class ToolTests(unittest.TestCase):
             with patch.object(WorkspaceTools, "_exa_request", return_value=mocked):
                 raw = tools.fetch_url(["https://example.com"])
             parsed = json.loads(raw)
-            self.assertEqual(parsed["provider"], "exa")
             self.assertEqual(parsed["total"], 1)
             self.assertEqual(parsed["pages"][0]["url"], "https://example.com")
-            self.assertEqual(parsed["pages"][0]["text"], "Page body")
-
-    def test_web_search_with_mocked_firecrawl_response(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            tools = WorkspaceTools(
-                root=root,
-                web_search_provider="firecrawl",
-                firecrawl_api_key="fc-key",
-            )
-            mocked = {
-                "data": [
-                    {
-                        "url": "https://example.com",
-                        "title": "Example",
-                        "description": "Snippet",
-                        "markdown": "Long text body",
-                    }
-                ]
-            }
-            with patch.object(WorkspaceTools, "_firecrawl_request", return_value=mocked):
-                raw = tools.web_search("test query", num_results=3, include_text=True)
-            parsed = json.loads(raw)
-            self.assertEqual(parsed["provider"], "firecrawl")
-            self.assertEqual(parsed["query"], "test query")
-            self.assertEqual(parsed["total"], 1)
-            self.assertEqual(parsed["results"][0]["url"], "https://example.com")
-            self.assertIn("text", parsed["results"][0])
-
-    def test_fetch_url_with_mocked_firecrawl_response(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            tools = WorkspaceTools(
-                root=root,
-                web_search_provider="firecrawl",
-                firecrawl_api_key="fc-key",
-            )
-            mocked = {
-                "data": {
-                    "url": "https://example.com",
-                    "metadata": {"title": "Example"},
-                    "markdown": "Page body",
-                }
-            }
-            with patch.object(WorkspaceTools, "_firecrawl_request", return_value=mocked):
-                raw = tools.fetch_url(["https://example.com"])
-            parsed = json.loads(raw)
-            self.assertEqual(parsed["provider"], "firecrawl")
-            self.assertEqual(parsed["total"], 1)
-            self.assertEqual(parsed["pages"][0]["url"], "https://example.com")
-            self.assertEqual(parsed["pages"][0]["text"], "Page body")
-
-    def test_web_search_with_mocked_brave_response(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            tools = WorkspaceTools(
-                root=root,
-                web_search_provider="brave",
-                brave_api_key="brave-key",
-            )
-            mocked = {
-                "web": {
-                    "results": [
-                        {
-                            "url": "https://example.com/brave",
-                            "title": "Brave Result",
-                            "description": "Snippet",
-                            "extra_snippets": ["Extra context"],
-                        }
-                    ]
-                }
-            }
-            with patch.object(WorkspaceTools, "_brave_request", return_value=mocked):
-                raw = tools.web_search("test query", num_results=3, include_text=True)
-            parsed = json.loads(raw)
-            self.assertEqual(parsed["provider"], "brave")
-            self.assertEqual(parsed["query"], "test query")
-            self.assertEqual(parsed["total"], 1)
-            self.assertEqual(parsed["results"][0]["url"], "https://example.com/brave")
-            self.assertIn("Extra context", parsed["results"][0]["text"])
-
-    def test_fetch_url_with_mocked_brave_response(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            tools = WorkspaceTools(
-                root=root,
-                web_search_provider="brave",
-            )
-            mocked = {
-                "url": "https://example.com/brave",
-                "title": "Brave Example",
-                "text": "Page body",
-            }
-            with patch.object(WorkspaceTools, "_fetch_url_direct", return_value=mocked):
-                raw = tools.fetch_url(["https://example.com/brave"])
-            parsed = json.loads(raw)
-            self.assertEqual(parsed["provider"], "brave")
-            self.assertEqual(parsed["total"], 1)
-            self.assertEqual(parsed["pages"][0]["title"], "Brave Example")
-            self.assertEqual(parsed["pages"][0]["text"], "Page body")
-
-    def test_web_search_with_mocked_tavily_response(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            tools = WorkspaceTools(
-                root=root,
-                web_search_provider="tavily",
-                tavily_api_key="tavily-key",
-            )
-            mocked = {
-                "results": [
-                    {
-                        "url": "https://example.com/tavily",
-                        "title": "Tavily Result",
-                        "content": "Snippet",
-                        "raw_content": "Long markdown body",
-                    }
-                ]
-            }
-            with patch.object(WorkspaceTools, "_tavily_request", return_value=mocked):
-                raw = tools.web_search("test query", num_results=3, include_text=True)
-            parsed = json.loads(raw)
-            self.assertEqual(parsed["provider"], "tavily")
-            self.assertEqual(parsed["query"], "test query")
-            self.assertEqual(parsed["total"], 1)
-            self.assertEqual(parsed["results"][0]["url"], "https://example.com/tavily")
-            self.assertEqual(parsed["results"][0]["snippet"], "Snippet")
-            self.assertEqual(parsed["results"][0]["text"], "Long markdown body")
-
-    def test_fetch_url_with_mocked_tavily_response(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            tools = WorkspaceTools(
-                root=root,
-                web_search_provider="tavily",
-                tavily_api_key="tavily-key",
-            )
-            mocked = {
-                "results": [
-                    {
-                        "url": "https://example.com/tavily",
-                        "title": "Tavily Example",
-                        "raw_content": "Page body",
-                    }
-                ]
-            }
-            with patch.object(WorkspaceTools, "_tavily_request", return_value=mocked):
-                raw = tools.fetch_url(["https://example.com/tavily"])
-            parsed = json.loads(raw)
-            self.assertEqual(parsed["provider"], "tavily")
-            self.assertEqual(parsed["total"], 1)
-            self.assertEqual(parsed["pages"][0]["title"], "Tavily Example")
             self.assertEqual(parsed["pages"][0]["text"], "Page body")
 
     def test_web_search_without_exa_key(self) -> None:
@@ -262,27 +108,6 @@ class ToolTests(unittest.TestCase):
             tools = WorkspaceTools(root=root, exa_api_key=None)
             out = tools.web_search("test")
             self.assertIn("EXA_API_KEY not configured", out)
-
-    def test_web_search_without_firecrawl_key(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            tools = WorkspaceTools(root=root, web_search_provider="firecrawl", firecrawl_api_key=None)
-            out = tools.web_search("test")
-            self.assertIn("FIRECRAWL_API_KEY not configured", out)
-
-    def test_web_search_without_brave_key(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            tools = WorkspaceTools(root=root, web_search_provider="brave", brave_api_key=None)
-            out = tools.web_search("test")
-            self.assertIn("BRAVE_API_KEY not configured", out)
-
-    def test_web_search_without_tavily_key(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            tools = WorkspaceTools(root=root, web_search_provider="tavily", tavily_api_key=None)
-            out = tools.web_search("test")
-            self.assertIn("TAVILY_API_KEY not configured", out)
 
     def test_repo_map_python_symbols(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

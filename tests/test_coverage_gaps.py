@@ -69,18 +69,11 @@ class StripQuotesTests(unittest.TestCase):
 class MergeMissingTests(unittest.TestCase):
     def test_fills_missing_keys(self) -> None:
         a = CredentialBundle(openai_api_key="oa")
-        b = CredentialBundle(
-            anthropic_api_key="an",
-            exa_api_key="exa",
-            brave_api_key="brave",
-            tavily_api_key="tavily",
-        )
+        b = CredentialBundle(anthropic_api_key="an", exa_api_key="exa")
         a.merge_missing(b)
         self.assertEqual(a.openai_api_key, "oa")
         self.assertEqual(a.anthropic_api_key, "an")
         self.assertEqual(a.exa_api_key, "exa")
-        self.assertEqual(a.brave_api_key, "brave")
-        self.assertEqual(a.tavily_api_key, "tavily")
 
     def test_does_not_overwrite_existing(self) -> None:
         a = CredentialBundle(openai_api_key="mine")
@@ -102,8 +95,6 @@ class MergeMissingTests(unittest.TestCase):
             openrouter_api_key="or",
             cerebras_api_key="cb",
             exa_api_key="exa",
-            brave_api_key="brave",
-            tavily_api_key="tavily",
         )
         a.merge_missing(b)
         self.assertEqual(a.openai_api_key, "oa")
@@ -111,8 +102,6 @@ class MergeMissingTests(unittest.TestCase):
         self.assertEqual(a.openrouter_api_key, "or")
         self.assertEqual(a.cerebras_api_key, "cb")
         self.assertEqual(a.exa_api_key, "exa")
-        self.assertEqual(a.brave_api_key, "brave")
-        self.assertEqual(a.tavily_api_key, "tavily")
 
 
 # ---------------------------------------------------------------------------
@@ -127,8 +116,6 @@ class CredentialsFromEnvTests(unittest.TestCase):
             "ANTHROPIC_API_KEY": "an-key",
             "OPENROUTER_API_KEY": "or-key",
             "EXA_API_KEY": "exa-key",
-            "BRAVE_API_KEY": "brave-key",
-            "TAVILY_API_KEY": "tavily-key",
         }
         with patch.dict(os.environ, env, clear=True):
             creds = credentials_from_env()
@@ -136,8 +123,6 @@ class CredentialsFromEnvTests(unittest.TestCase):
         self.assertEqual(creds.anthropic_api_key, "an-key")
         self.assertEqual(creds.openrouter_api_key, "or-key")
         self.assertEqual(creds.exa_api_key, "exa-key")
-        self.assertEqual(creds.brave_api_key, "brave-key")
-        self.assertEqual(creds.tavily_api_key, "tavily-key")
 
     def test_rlm_prefix_takes_priority(self) -> None:
         env = {
@@ -177,91 +162,29 @@ class AgentConfigFromEnvTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             cfg = AgentConfig.from_env("/tmp/test-ws")
         self.assertEqual(cfg.provider, "auto")
-        self.assertEqual(cfg.model, "anthropic-foundry/claude-opus-4-6")
+        self.assertEqual(cfg.model, "claude-opus-4-6")
         self.assertEqual(cfg.reasoning_effort, "high")
         self.assertEqual(cfg.max_depth, 4)
         self.assertEqual(cfg.max_steps_per_call, 100)
-        self.assertTrue(cfg.budget_extension_enabled)
-        self.assertEqual(cfg.budget_extension_block_steps, 20)
-        self.assertEqual(cfg.budget_extension_max_blocks, 2)
         self.assertEqual(cfg.shell, "/bin/sh")
-        self.assertEqual(
-            cfg.openai_base_url,
-            "https://foundry-proxy.cheetah-koi.ts.net/openai/v1",
-        )
-        self.assertEqual(
-            cfg.anthropic_base_url,
-            "https://foundry-proxy.cheetah-koi.ts.net/anthropic/v1",
-        )
-        self.assertEqual(cfg.openai_api_key, "dont-worry-this-key-will-be-auto-injected")
-        self.assertEqual(cfg.anthropic_api_key, "dont-worry-it-will-be-injected")
 
     def test_custom_env_overrides(self) -> None:
         env = {
             "OPENPLANTER_PROVIDER": "anthropic",
-            "OPENPLANTER_MODEL": "anthropic-foundry/claude-opus-4-6",
+            "OPENPLANTER_MODEL": "claude-opus-4-6",
             "OPENPLANTER_REASONING_EFFORT": "low",
             "OPENPLANTER_MAX_DEPTH": "5",
             "OPENPLANTER_MAX_STEPS": "20",
-            "OPENPLANTER_BUDGET_EXTENSION_ENABLED": "false",
-            "OPENPLANTER_BUDGET_EXTENSION_BLOCK_STEPS": "7",
-            "OPENPLANTER_BUDGET_EXTENSION_MAX_BLOCKS": "1",
             "OPENPLANTER_SHELL": "/bin/bash",
-            "OPENPLANTER_WEB_SEARCH_PROVIDER": "tavily",
-            "OPENPLANTER_TAVILY_BASE_URL": "https://tavily.example",
         }
         with patch.dict(os.environ, env, clear=True):
             cfg = AgentConfig.from_env("/tmp/test-ws")
         self.assertEqual(cfg.provider, "anthropic")
-        self.assertEqual(cfg.model, "anthropic-foundry/claude-opus-4-6")
+        self.assertEqual(cfg.model, "claude-opus-4-6")
         self.assertEqual(cfg.reasoning_effort, "low")
         self.assertEqual(cfg.max_depth, 5)
         self.assertEqual(cfg.max_steps_per_call, 20)
-        self.assertFalse(cfg.budget_extension_enabled)
-        self.assertEqual(cfg.budget_extension_block_steps, 7)
-        self.assertEqual(cfg.budget_extension_max_blocks, 1)
         self.assertEqual(cfg.shell, "/bin/bash")
-        self.assertEqual(cfg.web_search_provider, "tavily")
-        self.assertEqual(cfg.tavily_base_url, "https://tavily.example")
-
-    def test_rate_limit_and_zai_stream_retries_from_env(self) -> None:
-        env = {
-            "OPENPLANTER_RATE_LIMIT_MAX_RETRIES": "7",
-            "OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC": "0.5",
-            "OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC": "10.0",
-            "OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC": "30.0",
-            "OPENPLANTER_ZAI_STREAM_MAX_RETRIES": "8",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            cfg = AgentConfig.from_env("/tmp/test-ws")
-        self.assertEqual(cfg.rate_limit_max_retries, 7)
-        self.assertEqual(cfg.rate_limit_backoff_base_sec, 0.5)
-        self.assertEqual(cfg.rate_limit_backoff_max_sec, 10.0)
-        self.assertEqual(cfg.rate_limit_retry_after_cap_sec, 30.0)
-        self.assertEqual(cfg.zai_stream_max_retries, 8)
-
-    def test_zai_plan_selects_endpoint(self) -> None:
-        env = {
-            "OPENPLANTER_ZAI_PLAN": "coding",
-            "OPENPLANTER_ZAI_PAYGO_BASE_URL": "https://paygo.example/v4",
-            "OPENPLANTER_ZAI_CODING_BASE_URL": "https://coding.example/v4",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            cfg = AgentConfig.from_env("/tmp/test-ws")
-        self.assertEqual(cfg.zai_plan, "coding")
-        self.assertEqual(cfg.zai_base_url, "https://coding.example/v4")
-
-    def test_zai_base_url_override_wins_over_plan(self) -> None:
-        env = {
-            "OPENPLANTER_ZAI_PLAN": "paygo",
-            "OPENPLANTER_ZAI_BASE_URL": "https://override.example/v4",
-            "OPENPLANTER_ZAI_PAYGO_BASE_URL": "https://paygo.example/v4",
-            "OPENPLANTER_ZAI_CODING_BASE_URL": "https://coding.example/v4",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            cfg = AgentConfig.from_env("/tmp/test-ws")
-        self.assertEqual(cfg.zai_plan, "paygo")
-        self.assertEqual(cfg.zai_base_url, "https://override.example/v4")
 
     def test_api_keys_from_env(self) -> None:
         env = {
@@ -269,8 +192,6 @@ class AgentConfigFromEnvTests(unittest.TestCase):
             "ANTHROPIC_API_KEY": "an",
             "OPENROUTER_API_KEY": "or",
             "EXA_API_KEY": "exa",
-            "BRAVE_API_KEY": "brave",
-            "TAVILY_API_KEY": "tavily",
         }
         with patch.dict(os.environ, env, clear=True):
             cfg = AgentConfig.from_env("/tmp/test-ws")
@@ -278,18 +199,6 @@ class AgentConfigFromEnvTests(unittest.TestCase):
         self.assertEqual(cfg.anthropic_api_key, "an")
         self.assertEqual(cfg.openrouter_api_key, "or")
         self.assertEqual(cfg.exa_api_key, "exa")
-        self.assertEqual(cfg.brave_api_key, "brave")
-        self.assertEqual(cfg.tavily_api_key, "tavily")
-
-    def test_foundry_placeholder_keys_disabled_for_public_endpoints(self) -> None:
-        env = {
-            "OPENPLANTER_OPENAI_BASE_URL": "https://api.openai.com/v1",
-            "OPENPLANTER_ANTHROPIC_BASE_URL": "https://api.anthropic.com/v1",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            cfg = AgentConfig.from_env("/tmp/test-ws")
-        self.assertIsNone(cfg.openai_api_key)
-        self.assertIsNone(cfg.anthropic_api_key)
 
     def test_workspace_resolved(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
@@ -365,25 +274,19 @@ class ResolveModelNameTests(unittest.TestCase):
 
     def test_empty_model_uses_provider_default(self) -> None:
         cfg = AgentConfig(workspace=Path("/tmp"), provider="openai", model="")
-        self.assertEqual(_resolve_model_name(cfg), "azure-foundry/gpt-5.3-codex")
+        self.assertEqual(_resolve_model_name(cfg), "gpt-5.2")
 
     def test_empty_model_anthropic_default(self) -> None:
         cfg = AgentConfig(workspace=Path("/tmp"), provider="anthropic", model="")
-        self.assertEqual(_resolve_model_name(cfg), "anthropic-foundry/claude-opus-4-6")
+        self.assertEqual(_resolve_model_name(cfg), "claude-opus-4-6")
 
     def test_unknown_provider_fallback(self) -> None:
         cfg = AgentConfig(workspace=Path("/tmp"), provider="custom", model="")
         result = _resolve_model_name(cfg)
-        self.assertEqual(result, "anthropic-foundry/claude-opus-4-6")
+        self.assertEqual(result, "claude-opus-4-6")
 
     def test_newest_without_key_raises(self) -> None:
-        cfg = AgentConfig(
-            workspace=Path("/tmp"),
-            provider="openai",
-            model="newest",
-            openai_base_url="https://api.openai.com/v1",
-            openai_api_key=None,
-        )
+        cfg = AgentConfig(workspace=Path("/tmp"), provider="openai", model="newest")
         with self.assertRaises(ModelError):
             _resolve_model_name(cfg)
 
@@ -399,7 +302,7 @@ class BuildEngineTests(unittest.TestCase):
             cfg = AgentConfig(
                 workspace=Path(tmpdir),
                 provider="openai",
-                model="azure-foundry/gpt-5.3-codex",
+                model="gpt-5.2",
                 openai_api_key="test-key",
             )
             engine = build_engine(cfg)
@@ -410,7 +313,7 @@ class BuildEngineTests(unittest.TestCase):
             cfg = AgentConfig(
                 workspace=Path(tmpdir),
                 provider="anthropic",
-                model="anthropic-foundry/claude-opus-4-6",
+                model="claude-opus-4-6",
                 anthropic_api_key="test-key",
             )
             engine = build_engine(cfg)
@@ -421,10 +324,8 @@ class BuildEngineTests(unittest.TestCase):
             cfg = AgentConfig(
                 workspace=Path(tmpdir),
                 provider="openai",
-                model="azure-foundry/gpt-5.3-codex",
-                openai_base_url="https://api.openai.com/v1",
-                openai_api_key=None,
-                )
+                model="gpt-5.2",
+            )
             engine = build_engine(cfg)
             self.assertIsInstance(engine.model, EchoFallbackModel)
 
@@ -438,33 +339,6 @@ class BuildEngineTests(unittest.TestCase):
             )
             engine = build_engine(cfg)
             self.assertIsInstance(engine.model, OpenAICompatibleModel)
-
-    def test_zai_stream_retries_propagated(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cfg = AgentConfig(
-                workspace=Path(tmpdir),
-                provider="zai",
-                model="glm-5",
-                zai_api_key="test-key",
-                zai_stream_max_retries=10,
-            )
-            engine = build_engine(cfg)
-            self.assertIsInstance(engine.model, OpenAICompatibleModel)
-            self.assertEqual(engine.model.stream_max_retries, 10)
-
-    def test_zai_coding_plan_sets_coding_endpoint(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            env = {
-                "OPENPLANTER_PROVIDER": "zai",
-                "OPENPLANTER_MODEL": "glm-5",
-                "OPENPLANTER_ZAI_PLAN": "coding",
-            }
-            with patch.dict(os.environ, env, clear=True):
-                cfg = AgentConfig.from_env(Path(tmpdir))
-            cfg.zai_api_key = "test-key"
-            engine = build_engine(cfg)
-            self.assertIsInstance(engine.model, OpenAICompatibleModel)
-            self.assertEqual(engine.model.base_url, cfg.zai_coding_base_url)
 
     def test_model_provider_mismatch_raises(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -30,7 +30,6 @@ class PersistentSettings:
     default_model_anthropic: str | None = None
     default_model_openrouter: str | None = None
     default_model_cerebras: str | None = None
-    default_model_zai: str | None = None
     default_model_ollama: str | None = None
 
     def default_model_for_provider(self, provider: str) -> str | None:
@@ -39,7 +38,6 @@ class PersistentSettings:
             "anthropic": self.default_model_anthropic,
             "openrouter": self.default_model_openrouter,
             "cerebras": self.default_model_cerebras,
-            "zai": self.default_model_zai,
             "ollama": self.default_model_ollama,
         }
         specific = per_provider.get(provider)
@@ -57,7 +55,6 @@ class PersistentSettings:
             default_model_anthropic=(self.default_model_anthropic or "").strip() or None,
             default_model_openrouter=(self.default_model_openrouter or "").strip() or None,
             default_model_cerebras=(self.default_model_cerebras or "").strip() or None,
-            default_model_zai=(self.default_model_zai or "").strip() or None,
             default_model_ollama=(self.default_model_ollama or "").strip() or None,
         )
 
@@ -75,8 +72,6 @@ class PersistentSettings:
             payload["default_model_openrouter"] = self.default_model_openrouter
         if self.default_model_cerebras:
             payload["default_model_cerebras"] = self.default_model_cerebras
-        if self.default_model_zai:
-            payload["default_model_zai"] = self.default_model_zai
         if self.default_model_ollama:
             payload["default_model_ollama"] = self.default_model_ollama
         return payload
@@ -94,7 +89,6 @@ class PersistentSettings:
             default_model_anthropic=(str(payload.get("default_model_anthropic", "")).strip() or None),
             default_model_openrouter=(str(payload.get("default_model_openrouter", "")).strip() or None),
             default_model_cerebras=(str(payload.get("default_model_cerebras", "")).strip() or None),
-            default_model_zai=(str(payload.get("default_model_zai", "")).strip() or None),
             default_model_ollama=(str(payload.get("default_model_ollama", "")).strip() or None),
         ).normalized()
 

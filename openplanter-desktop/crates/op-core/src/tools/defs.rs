@@ -2,7 +2,8 @@
 ///
 /// Single source of truth for tool schemas. Converter helpers produce the
 /// provider-specific shapes expected by OpenAI and Anthropic APIs.
-use serde_json::{Value, json};
+
+use serde_json::{json, Value};
 
 struct ToolDef {
     name: &'static str,
@@ -176,7 +177,7 @@ fn mvp_tool_defs() -> Vec<ToolDef> {
         // ── Web ──
         ToolDef {
             name: "web_search",
-            description: "Search the web using the configured Exa, Firecrawl, Brave, or Tavily backend. Returns URLs, titles, snippets, and optional page text.",
+            description: "Search the web using the Exa API. Returns URLs, titles, and optional page text.",
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -199,7 +200,7 @@ fn mvp_tool_defs() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "fetch_url",
-            description: "Fetch and return the text content of one or more URLs using the configured Exa, Firecrawl, Brave, or Tavily backend.",
+            description: "Fetch and return the text content of one or more URLs.",
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -296,11 +297,7 @@ fn mvp_tool_defs() -> Vec<ToolDef> {
 /// For OpenAI strict mode: make all properties required, wrapping optional ones
 /// with `anyOf [original, null]`. Recurse into nested objects and array items.
 fn strict_fixup(schema: &mut Value) {
-    let Some(schema_type) = schema
-        .get("type")
-        .and_then(|t| t.as_str())
-        .map(String::from)
-    else {
+    let Some(schema_type) = schema.get("type").and_then(|t| t.as_str()).map(String::from) else {
         return;
     };
 
@@ -527,24 +524,17 @@ mod tests {
     fn test_strict_fixup_wraps_optional_with_anyof() {
         // list_files has only optional "glob" parameter
         let tools = to_openai_tools();
-        let list_files = tools
-            .iter()
-            .find(|t| t["function"]["name"] == "list_files")
-            .unwrap();
+        let list_files = tools.iter().find(|t| t["function"]["name"] == "list_files").unwrap();
         let glob_prop = &list_files["function"]["parameters"]["properties"]["glob"];
-        assert!(
-            glob_prop.get("anyOf").is_some(),
-            "Optional 'glob' should be wrapped with anyOf"
-        );
+        assert!(glob_prop.get("anyOf").is_some(), "Optional 'glob' should be wrapped with anyOf");
     }
 
     #[test]
     fn test_curator_tool_defs_openai() {
         let tools = build_curator_tool_defs("openai");
-        assert_eq!(tools.len(), 6, "curator should have exactly 6 tools");
+        assert_eq!(tools.len(), 8, "curator should have exactly 8 tools");
 
-        let names: Vec<String> = tools
-            .iter()
+        let names: Vec<String> = tools.iter()
             .map(|t| t["function"]["name"].as_str().unwrap().to_string())
             .collect();
 
@@ -555,8 +545,6 @@ mod tests {
         assert!(names.contains(&"list_files".to_string()));
         assert!(names.contains(&"search_files".to_string()));
         assert!(names.contains(&"think".to_string()));
-        assert!(!names.contains(&"apply_patch".to_string()));
-        assert!(!names.contains(&"hashline_edit".to_string()));
 
         // Should NOT include web, shell, or bg job tools
         assert!(!names.contains(&"web_search".to_string()));
@@ -570,7 +558,7 @@ mod tests {
     #[test]
     fn test_curator_tool_defs_anthropic() {
         let tools = build_curator_tool_defs("anthropic");
-        assert_eq!(tools.len(), 6);
+        assert_eq!(tools.len(), 8);
 
         // Anthropic format: flat with input_schema
         assert!(tools[0].get("input_schema").is_some());

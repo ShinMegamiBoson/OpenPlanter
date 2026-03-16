@@ -6,13 +6,7 @@ import sys
 from datetime import datetime, timezone
 
 from .builder import _fetch_models_for_provider, build_engine, infer_provider_for_model
-from .config import (
-    AgentConfig,
-    normalize_zai_plan,
-    resolve_anthropic_api_key,
-    resolve_openai_api_key,
-    resolve_zai_base_url,
-)
+from .config import AgentConfig
 from .credentials import (
     CredentialBundle,
     CredentialStore,
@@ -39,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--provider",
         default=None,
-        choices=["auto", "openai", "anthropic", "openrouter", "cerebras", "zai", "ollama", "all"],
+        choices=["auto", "openai", "anthropic", "openrouter", "cerebras", "ollama", "all"],
         help="Model provider. Use 'all' only with --list-models.",
     )
     parser.add_argument("--model", help="Model name (use 'newest' to auto-select latest from API).")
@@ -74,10 +68,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Persist workspace default model for Cerebras provider.",
     )
     parser.add_argument(
-        "--default-model-zai",
-        help="Persist workspace default model for Z.AI provider.",
-    )
-    parser.add_argument(
         "--default-model-ollama",
         help="Persist workspace default model for Ollama provider.",
     )
@@ -92,21 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--anthropic-api-key", help="Anthropic API key override.")
     parser.add_argument("--openrouter-api-key", help="OpenRouter API key override.")
     parser.add_argument("--cerebras-api-key", help="Cerebras API key override.")
-    parser.add_argument("--zai-api-key", help="Z.AI API key override.")
-    parser.add_argument(
-        "--zai-plan",
-        choices=["paygo", "coding"],
-        help="Z.AI endpoint plan: paygo uses /api/paas/v4, coding uses /api/coding/paas/v4.",
-    )
     parser.add_argument("--exa-api-key", help="Exa API key override.")
-    parser.add_argument("--firecrawl-api-key", help="Firecrawl API key override.")
-    parser.add_argument("--brave-api-key", help="Brave Search API key override.")
-    parser.add_argument("--tavily-api-key", help="Tavily API key override.")
-    parser.add_argument(
-        "--web-search-provider",
-        choices=["exa", "firecrawl", "brave", "tavily"],
-        help="Web search backend provider.",
-    )
     parser.add_argument("--voyage-api-key", help="Voyage API key override.")
     parser.add_argument(
         "--configure-keys",
@@ -135,11 +111,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--session-id",
         help="Session id to use. If omitted, a new id is generated unless --resume is used.",
-    )
-    parser.add_argument(
-        "session_id_positional",
-        nargs="?",
-        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--resume",
@@ -182,7 +153,7 @@ def _format_ts(ts: int) -> str:
 
 def _resolve_provider(requested: str, creds: CredentialBundle) -> str:
     requested = requested.strip().lower()
-    if requested in {"openai", "anthropic", "openrouter", "cerebras", "zai", "ollama"}:
+    if requested in {"openai", "anthropic", "openrouter", "cerebras", "ollama"}:
         return requested
     if requested == "all":
         return "all"
@@ -194,17 +165,15 @@ def _resolve_provider(requested: str, creds: CredentialBundle) -> str:
         return "openrouter"
     if creds.cerebras_api_key:
         return "cerebras"
-    if creds.zai_api_key:
-        return "zai"
-    return "anthropic"
+    return "openai"
 
 
 def _print_models(cfg: AgentConfig, requested_provider: str) -> int:
     providers: list[str]
     if requested_provider == "all":
-        providers = ["openai", "anthropic", "openrouter", "cerebras", "zai", "ollama"]
+        providers = ["openai", "anthropic", "openrouter", "cerebras", "ollama"]
     elif requested_provider == "auto":
-        providers = ["openai", "anthropic", "openrouter", "cerebras", "zai", "ollama"]
+        providers = ["openai", "anthropic", "openrouter", "cerebras", "ollama"]
     else:
         providers = [requested_provider]
 
@@ -240,11 +209,7 @@ def _load_credentials(
         anthropic_api_key=user_creds.anthropic_api_key,
         openrouter_api_key=user_creds.openrouter_api_key,
         cerebras_api_key=user_creds.cerebras_api_key,
-        zai_api_key=user_creds.zai_api_key,
         exa_api_key=user_creds.exa_api_key,
-        firecrawl_api_key=user_creds.firecrawl_api_key,
-        brave_api_key=user_creds.brave_api_key,
-        tavily_api_key=user_creds.tavily_api_key,
         voyage_api_key=user_creds.voyage_api_key,
     )
 
@@ -258,16 +223,8 @@ def _load_credentials(
         creds.openrouter_api_key = stored.openrouter_api_key
     if stored.cerebras_api_key:
         creds.cerebras_api_key = stored.cerebras_api_key
-    if stored.zai_api_key:
-        creds.zai_api_key = stored.zai_api_key
     if stored.exa_api_key:
         creds.exa_api_key = stored.exa_api_key
-    if stored.firecrawl_api_key:
-        creds.firecrawl_api_key = stored.firecrawl_api_key
-    if stored.brave_api_key:
-        creds.brave_api_key = stored.brave_api_key
-    if stored.tavily_api_key:
-        creds.tavily_api_key = stored.tavily_api_key
     if stored.voyage_api_key:
         creds.voyage_api_key = stored.voyage_api_key
 
@@ -280,16 +237,8 @@ def _load_credentials(
         creds.openrouter_api_key = env_creds.openrouter_api_key
     if env_creds.cerebras_api_key:
         creds.cerebras_api_key = env_creds.cerebras_api_key
-    if env_creds.zai_api_key:
-        creds.zai_api_key = env_creds.zai_api_key
     if env_creds.exa_api_key:
         creds.exa_api_key = env_creds.exa_api_key
-    if env_creds.firecrawl_api_key:
-        creds.firecrawl_api_key = env_creds.firecrawl_api_key
-    if env_creds.brave_api_key:
-        creds.brave_api_key = env_creds.brave_api_key
-    if env_creds.tavily_api_key:
-        creds.tavily_api_key = env_creds.tavily_api_key
     if env_creds.voyage_api_key:
         creds.voyage_api_key = env_creds.voyage_api_key
 
@@ -307,16 +256,8 @@ def _load_credentials(
         creds.openrouter_api_key = args.openrouter_api_key.strip() or creds.openrouter_api_key
     if args.cerebras_api_key:
         creds.cerebras_api_key = args.cerebras_api_key.strip() or creds.cerebras_api_key
-    if args.zai_api_key:
-        creds.zai_api_key = args.zai_api_key.strip() or creds.zai_api_key
     if args.exa_api_key:
         creds.exa_api_key = args.exa_api_key.strip() or creds.exa_api_key
-    if args.firecrawl_api_key:
-        creds.firecrawl_api_key = args.firecrawl_api_key.strip() or creds.firecrawl_api_key
-    if args.brave_api_key:
-        creds.brave_api_key = args.brave_api_key.strip() or creds.brave_api_key
-    if args.tavily_api_key:
-        creds.tavily_api_key = args.tavily_api_key.strip() or creds.tavily_api_key
     if args.voyage_api_key:
         creds.voyage_api_key = args.voyage_api_key.strip() or creds.voyage_api_key
 
@@ -355,28 +296,13 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
         cfg.provider = args.provider
     cfg.provider = _resolve_provider(cfg.provider, creds)
 
-    cfg.openai_api_key = resolve_openai_api_key(creds.openai_api_key, cfg.openai_base_url)
-    cfg.anthropic_api_key = resolve_anthropic_api_key(
-        creds.anthropic_api_key,
-        cfg.anthropic_base_url,
-    )
+    cfg.openai_api_key = creds.openai_api_key
+    cfg.anthropic_api_key = creds.anthropic_api_key
     cfg.openrouter_api_key = creds.openrouter_api_key
     cfg.cerebras_api_key = creds.cerebras_api_key
-    cfg.zai_api_key = creds.zai_api_key
     cfg.exa_api_key = creds.exa_api_key
-    cfg.firecrawl_api_key = creds.firecrawl_api_key
-    cfg.brave_api_key = creds.brave_api_key
-    cfg.tavily_api_key = creds.tavily_api_key
     cfg.voyage_api_key = creds.voyage_api_key
     cfg.api_key = cfg.openai_api_key
-
-    if args.zai_plan:
-        cfg.zai_plan = normalize_zai_plan(args.zai_plan)
-        cfg.zai_base_url = resolve_zai_base_url(
-            cfg.zai_plan,
-            paygo_base_url=cfg.zai_paygo_base_url,
-            coding_base_url=cfg.zai_coding_base_url,
-        )
 
     if args.base_url:
         if cfg.provider == "openai":
@@ -387,25 +313,12 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
             cfg.openrouter_base_url = args.base_url
         elif cfg.provider == "cerebras":
             cfg.cerebras_base_url = args.base_url
-        elif cfg.provider == "zai":
-            cfg.zai_base_url = args.base_url
         elif cfg.provider == "ollama":
             cfg.ollama_base_url = args.base_url
         cfg.base_url = args.base_url
 
-    cfg.openai_api_key = resolve_openai_api_key(cfg.openai_api_key, cfg.openai_base_url)
-    cfg.anthropic_api_key = resolve_anthropic_api_key(
-        cfg.anthropic_api_key,
-        cfg.anthropic_base_url,
-    )
-    cfg.api_key = resolve_openai_api_key(cfg.api_key, cfg.base_url)
-
     if args.model:
         cfg.model = args.model
-    if args.web_search_provider:
-        cfg.web_search_provider = args.web_search_provider
-    if cfg.web_search_provider not in {"exa", "firecrawl", "brave", "tavily"}:
-        cfg.web_search_provider = "exa"
     if args.reasoning_effort:
         cfg.reasoning_effort = None if args.reasoning_effort == "none" else args.reasoning_effort
     if args.recursive:
@@ -477,9 +390,6 @@ def _apply_persistent_settings(
     if args.default_model_cerebras is not None:
         settings.default_model_cerebras = args.default_model_cerebras.strip() or None
         changed = True
-    if args.default_model_zai is not None:
-        settings.default_model_zai = args.default_model_zai.strip() or None
-        changed = True
     if args.default_model_ollama is not None:
         settings.default_model_ollama = args.default_model_ollama.strip() or None
         changed = True
@@ -513,7 +423,6 @@ def _print_settings(settings: PersistentSettings) -> None:
     print(f"  default_model_anthropic: {settings.default_model_anthropic or '(unset)'}")
     print(f"  default_model_openrouter: {settings.default_model_openrouter or '(unset)'}")
     print(f"  default_model_cerebras: {settings.default_model_cerebras or '(unset)'}")
-    print(f"  default_model_zai: {settings.default_model_zai or '(unset)'}")
     print(f"  default_model_ollama: {settings.default_model_ollama or '(unset)'}")
 
 
@@ -540,8 +449,6 @@ def _has_non_interactive_command(args: argparse.Namespace) -> bool:
         return True
     if args.default_model_cerebras is not None:
         return True
-    if args.default_model_zai is not None:
-        return True
     if args.default_model_ollama is not None:
         return True
     return False
@@ -550,11 +457,6 @@ def _has_non_interactive_command(args: argparse.Namespace) -> bool:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-
-    if args.resume and args.session_id is None and args.session_id_positional:
-        args.session_id = args.session_id_positional
-    elif args.session_id_positional and not args.resume:
-        parser.error("Positional session-id is only supported with --resume.")
 
     non_tty = not (sys.stdin.isatty() and sys.stdout.isatty())
     if (args.headless or non_tty) and not args.textual:
@@ -624,7 +526,6 @@ def main() -> None:
                 "anthropic": cfg.anthropic_api_key,
                 "openrouter": cfg.openrouter_api_key,
                 "cerebras": cfg.cerebras_api_key,
-                "zai": cfg.zai_api_key,
                 "ollama": "ollama",
             }.get(inferred)
             if key:
@@ -653,11 +554,7 @@ def main() -> None:
     startup_info: dict[str, str] = {
         "Provider": cfg.provider,
         "Model": model_name,
-        "WebSearch": cfg.web_search_provider,
     }
-    if cfg.provider == "zai":
-        startup_info["ZAIPlan"] = cfg.zai_plan
-        startup_info["ZAIURL"] = cfg.zai_base_url
     if cfg.reasoning_effort:
         startup_info["Reasoning"] = cfg.reasoning_effort
     startup_info["Mode"] = "recursive" if cfg.recursive else "flat"
