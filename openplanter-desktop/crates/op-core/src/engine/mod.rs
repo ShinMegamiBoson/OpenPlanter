@@ -550,7 +550,7 @@ fn normalize_progress_fragment(text: &str, max_len: usize) -> String {
         }
     }
     if normalized.len() > max_len {
-        normalized.truncate(max_len);
+        normalized = safe_prefix(&normalized, max_len).to_string();
     }
     normalized
 }
@@ -558,7 +558,7 @@ fn normalize_progress_fragment(text: &str, max_len: usize) -> String {
 fn summarize_observation(text: &str, max_len: usize) -> String {
     let first = text.lines().next().unwrap_or("").trim();
     if first.len() > max_len {
-        format!("{}...", &first[..max_len.saturating_sub(3)])
+        format!("{}...", safe_prefix(first, max_len.saturating_sub(3)))
     } else {
         first.to_string()
     }
@@ -1496,6 +1496,30 @@ mod tests {
             .cloned()
             .unwrap_or_default();
         assert!(blockers.contains(&Value::from("repeated_signatures")));
+    }
+
+    #[test]
+    fn test_normalize_progress_fragment_truncates_on_utf8_boundary() {
+        let normalized =
+            normalize_progress_fragment("[Step 1/100] [Context 10/20] 日本語テスト", 7);
+
+        assert_eq!(normalized, "日本");
+        assert!(normalized.len() <= 7);
+    }
+
+    #[test]
+    fn test_summarize_observation_truncates_on_utf8_boundary() {
+        let summary = summarize_observation("abc日本語の長い説明\nsecond line", 8);
+
+        assert_eq!(summary, "abc...");
+        assert!(summary.ends_with("..."));
+    }
+
+    #[test]
+    fn test_summarize_observation_small_limit_still_returns_ellipsis() {
+        let summary = summarize_observation("日本語の長い説明", 2);
+
+        assert_eq!(summary, "...");
     }
 
     #[test]
