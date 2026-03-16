@@ -1,5 +1,3 @@
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ThomsenDrake/OpenPlanter)
-
 # OpenPlanter
 
 A recursive-language-model investigation agent with a desktop GUI and terminal interface. OpenPlanter ingests heterogeneous datasets — corporate registries, campaign finance records, lobbying disclosures, government contracts, and more — resolves entities across them, and surfaces non-obvious connections through evidence-backed analysis. It operates autonomously with file I/O, shell execution, web search, and recursive sub-agent delegation.
@@ -27,7 +25,7 @@ The desktop app (`openplanter-desktop/`) is a Tauri 2 application with a three-p
 - **Live knowledge graph** — Entities and connections render in real time as the agent works. Switch between force-directed, hierarchical, and circular layouts. Search and filter by category.
 - **Wiki source drawer** — Click any source node to read the full markdown document in a slide-out panel. Internal wiki links navigate between documents and focus the corresponding graph node.
 - **Session persistence** — Investigations are saved automatically. Resume previous sessions or start new ones from the sidebar.
-- **Checkpointed wiki curator synthesizer** — A focused synthesizer runs at explicit loop phase boundaries and projects typed state deltas into concise, provenance-aware wiki updates.
+- **Background wiki curator** — A lightweight agent runs in the background to keep wiki documents consistent and cross-linked.
 - **Multi-provider support** — Switch between OpenAI, Anthropic, OpenRouter, Cerebras, and Ollama (local) from the sidebar.
 
 ### Building from Source
@@ -38,9 +36,6 @@ cd openplanter-desktop
 # Install frontend dependencies
 cd frontend && npm install && cd ..
 
-# Install the Tauri Cargo subcommand
-cargo install tauri-cli --version "^2"
-
 # Run in development mode
 cargo tauri dev
 
@@ -48,7 +43,7 @@ cargo tauri dev
 cargo tauri build
 ```
 
-Requires: Rust stable, Node.js 20+, the Tauri CLI, and platform-specific Tauri dependencies ([see Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)).
+Requires: Rust stable, Node.js 20+, and platform-specific Tauri dependencies ([see Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)).
 
 ## CLI Agent
 
@@ -86,17 +81,11 @@ The container mounts `./workspace` as the agent's working directory.
 
 | Provider | Default Model | Env Var |
 |----------|---------------|---------|
-| OpenAI | `azure-foundry/gpt-5.3-codex` | `OPENAI_API_KEY` |
-| Anthropic | `anthropic-foundry/claude-opus-4-6` | `ANTHROPIC_API_KEY` |
+| OpenAI | `gpt-5.2` | `OPENAI_API_KEY` |
+| Anthropic | `claude-opus-4-6` | `ANTHROPIC_API_KEY` |
 | OpenRouter | `anthropic/claude-sonnet-4-5` | `OPENROUTER_API_KEY` |
 | Cerebras | `qwen-3-235b-a22b-instruct-2507` | `CEREBRAS_API_KEY` |
-| Z.AI | `glm-5` | `ZAI_API_KEY` |
 | Ollama | `llama3.2` | (none — local) |
-
-OpenAI-compatible requests now default to the Azure Foundry proxy at
-`https://foundry-proxy.cheetah-koi.ts.net/openai/v1`, and Anthropic requests
-default to the Anthropic Foundry proxy at
-`https://foundry-proxy.cheetah-koi.ts.net/anthropic/v1`.
 
 ### Local Models (Ollama)
 
@@ -110,50 +99,9 @@ openplanter-agent --provider ollama --list-models
 
 The base URL defaults to `http://localhost:11434/v1` and can be overridden with `OPENPLANTER_OLLAMA_BASE_URL` or `--base-url`. The first request may be slow while Ollama loads the model into memory; a 120-second first-byte timeout is used automatically.
 
-### Z.AI Endpoint Plans
-
-Z.AI has two distinct endpoint plans:
-
-- PAYGO endpoint: `https://api.z.ai/api/paas/v4`
-- Coding plan endpoint: `https://api.z.ai/api/coding/paas/v4`
-
-Choose the plan explicitly:
-
-```bash
-export OPENPLANTER_ZAI_PLAN=paygo   # or coding
-```
-
-Or per run:
-
-```bash
-openplanter-agent --provider zai --model glm-5 --zai-plan coding
-```
-
-Advanced overrides:
-
-```bash
-export OPENPLANTER_ZAI_PAYGO_BASE_URL=https://api.z.ai/api/paas/v4
-export OPENPLANTER_ZAI_CODING_BASE_URL=https://api.z.ai/api/coding/paas/v4
-```
-
-`OPENPLANTER_ZAI_BASE_URL` still overrides both plans when set.
-
-### Z.AI Reliability Tuning
-
-Z.AI rate limits (`HTTP 429`, code `1302`) are retried with capped backoff and jitter. For Z.AI streaming connection issues, OpenPlanter also retries up to `OPENPLANTER_ZAI_STREAM_MAX_RETRIES` times.
-
-```bash
-export OPENPLANTER_RATE_LIMIT_MAX_RETRIES=12
-export OPENPLANTER_RATE_LIMIT_BACKOFF_BASE_SEC=1.0
-export OPENPLANTER_RATE_LIMIT_BACKOFF_MAX_SEC=60.0
-export OPENPLANTER_RATE_LIMIT_RETRY_AFTER_CAP_SEC=120.0
-export OPENPLANTER_ZAI_STREAM_MAX_RETRIES=10
-```
-
-Additional service keys: `EXA_API_KEY`, `FIRECRAWL_API_KEY`, `BRAVE_API_KEY`, `TAVILY_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings).
+Additional service keys: `EXA_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings).
 
 All keys can also be set with an `OPENPLANTER_` prefix (e.g. `OPENPLANTER_OPENAI_API_KEY`), via `.env` files in the workspace, or via CLI flags.
-Provider base URLs can also be overridden with `OPENPLANTER_*_BASE_URL`, including `OPENPLANTER_TAVILY_BASE_URL`.
 
 ## Agent Tools
 
@@ -163,7 +111,7 @@ The agent has access to 19 tools, organized around its investigation workflow:
 
 **Shell execution** — `run_shell`, `run_shell_bg`, `check_shell_bg`, `kill_shell_bg` — run analysis scripts, data pipelines, and validation checks.
 
-**Web** — `web_search` (Exa, Firecrawl, Brave, or Tavily), `fetch_url` — pull public records, verify entities, and retrieve supplementary data.
+**Web** — `web_search` (Exa), `fetch_url` — pull public records, verify entities, and retrieve supplementary data.
 
 **Planning & delegation** — `think`, `subtask`, `execute`, `list_artifacts`, `read_artifact` — decompose investigations into focused sub-tasks, each with acceptance criteria and independent verification.
 
@@ -188,9 +136,8 @@ openplanter-agent [options]
 
 | Flag | Description |
 |------|-------------|
-| `--provider NAME` | `auto`, `openai`, `anthropic`, `openrouter`, `cerebras`, `zai`, `ollama` |
+| `--provider NAME` | `auto`, `openai`, `anthropic`, `openrouter`, `cerebras`, `ollama` |
 | `--model NAME` | Model name or `newest` to auto-select |
-| `--zai-plan PLAN` | Z.AI endpoint plan: `paygo` or `coding` |
 | `--reasoning-effort LEVEL` | `low`, `medium`, `high`, or `none` |
 | `--list-models` | Fetch available models from the provider API |
 
@@ -285,11 +232,8 @@ cargo test
 ### CLI Agent
 
 ```bash
-# Install in editable mode with test dependencies
-pip install -e ".[dev]"
-
-# Optional: include Textual extras for UI-focused tests
-pip install -e ".[dev,textual]"
+# Install in editable mode
+pip install -e .
 
 # Run tests
 python -m pytest tests/
@@ -298,7 +242,7 @@ python -m pytest tests/
 python -m pytest tests/ --ignore=tests/test_live_models.py --ignore=tests/test_integration_live.py
 ```
 
-Requires Python 3.10+. Runtime dependencies: `rich`, `prompt_toolkit`, `pyfiglet`.
+Requires Python 3.10+. Dependencies: `rich`, `prompt_toolkit`, `pyfiglet`.
 
 ## License
 

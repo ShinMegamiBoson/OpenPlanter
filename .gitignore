@@ -1,44 +1,11 @@
-# Local environment and workspace state
 .env
 .env.*
-.venv/
-.python-version
-.direnv/
-.openplanter/
-/workspace/
-
-# Python caches and build artifacts
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-.mypy_cache/
-.ruff_cache/
-.hypothesis/
-.tox/
-.nox/
-build/
-dist/
-pip-wheel-metadata/
-
-# Frontend and test artifacts
 node_modules/
-coverage/
-playwright-report/
-test-results/
-
-# Rust / Tauri build output
-target/
-
-# Generated captures
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
 *.cast
 *.mp4
-git-apply-*.txt
-
-# Editor and OS cruft
-.DS_Store
-.idea/
-.vscode/
+.openplanter/

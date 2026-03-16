@@ -6,17 +6,17 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use axum::Router;
 use axum::body::Body;
 use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing::post;
+use axum::Router;
 use tokio_util::sync::CancellationToken;
 
 use op_core::events::{DeltaEvent, DeltaKind};
-use op_core::model::anthropic::AnthropicModel;
 use op_core::model::openai::OpenAIModel;
-use op_core::model::{BaseModel, Message, RateLimitError};
+use op_core::model::anthropic::AnthropicModel;
+use op_core::model::{BaseModel, Message};
 
 // ─── Helpers ───
 
@@ -81,62 +81,10 @@ async fn start_error_server(status: u16, body: &'static str) -> SocketAddr {
     addr
 }
 
-#[derive(Clone)]
-struct MockHttpResponse {
-    status: u16,
-    content_type: &'static str,
-    body: &'static str,
-    headers: Vec<(&'static str, &'static str)>,
-}
-
-async fn start_stateful_http_server(responses: Vec<MockHttpResponse>) -> SocketAddr {
-    let counter = Arc::new(Mutex::new(0usize));
-    let responses = Arc::new(responses);
-
-    let app = Router::new().route(
-        "/{*path}",
-        post(move || {
-            let counter = counter.clone();
-            let responses = responses.clone();
-            async move {
-                let mut idx = counter.lock().unwrap();
-                let response = if *idx < responses.len() {
-                    responses[*idx].clone()
-                } else {
-                    responses
-                        .last()
-                        .expect("expected at least one HTTP response")
-                        .clone()
-                };
-                *idx += 1;
-
-                let mut builder = Response::builder()
-                    .status(StatusCode::from_u16(response.status).unwrap())
-                    .header("content-type", response.content_type);
-                for (name, value) in &response.headers {
-                    builder = builder.header(*name, *value);
-                }
-                builder.body(Body::from(response.body)).unwrap()
-            }
-        }),
-    );
-
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
-    addr
-}
-
 fn simple_messages() -> Vec<Message> {
     vec![
-        Message::System {
-            content: "You are helpful.".to_string(),
-        },
-        Message::User {
-            content: "Say hello".to_string(),
-        },
+        Message::System { content: "You are helpful.".to_string() },
+        Message::User { content: "Say hello".to_string() },
     ]
 }
 
@@ -402,10 +350,7 @@ async fn test_openai_chat_non_streaming() {
     );
 
     // chat() should internally call chat_stream with no-op callback
-    let turn = model
-        .chat(&simple_messages(), &[])
-        .await
-        .expect("chat should succeed");
+    let turn = model.chat(&simple_messages(), &[]).await.expect("chat should succeed");
     assert_eq!(turn.text, "Hello world");
     assert_eq!(turn.input_tokens, 10);
 }
@@ -420,10 +365,7 @@ async fn test_anthropic_chat_non_streaming() {
         None,
     );
 
-    let turn = model
-        .chat(&simple_messages(), &[])
-        .await
-        .expect("chat should succeed");
+    let turn = model.chat(&simple_messages(), &[]).await.expect("chat should succeed");
     assert_eq!(turn.text, "Hello from Claude");
     assert_eq!(turn.input_tokens, 25);
 }
@@ -435,8 +377,7 @@ async fn test_openai_http_error() {
     let addr = start_error_server(
         401,
         r#"{"error":{"message":"Invalid API key","type":"invalid_request_error"}}"#,
-    )
-    .await;
+    ).await;
     let model = OpenAIModel::new(
         "gpt-4o".to_string(),
         "openai".to_string(),
@@ -455,44 +396,11 @@ async fn test_openai_http_error() {
 }
 
 #[tokio::test]
-async fn test_openai_rate_limit_error_includes_retry_after() {
-    let addr = start_stateful_http_server(vec![MockHttpResponse {
-        status: 429,
-        content_type: "application/json",
-        body: r#"{"error":{"message":"Too many requests","code":"1302"}}"#,
-        headers: vec![("retry-after", "3")],
-    }])
-    .await;
-    let model = OpenAIModel::new(
-        "gpt-4o".to_string(),
-        "openai".to_string(),
-        format!("http://{addr}"),
-        "test-key".to_string(),
-        Some("high".to_string()),
-        HashMap::new(),
-    );
-
-    let cancel = CancellationToken::new();
-    let error = model
-        .chat_stream(&simple_messages(), &[], &|_| {}, &cancel)
-        .await
-        .expect_err("should fail with a structured rate-limit error");
-
-    let rate_limit = error
-        .downcast_ref::<RateLimitError>()
-        .expect("expected a structured rate-limit error");
-    assert_eq!(rate_limit.status_code, Some(429));
-    assert_eq!(rate_limit.provider_code.as_deref(), Some("1302"));
-    assert_eq!(rate_limit.retry_after_sec, Some(3.0));
-}
-
-#[tokio::test]
 async fn test_anthropic_http_error() {
     let addr = start_error_server(
         401,
         r#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#,
-    )
-    .await;
+    ).await;
     let model = AnthropicModel::new(
         "claude-sonnet-4-5".to_string(),
         format!("http://{addr}"),
@@ -513,13 +421,12 @@ async fn test_anthropic_http_error() {
 #[tokio::test]
 async fn test_solve_with_mock_anthropic() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
+    use op_core::engine::{solve, SolveEmitter};
     use op_core::events::StepEvent;
 
     let addr = start_mock_sse_server(ANTHROPIC_SSE_SIMPLE).await;
 
     #[derive(Debug, Clone)]
-    #[allow(dead_code)]
     enum Ev {
         Trace(String),
         Delta(DeltaEvent),
@@ -533,10 +440,7 @@ async fn test_solve_with_mock_anthropic() {
     }
     impl SolveEmitter for TestEmitter {
         fn emit_trace(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Trace(message.to_string()));
+            self.events.lock().unwrap().push(Ev::Trace(message.to_string()));
         }
         fn emit_delta(&self, event: DeltaEvent) {
             self.events.lock().unwrap().push(Ev::Delta(event));
@@ -544,24 +448,16 @@ async fn test_solve_with_mock_anthropic() {
         fn emit_step(&self, event: StepEvent) {
             self.events.lock().unwrap().push(Ev::Step(event));
         }
-        fn emit_complete(&self, result: &str, _loop_metrics: Option<op_core::events::LoopMetrics>, _completion: Option<op_core::events::CompletionMeta>) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Complete(result.to_string()));
+        fn emit_complete(&self, result: &str) {
+            self.events.lock().unwrap().push(Ev::Complete(result.to_string()));
         }
         fn emit_error(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Error(message.to_string()));
+            self.events.lock().unwrap().push(Ev::Error(message.to_string()));
         }
     }
 
     let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter {
-        events: events.clone(),
-    };
+    let emitter = TestEmitter { events: events.clone() };
 
     let cfg = AgentConfig {
         provider: "anthropic".into(),
@@ -579,9 +475,7 @@ async fn test_solve_with_mock_anthropic() {
 
     // Should have a trace
     assert!(
-        recorded
-            .iter()
-            .any(|e| matches!(e, Ev::Trace(m) if m.contains("anthropic"))),
+        recorded.iter().any(|e| matches!(e, Ev::Trace(m) if m.contains("anthropic"))),
         "should have a trace mentioning anthropic"
     );
 
@@ -597,17 +491,13 @@ async fn test_solve_with_mock_anthropic() {
 
     // Should have a step
     assert!(
-        recorded
-            .iter()
-            .any(|e| matches!(e, Ev::Step(s) if s.is_final && s.tokens.input_tokens == 25)),
+        recorded.iter().any(|e| matches!(e, Ev::Step(s) if s.is_final && s.tokens.input_tokens == 25)),
         "should have a final step with correct token count"
     );
 
     // Should have complete with the full text
     assert!(
-        recorded
-            .iter()
-            .any(|e| matches!(e, Ev::Complete(t) if t == "Hello from Claude")),
+        recorded.iter().any(|e| matches!(e, Ev::Complete(t) if t == "Hello from Claude")),
         "should complete with full text"
     );
 
@@ -621,7 +511,7 @@ async fn test_solve_with_mock_anthropic() {
 #[tokio::test]
 async fn test_solve_with_mock_openai() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
+    use op_core::engine::{solve, SolveEmitter};
     use op_core::events::StepEvent;
 
     let addr = start_mock_sse_server(OPENAI_SSE_SIMPLE).await;
@@ -641,10 +531,7 @@ async fn test_solve_with_mock_openai() {
     }
     impl SolveEmitter for TestEmitter2 {
         fn emit_trace(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev2::Trace(message.to_string()));
+            self.events.lock().unwrap().push(Ev2::Trace(message.to_string()));
         }
         fn emit_delta(&self, event: DeltaEvent) {
             self.events.lock().unwrap().push(Ev2::Delta(event));
@@ -652,24 +539,16 @@ async fn test_solve_with_mock_openai() {
         fn emit_step(&self, event: StepEvent) {
             self.events.lock().unwrap().push(Ev2::Step(event));
         }
-        fn emit_complete(&self, result: &str, _loop_metrics: Option<op_core::events::LoopMetrics>, _completion: Option<op_core::events::CompletionMeta>) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev2::Complete(result.to_string()));
+        fn emit_complete(&self, result: &str) {
+            self.events.lock().unwrap().push(Ev2::Complete(result.to_string()));
         }
         fn emit_error(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev2::Error(message.to_string()));
+            self.events.lock().unwrap().push(Ev2::Error(message.to_string()));
         }
     }
 
     let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter2 {
-        events: events.clone(),
-    };
+    let emitter = TestEmitter2 { events: events.clone() };
 
     let cfg = AgentConfig {
         provider: "openai".into(),
@@ -688,17 +567,9 @@ async fn test_solve_with_mock_openai() {
 
     // Should have a trace mentioning openai
     assert!(
-        recorded
-            .iter()
-            .any(|e| matches!(e, Ev2::Trace(m) if m.contains("openai"))),
+        recorded.iter().any(|e| matches!(e, Ev2::Trace(m) if m.contains("openai"))),
         "should have a trace mentioning openai, got: {:?}",
-        recorded
-            .iter()
-            .filter_map(|e| match e {
-                Ev2::Trace(m) => Some(m.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
+        recorded.iter().filter_map(|e| match e { Ev2::Trace(m) => Some(m.clone()), _ => None }).collect::<Vec<_>>()
     );
 
     // Should have text deltas that spell "Hello world"
@@ -713,17 +584,13 @@ async fn test_solve_with_mock_openai() {
 
     // Should have a step with correct tokens
     assert!(
-        recorded
-            .iter()
-            .any(|e| matches!(e, Ev2::Step(s) if s.is_final && s.tokens.input_tokens == 10)),
+        recorded.iter().any(|e| matches!(e, Ev2::Step(s) if s.is_final && s.tokens.input_tokens == 10)),
         "should have a final step with 10 input tokens"
     );
 
     // Should complete with the full text
     assert!(
-        recorded
-            .iter()
-            .any(|e| matches!(e, Ev2::Complete(t) if t == "Hello world")),
+        recorded.iter().any(|e| matches!(e, Ev2::Complete(t) if t == "Hello world")),
         "should complete with 'Hello world'"
     );
 
@@ -737,10 +604,13 @@ async fn test_solve_with_mock_openai() {
 #[tokio::test]
 async fn test_solve_http_error_emits_error() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
+    use op_core::engine::{solve, SolveEmitter};
     use op_core::events::StepEvent;
 
-    let addr = start_error_server(401, r#"{"error":{"message":"Invalid API key"}}"#).await;
+    let addr = start_error_server(
+        401,
+        r#"{"error":{"message":"Invalid API key"}}"#,
+    ).await;
 
     struct ErrorEmitter {
         errors: Arc<Mutex<Vec<String>>>,
@@ -749,16 +619,14 @@ async fn test_solve_http_error_emits_error() {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, _: &str, _: Option<op_core::events::LoopMetrics>, _: Option<op_core::events::CompletionMeta>) {}
+        fn emit_complete(&self, _: &str) {}
         fn emit_error(&self, msg: &str) {
             self.errors.lock().unwrap().push(msg.to_string());
         }
     }
 
     let errors = Arc::new(Mutex::new(Vec::new()));
-    let emitter = ErrorEmitter {
-        errors: errors.clone(),
-    };
+    let emitter = ErrorEmitter { errors: errors.clone() };
 
     let cfg = AgentConfig {
         provider: "openai".into(),
@@ -774,116 +642,16 @@ async fn test_solve_http_error_emits_error() {
     solve("Test", &cfg, &emitter, cancel).await;
 
     let recorded = errors.lock().unwrap().clone();
-    assert!(!recorded.is_empty(), "should emit an error for HTTP 401");
-}
-
-#[tokio::test]
-async fn test_solve_rate_limit_retry_eventually_completes() {
-    use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
-    use op_core::events::StepEvent;
-
-    #[derive(Debug, Clone)]
-    #[allow(dead_code)]
-    enum Ev {
-        Trace(String),
-        Complete(String),
-        Error(String),
-    }
-
-    struct RetryEmitter {
-        events: Arc<Mutex<Vec<Ev>>>,
-    }
-
-    impl SolveEmitter for RetryEmitter {
-        fn emit_trace(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Trace(message.to_string()));
-        }
-
-        fn emit_delta(&self, _: DeltaEvent) {}
-
-        fn emit_step(&self, _: StepEvent) {}
-
-        fn emit_complete(&self, result: &str, _loop_metrics: Option<op_core::events::LoopMetrics>, _completion: Option<op_core::events::CompletionMeta>) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Complete(result.to_string()));
-        }
-
-        fn emit_error(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Error(message.to_string()));
-        }
-    }
-
-    let addr = start_stateful_http_server(vec![
-        MockHttpResponse {
-            status: 429,
-            content_type: "application/json",
-            body: r#"{"error":{"message":"Too many requests","code":"1302"}}"#,
-            headers: vec![("retry-after", "0")],
-        },
-        MockHttpResponse {
-            status: 200,
-            content_type: "text/event-stream",
-            body: OPENAI_SSE_SIMPLE,
-            headers: vec![("cache-control", "no-cache")],
-        },
-    ])
-    .await;
-
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = RetryEmitter {
-        events: events.clone(),
-    };
-
-    let cfg = AgentConfig {
-        provider: "openai".into(),
-        model: "gpt-4o".into(),
-        api_key: Some("test-key".into()),
-        openai_api_key: Some("test-key".into()),
-        base_url: format!("http://{addr}"),
-        openai_base_url: format!("http://{addr}"),
-        rate_limit_max_retries: 1,
-        rate_limit_backoff_base_sec: 0.0,
-        rate_limit_backoff_max_sec: 0.0,
-        rate_limit_retry_after_cap_sec: 0.0,
-        demo: false,
-        ..Default::default()
-    };
-
-    let cancel = CancellationToken::new();
-    solve("Test", &cfg, &emitter, cancel).await;
-
-    let recorded = events.lock().unwrap().clone();
     assert!(
-        recorded.iter().any(|event| {
-            matches!(event, Ev::Trace(message) if message.contains("rate limited (1302)"))
-        }),
-        "expected a retry trace after the 429, got: {recorded:?}"
-    );
-    assert!(
-        recorded
-            .iter()
-            .any(|event| matches!(event, Ev::Complete(text) if text == "Hello world")),
-        "expected the solve to complete after retry, got: {recorded:?}"
-    );
-    assert!(
-        !recorded.iter().any(|event| matches!(event, Ev::Error(_))),
-        "did not expect an error after retry success, got: {recorded:?}"
+        !recorded.is_empty(),
+        "should emit an error for HTTP 401"
     );
 }
 
 #[tokio::test]
 async fn test_solve_cancel_emits_cancelled() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
+    use op_core::engine::{solve, SolveEmitter};
     use op_core::events::StepEvent;
 
     // Use a server that returns data but we cancel before processing
@@ -896,16 +664,14 @@ async fn test_solve_cancel_emits_cancelled() {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, _: &str, _: Option<op_core::events::LoopMetrics>, _: Option<op_core::events::CompletionMeta>) {}
+        fn emit_complete(&self, _: &str) {}
         fn emit_error(&self, msg: &str) {
             self.events.lock().unwrap().push(msg.to_string());
         }
     }
 
     let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = CancelEmitter {
-        events: events.clone(),
-    };
+    let emitter = CancelEmitter { events: events.clone() };
 
     let cfg = AgentConfig {
         provider: "anthropic".into(),
@@ -931,7 +697,7 @@ async fn test_solve_cancel_emits_cancelled() {
 #[tokio::test]
 async fn test_solve_demo_mode_bypasses_llm() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
+    use op_core::engine::{solve, SolveEmitter};
     use op_core::events::StepEvent;
 
     struct TestEmitter {
@@ -941,7 +707,7 @@ async fn test_solve_demo_mode_bypasses_llm() {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, result: &str, _loop_metrics: Option<op_core::events::LoopMetrics>, _completion: Option<op_core::events::CompletionMeta>) {
+        fn emit_complete(&self, result: &str) {
             self.events.lock().unwrap().push(result.to_string());
         }
         fn emit_error(&self, msg: &str) {
@@ -950,9 +716,7 @@ async fn test_solve_demo_mode_bypasses_llm() {
     }
 
     let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter {
-        events: events.clone(),
-    };
+    let emitter = TestEmitter { events: events.clone() };
 
     let cfg = AgentConfig {
         demo: true,
@@ -972,7 +736,7 @@ async fn test_solve_demo_mode_bypasses_llm() {
 #[tokio::test]
 async fn test_solve_missing_key_emits_error() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
+    use op_core::engine::{solve, SolveEmitter};
     use op_core::events::StepEvent;
 
     struct TestEmitter {
@@ -982,24 +746,18 @@ async fn test_solve_missing_key_emits_error() {
         fn emit_trace(&self, _: &str) {}
         fn emit_delta(&self, _: DeltaEvent) {}
         fn emit_step(&self, _: StepEvent) {}
-        fn emit_complete(&self, _: &str, _: Option<op_core::events::LoopMetrics>, _: Option<op_core::events::CompletionMeta>) {}
+        fn emit_complete(&self, _: &str) {}
         fn emit_error(&self, msg: &str) {
             self.errors.lock().unwrap().push(msg.to_string());
         }
     }
 
     let errors = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter {
-        errors: errors.clone(),
-    };
+    let emitter = TestEmitter { errors: errors.clone() };
 
     let cfg = AgentConfig {
         provider: "openai".into(),
         model: "gpt-4o".into(),
-        base_url: "https://api.openai.com/v1".into(),
-        openai_base_url: "https://api.openai.com/v1".into(),
-        api_key: None,
-        openai_api_key: None,
         demo: false,
         // No API key set
         ..Default::default()
@@ -1034,20 +792,6 @@ event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n
 event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":12}}\n\n\
 event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
 
-const ANTHROPIC_SSE_TWO_TOOL_LIST: &str = "\
-event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_loop_multi\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":60}}}\n\n\
-event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
-event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Let me inspect that twice.\"}}\n\n\
-event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
-event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_loop_multi_1\",\"name\":\"list_files\",\"input\":{}}}\n\n\
-event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{}\"}}\n\n\
-event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n\
-event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_loop_multi_2\",\"name\":\"list_files\",\"input\":{}}}\n\n\
-event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{}\"}}\n\n\
-event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":2}\n\n\
-event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":18}}\n\n\
-event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
-
 /// SSE body for the follow-up Anthropic response (final text answer after tool result).
 const ANTHROPIC_SSE_FINAL_ANSWER: &str = "\
 event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_loop2\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":80}}}\n\n\
@@ -1057,30 +801,15 @@ event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n
 event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":10}}\n\n\
 event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
 
-const ANTHROPIC_SSE_CURATOR_NOOP: &str = "\
-event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_curator_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":20}}}\n\n\
-event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
-event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"No wiki updates needed\"}}\n\n\
-event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
-event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\n\
-event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
-
 /// Start a stateful mock server that returns different SSE bodies on successive calls.
 async fn start_stateful_mock_server(responses: Vec<&'static str>) -> SocketAddr {
-    start_stateful_mock_server_with_counter(responses).await.0
-}
-
-async fn start_stateful_mock_server_with_counter(
-    responses: Vec<&'static str>,
-) -> (SocketAddr, Arc<Mutex<usize>>) {
     let counter = Arc::new(Mutex::new(0usize));
-    let counter_for_app = counter.clone();
     let responses = Arc::new(responses);
 
     let app = Router::new().route(
         "/{*path}",
         post(move || {
-            let counter = counter_for_app.clone();
+            let counter = counter.clone();
             let responses = responses.clone();
             async move {
                 let mut idx = counter.lock().unwrap();
@@ -1105,18 +834,20 @@ async fn start_stateful_mock_server_with_counter(
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    (addr, counter)
+    addr
 }
 
 #[tokio::test]
 async fn test_solve_multi_step_agentic_loop() {
     use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
-    use op_core::events::{LoopMetrics, LoopPhase, StepEvent};
+    use op_core::engine::{solve, SolveEmitter};
+    use op_core::events::StepEvent;
 
     // Mock server: first call → tool call, second call → final answer
-    let addr =
-        start_stateful_mock_server(vec![ANTHROPIC_SSE_TOOL_LIST, ANTHROPIC_SSE_FINAL_ANSWER]).await;
+    let addr = start_stateful_mock_server(vec![
+        ANTHROPIC_SSE_TOOL_LIST,
+        ANTHROPIC_SSE_FINAL_ANSWER,
+    ]).await;
 
     #[derive(Debug, Clone)]
     #[allow(dead_code)]
@@ -1124,10 +855,7 @@ async fn test_solve_multi_step_agentic_loop() {
         Trace(String),
         Delta(DeltaEvent),
         Step(StepEvent),
-        Complete {
-            result: String,
-            loop_metrics: Option<LoopMetrics>,
-        },
+        Complete(String),
         Error(String),
     }
 
@@ -1136,10 +864,7 @@ async fn test_solve_multi_step_agentic_loop() {
     }
     impl SolveEmitter for TestEmitter3 {
         fn emit_trace(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev3::Trace(message.to_string()));
+            self.events.lock().unwrap().push(Ev3::Trace(message.to_string()));
         }
         fn emit_delta(&self, event: DeltaEvent) {
             self.events.lock().unwrap().push(Ev3::Delta(event));
@@ -1147,24 +872,16 @@ async fn test_solve_multi_step_agentic_loop() {
         fn emit_step(&self, event: StepEvent) {
             self.events.lock().unwrap().push(Ev3::Step(event));
         }
-        fn emit_complete(&self, result: &str, loop_metrics: Option<op_core::events::LoopMetrics>, _completion: Option<op_core::events::CompletionMeta>) {
-            self.events.lock().unwrap().push(Ev3::Complete {
-                result: result.to_string(),
-                loop_metrics,
-            });
+        fn emit_complete(&self, result: &str) {
+            self.events.lock().unwrap().push(Ev3::Complete(result.to_string()));
         }
         fn emit_error(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev3::Error(message.to_string()));
+            self.events.lock().unwrap().push(Ev3::Error(message.to_string()));
         }
     }
 
     let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter3 {
-        events: events.clone(),
-    };
+    let emitter = TestEmitter3 { events: events.clone() };
 
     // Use a temp dir as workspace so list_files has something to work with
     let tmp = tempfile::TempDir::new().unwrap();
@@ -1211,43 +928,16 @@ async fn test_solve_multi_step_agentic_loop() {
         Some("list_files"),
         "first step should show list_files tool"
     );
-    assert_eq!(steps[0].loop_phase, Some(LoopPhase::Investigate));
-    assert_eq!(
-        steps[0]
-            .loop_metrics
-            .as_ref()
-            .map(|metrics| metrics.tool_calls),
-        Some(1)
-    );
-    assert_eq!(
-        steps[0]
-            .loop_metrics
-            .as_ref()
-            .map(|metrics| metrics.recon_streak),
-        Some(1)
-    );
 
     // Last step should be final
-    assert!(steps.last().unwrap().is_final, "last step should be final");
-    assert_eq!(steps.last().unwrap().loop_phase, Some(LoopPhase::Finalize));
-    assert_eq!(
-        steps
-            .last()
-            .unwrap()
-            .loop_metrics
-            .as_ref()
-            .map(|metrics| metrics.tool_calls),
-        Some(1)
+    assert!(
+        steps.last().unwrap().is_final,
+        "last step should be final"
     );
 
     // Should have tool execution trace
-    let has_tool_trace = recorded
-        .iter()
-        .any(|e| matches!(e, Ev3::Trace(m) if m.contains("list_files")));
-    assert!(
-        has_tool_trace,
-        "should have a trace mentioning list_files tool execution"
-    );
+    let has_tool_trace = recorded.iter().any(|e| matches!(e, Ev3::Trace(m) if m.contains("list_files")));
+    assert!(has_tool_trace, "should have a trace mentioning list_files tool execution");
 
     // Should have text deltas from both steps
     let text_content: String = recorded
@@ -1268,12 +958,7 @@ async fn test_solve_multi_step_agentic_loop() {
 
     // Should complete with the final answer text
     assert!(
-        recorded.iter().any(|e| matches!(
-            e,
-            Ev3::Complete { result, loop_metrics }
-                if result.contains("Here is the answer")
-                    && loop_metrics.as_ref().map(|metrics| metrics.tool_calls) == Some(1)
-        )),
+        recorded.iter().any(|e| matches!(e, Ev3::Complete(t) if t.contains("Here is the answer"))),
         "should complete with the final answer"
     );
 
@@ -1289,732 +974,5 @@ async fn test_solve_multi_step_agentic_loop() {
         errors.is_empty(),
         "should not have any errors, got: {:?}",
         errors
-    );
-}
-
-#[tokio::test]
-async fn test_solve_flushes_final_curator_checkpoint_before_complete() {
-    use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
-    use op_core::events::LoopMetrics;
-
-    let addr = start_stateful_mock_server(vec![
-        ANTHROPIC_SSE_TOOL_LIST,
-        ANTHROPIC_SSE_FINAL_ANSWER,
-        ANTHROPIC_SSE_CURATOR_NOOP,
-    ])
-    .await;
-
-    #[derive(Debug, Clone)]
-    #[allow(dead_code)]
-    enum Ev {
-        Trace(String),
-        Complete(String),
-        Error(String),
-    }
-
-    struct TestEmitter {
-        events: Arc<Mutex<Vec<Ev>>>,
-    }
-
-    impl SolveEmitter for TestEmitter {
-        fn emit_trace(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Trace(message.to_string()));
-        }
-
-        fn emit_delta(&self, _: DeltaEvent) {}
-
-        fn emit_step(&self, _: op_core::events::StepEvent) {}
-
-        fn emit_complete(&self, result: &str, _: Option<LoopMetrics>, _: Option<op_core::events::CompletionMeta>) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Complete(result.to_string()));
-        }
-
-        fn emit_error(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Error(message.to_string()));
-        }
-    }
-
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter {
-        events: events.clone(),
-    };
-    let tmp = tempfile::TempDir::new().unwrap();
-    std::fs::write(tmp.path().join("hello.txt"), "world").unwrap();
-
-    let cfg = AgentConfig {
-        provider: "anthropic".into(),
-        model: "claude-sonnet-4-5".into(),
-        anthropic_api_key: Some("test-key".into()),
-        anthropic_base_url: format!("http://{addr}"),
-        demo: false,
-        workspace: tmp.path().to_path_buf(),
-        ..Default::default()
-    };
-
-    solve(
-        "List the files in this directory",
-        &cfg,
-        &emitter,
-        CancellationToken::new(),
-    )
-    .await;
-
-    let recorded = events.lock().unwrap().clone();
-    let finalize_trace = recorded
-        .iter()
-        .position(|event| matches!(event, Ev::Trace(message) if message.contains("checkpoint at finalize")))
-        .expect("expected finalize curator trace");
-    let complete = recorded
-        .iter()
-        .position(|event| matches!(event, Ev::Complete(_)))
-        .expect("expected complete event");
-    assert!(
-        finalize_trace < complete,
-        "finalize checkpoint should be flushed before complete: {recorded:?}"
-    );
-    assert!(
-        !recorded.iter().any(|event| matches!(event, Ev::Error(_))),
-        "did not expect errors, got: {recorded:?}"
-    );
-}
-
-#[tokio::test]
-async fn test_solve_flushes_cancelled_checkpoint_before_error() {
-    use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
-    use op_core::events::{LoopMetrics, StepEvent};
-
-    let (addr, request_count) = start_stateful_mock_server_with_counter(vec![
-        ANTHROPIC_SSE_TOOL_LIST,
-        ANTHROPIC_SSE_CURATOR_NOOP,
-    ])
-    .await;
-
-    #[derive(Debug, Clone)]
-    #[allow(dead_code)]
-    enum Ev {
-        Trace(String),
-        Error(String),
-    }
-
-    struct TestEmitter {
-        events: Arc<Mutex<Vec<Ev>>>,
-        cancel: CancellationToken,
-    }
-
-    impl SolveEmitter for TestEmitter {
-        fn emit_trace(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Trace(message.to_string()));
-        }
-
-        fn emit_delta(&self, _: DeltaEvent) {}
-
-        fn emit_step(&self, event: StepEvent) {
-            if !event.is_final {
-                self.cancel.cancel();
-            }
-        }
-
-        fn emit_complete(&self, _: &str, _: Option<LoopMetrics>, _: Option<op_core::events::CompletionMeta>) {}
-
-        fn emit_error(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Error(message.to_string()));
-        }
-    }
-
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let cancel = CancellationToken::new();
-    let emitter = TestEmitter {
-        events: events.clone(),
-        cancel: cancel.clone(),
-    };
-    let tmp = tempfile::TempDir::new().unwrap();
-    std::fs::write(tmp.path().join("hello.txt"), "world").unwrap();
-
-    let cfg = AgentConfig {
-        provider: "anthropic".into(),
-        model: "claude-sonnet-4-5".into(),
-        anthropic_api_key: Some("test-key".into()),
-        anthropic_base_url: format!("http://{addr}"),
-        demo: false,
-        workspace: tmp.path().to_path_buf(),
-        ..Default::default()
-    };
-
-    solve("List the files in this directory", &cfg, &emitter, cancel).await;
-
-    let recorded = events.lock().unwrap().clone();
-    let cancelled_trace = recorded
-        .iter()
-        .position(|event| matches!(event, Ev::Trace(message) if message.contains("checkpoint at cancelled")))
-        .expect("expected cancelled curator trace");
-    let error = recorded
-        .iter()
-        .position(|event| matches!(event, Ev::Error(message) if message == "Cancelled"))
-        .expect("expected cancelled error");
-    assert!(
-        cancelled_trace < error,
-        "cancelled checkpoint should flush before error: {recorded:?}"
-    );
-    assert_eq!(
-        *request_count.lock().unwrap(),
-        1,
-        "cancelled solve should not issue a curator model request"
-    );
-}
-
-#[tokio::test]
-async fn test_solve_flushes_model_error_checkpoint_before_error() {
-    use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
-    use op_core::events::LoopMetrics;
-
-    let addr = start_stateful_http_server(vec![
-        MockHttpResponse {
-            status: 200,
-            content_type: "text/event-stream",
-            body: ANTHROPIC_SSE_TOOL_LIST,
-            headers: vec![("cache-control", "no-cache")],
-        },
-        MockHttpResponse {
-            status: 500,
-            content_type: "application/json",
-            body: "{\"error\":{\"message\":\"boom\"}}",
-            headers: vec![],
-        },
-        MockHttpResponse {
-            status: 200,
-            content_type: "text/event-stream",
-            body: ANTHROPIC_SSE_CURATOR_NOOP,
-            headers: vec![("cache-control", "no-cache")],
-        },
-    ])
-    .await;
-
-    #[derive(Debug, Clone)]
-    #[allow(dead_code)]
-    enum Ev {
-        Trace(String),
-        Error(String),
-    }
-
-    struct TestEmitter {
-        events: Arc<Mutex<Vec<Ev>>>,
-    }
-
-    impl SolveEmitter for TestEmitter {
-        fn emit_trace(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Trace(message.to_string()));
-        }
-
-        fn emit_delta(&self, _: DeltaEvent) {}
-
-        fn emit_step(&self, _: op_core::events::StepEvent) {}
-
-        fn emit_complete(&self, _: &str, _: Option<LoopMetrics>, _: Option<op_core::events::CompletionMeta>) {}
-
-        fn emit_error(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Error(message.to_string()));
-        }
-    }
-
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter {
-        events: events.clone(),
-    };
-    let tmp = tempfile::TempDir::new().unwrap();
-    std::fs::write(tmp.path().join("hello.txt"), "world").unwrap();
-
-    let cfg = AgentConfig {
-        provider: "anthropic".into(),
-        model: "claude-sonnet-4-5".into(),
-        anthropic_api_key: Some("test-key".into()),
-        anthropic_base_url: format!("http://{addr}"),
-        demo: false,
-        workspace: tmp.path().to_path_buf(),
-        ..Default::default()
-    };
-
-    solve(
-        "List the files in this directory",
-        &cfg,
-        &emitter,
-        CancellationToken::new(),
-    )
-    .await;
-
-    let recorded = events.lock().unwrap().clone();
-    let model_error_trace = recorded
-        .iter()
-        .position(|event| matches!(event, Ev::Trace(message) if message.contains("checkpoint at model_error")))
-        .expect("expected model_error curator trace");
-    let error = recorded
-        .iter()
-        .position(|event| matches!(event, Ev::Error(_)))
-        .expect("expected error event");
-    assert!(
-        model_error_trace < error,
-        "model_error checkpoint should flush before error: {recorded:?}"
-    );
-}
-
-#[tokio::test]
-async fn test_solve_flushes_tool_loop_cancel_checkpoint_before_error() {
-    use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
-    use op_core::events::LoopMetrics;
-
-    let (addr, request_count) = start_stateful_mock_server_with_counter(vec![
-        ANTHROPIC_SSE_TOOL_LIST,
-        ANTHROPIC_SSE_TWO_TOOL_LIST,
-        ANTHROPIC_SSE_CURATOR_NOOP,
-    ])
-    .await;
-
-    #[derive(Debug, Clone)]
-    #[allow(dead_code)]
-    enum Ev {
-        Trace(String),
-        Error(String),
-    }
-
-    struct TestEmitter {
-        events: Arc<Mutex<Vec<Ev>>>,
-        cancel: CancellationToken,
-        tool_exec_traces: Arc<Mutex<u32>>,
-    }
-
-    impl SolveEmitter for TestEmitter {
-        fn emit_trace(&self, message: &str) {
-            if message.contains("Executing tool: list_files") {
-                let mut count = self.tool_exec_traces.lock().unwrap();
-                *count += 1;
-                if *count == 2 {
-                    self.cancel.cancel();
-                }
-            }
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Trace(message.to_string()));
-        }
-
-        fn emit_delta(&self, _: DeltaEvent) {}
-
-        fn emit_step(&self, _: op_core::events::StepEvent) {}
-
-        fn emit_complete(&self, _: &str, _: Option<LoopMetrics>, _: Option<op_core::events::CompletionMeta>) {}
-
-        fn emit_error(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev::Error(message.to_string()));
-        }
-    }
-
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let cancel = CancellationToken::new();
-    let emitter = TestEmitter {
-        events: events.clone(),
-        cancel: cancel.clone(),
-        tool_exec_traces: Arc::new(Mutex::new(0)),
-    };
-    let tmp = tempfile::TempDir::new().unwrap();
-    std::fs::write(tmp.path().join("hello.txt"), "world").unwrap();
-
-    let cfg = AgentConfig {
-        provider: "anthropic".into(),
-        model: "claude-sonnet-4-5".into(),
-        anthropic_api_key: Some("test-key".into()),
-        anthropic_base_url: format!("http://{addr}"),
-        demo: false,
-        workspace: tmp.path().to_path_buf(),
-        ..Default::default()
-    };
-
-    solve("List the files in this directory", &cfg, &emitter, cancel).await;
-
-    let recorded = events.lock().unwrap().clone();
-    let cancelled_trace = recorded
-        .iter()
-        .position(|event| matches!(event, Ev::Trace(message) if message.contains("checkpoint at cancelled")))
-        .expect("expected cancelled curator trace");
-    let error = recorded
-        .iter()
-        .position(|event| matches!(event, Ev::Error(message) if message == "Cancelled"))
-        .expect("expected cancelled error");
-    assert!(
-        cancelled_trace < error,
-        "tool-loop cancel checkpoint should flush before error: {recorded:?}"
-    );
-    assert_eq!(
-        *request_count.lock().unwrap(),
-        2,
-        "tool-loop cancellation should not issue a curator model request"
-    );
-}
-
-const ANTHROPIC_SSE_META_FINAL: &str = "\
-event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_meta_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":40}}}\n\n\
-event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
-event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Here is my plan for finishing the task.\"}}\n\n\
-event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
-event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":9}}\n\n\
-event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
-
-const ANTHROPIC_SSE_CONCRETE_FINAL: &str = "\
-event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_meta_2\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":55}}}\n\n\
-event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
-event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Completed the task and produced the requested answer.\"}}\n\n\
-event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
-event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":11}}\n\n\
-event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
-
-const ANTHROPIC_SSE_META_FINAL_WITH_PROCESS: &str = "\
-event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_meta_3\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":45}}}\n\n\
-event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
-event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Here is my plan: I will inspect files and then implement the fix.\"}}\n\n\
-event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
-event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":12}}\n\n\
-event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
-
-#[tokio::test]
-async fn test_solve_rejects_meta_final_until_concrete_completion() {
-    use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
-    use op_core::events::{LoopMetrics, StepEvent};
-
-    let addr =
-        start_stateful_mock_server(vec![ANTHROPIC_SSE_META_FINAL, ANTHROPIC_SSE_CONCRETE_FINAL])
-            .await;
-
-    #[derive(Debug, Clone)]
-    #[allow(dead_code)]
-    enum Ev4 {
-        Trace(String),
-        Step(StepEvent),
-        Complete {
-            result: String,
-            loop_metrics: Option<LoopMetrics>,
-        },
-        Error(String),
-    }
-
-    struct TestEmitter4 {
-        events: Arc<Mutex<Vec<Ev4>>>,
-    }
-
-    impl SolveEmitter for TestEmitter4 {
-        fn emit_trace(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev4::Trace(message.to_string()));
-        }
-
-        fn emit_delta(&self, _: DeltaEvent) {}
-
-        fn emit_step(&self, event: StepEvent) {
-            self.events.lock().unwrap().push(Ev4::Step(event));
-        }
-
-        fn emit_complete(&self, result: &str, loop_metrics: Option<LoopMetrics>, _completion: Option<op_core::events::CompletionMeta>) {
-            self.events.lock().unwrap().push(Ev4::Complete {
-                result: result.to_string(),
-                loop_metrics,
-            });
-        }
-
-        fn emit_error(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev4::Error(message.to_string()));
-        }
-    }
-
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter4 {
-        events: events.clone(),
-    };
-
-    let cfg = AgentConfig {
-        provider: "anthropic".into(),
-        model: "claude-sonnet-4-5".into(),
-        anthropic_api_key: Some("test-key".into()),
-        anthropic_base_url: format!("http://{addr}"),
-        demo: false,
-        ..Default::default()
-    };
-
-    let cancel = CancellationToken::new();
-    solve("Produce the final answer directly", &cfg, &emitter, cancel).await;
-
-    let recorded = events.lock().unwrap().clone();
-    assert!(
-        recorded.iter().any(|event| matches!(
-            event,
-            Ev4::Trace(message) if message.contains("rejected meta final answer")
-        )),
-        "expected a meta-final rejection trace, got: {recorded:?}"
-    );
-
-    let steps: Vec<&StepEvent> = recorded
-        .iter()
-        .filter_map(|event| match event {
-            Ev4::Step(step) => Some(step),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(steps.len(), 1, "only the concrete final should emit a step");
-    assert!(
-        steps[0].is_final,
-        "the emitted step should be the concrete final"
-    );
-    assert_eq!(
-        steps[0]
-            .loop_metrics
-            .as_ref()
-            .map(|metrics| metrics.final_rejections),
-        Some(1)
-    );
-
-    assert!(
-        recorded.iter().any(|event| matches!(
-            event,
-            Ev4::Complete { result, loop_metrics }
-                if result.contains("Completed the task")
-                    && loop_metrics.as_ref().map(|metrics| metrics.final_rejections) == Some(1)
-        )),
-        "expected completion after the rejection loop, got: {recorded:?}"
-    );
-    assert!(
-        !recorded.iter().any(|event| matches!(event, Ev4::Error(_))),
-        "did not expect errors, got: {recorded:?}"
-    );
-}
-
-#[tokio::test]
-async fn test_solve_allows_structural_meta_for_plan_objectives() {
-    use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
-    use op_core::events::{LoopMetrics, StepEvent};
-
-    let addr = start_stateful_mock_server(vec![ANTHROPIC_SSE_META_FINAL]).await;
-
-    #[derive(Debug, Clone)]
-    #[allow(dead_code)]
-    enum Ev5 {
-        Trace(String),
-        Step(StepEvent),
-        Complete {
-            result: String,
-            loop_metrics: Option<LoopMetrics>,
-        },
-        Error(String),
-    }
-
-    struct TestEmitter5 {
-        events: Arc<Mutex<Vec<Ev5>>>,
-    }
-
-    impl SolveEmitter for TestEmitter5 {
-        fn emit_trace(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev5::Trace(message.to_string()));
-        }
-
-        fn emit_delta(&self, _: DeltaEvent) {}
-
-        fn emit_step(&self, event: StepEvent) {
-            self.events.lock().unwrap().push(Ev5::Step(event));
-        }
-
-        fn emit_complete(&self, result: &str, loop_metrics: Option<LoopMetrics>, _completion: Option<op_core::events::CompletionMeta>) {
-            self.events.lock().unwrap().push(Ev5::Complete {
-                result: result.to_string(),
-                loop_metrics,
-            });
-        }
-
-        fn emit_error(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev5::Error(message.to_string()));
-        }
-    }
-
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter5 {
-        events: events.clone(),
-    };
-
-    let cfg = AgentConfig {
-        provider: "anthropic".into(),
-        model: "claude-sonnet-4-5".into(),
-        anthropic_api_key: Some("test-key".into()),
-        anthropic_base_url: format!("http://{addr}"),
-        demo: false,
-        ..Default::default()
-    };
-
-    let cancel = CancellationToken::new();
-    solve(
-        "Write a plan for finishing the task",
-        &cfg,
-        &emitter,
-        cancel,
-    )
-    .await;
-
-    let recorded = events.lock().unwrap().clone();
-    assert!(
-        !recorded.iter().any(|event| matches!(
-            event,
-            Ev5::Trace(message) if message.contains("rejected meta final answer")
-        )),
-        "did not expect a meta-final rejection trace, got: {recorded:?}"
-    );
-    assert!(
-        recorded.iter().any(|event| matches!(
-            event,
-            Ev5::Complete { result, loop_metrics }
-                if result.contains("Here is my plan")
-                    && loop_metrics.as_ref().map(|metrics| metrics.final_rejections) == Some(0)
-        )),
-        "expected structural plan response to complete cleanly, got: {recorded:?}"
-    );
-    assert!(
-        !recorded.iter().any(|event| matches!(event, Ev5::Error(_))),
-        "did not expect errors, got: {recorded:?}"
-    );
-}
-
-#[tokio::test]
-async fn test_solve_rejects_process_meta_even_for_plan_objectives() {
-    use op_core::config::AgentConfig;
-    use op_core::engine::{SolveEmitter, solve};
-    use op_core::events::{LoopMetrics, StepEvent};
-
-    let addr = start_stateful_mock_server(vec![
-        ANTHROPIC_SSE_META_FINAL_WITH_PROCESS,
-        ANTHROPIC_SSE_CONCRETE_FINAL,
-    ])
-    .await;
-
-    #[derive(Debug, Clone)]
-    #[allow(dead_code)]
-    enum Ev6 {
-        Trace(String),
-        Step(StepEvent),
-        Complete {
-            result: String,
-            loop_metrics: Option<LoopMetrics>,
-        },
-        Error(String),
-    }
-
-    struct TestEmitter6 {
-        events: Arc<Mutex<Vec<Ev6>>>,
-    }
-
-    impl SolveEmitter for TestEmitter6 {
-        fn emit_trace(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev6::Trace(message.to_string()));
-        }
-
-        fn emit_delta(&self, _: DeltaEvent) {}
-
-        fn emit_step(&self, event: StepEvent) {
-            self.events.lock().unwrap().push(Ev6::Step(event));
-        }
-
-        fn emit_complete(&self, result: &str, loop_metrics: Option<LoopMetrics>, _completion: Option<op_core::events::CompletionMeta>) {
-            self.events.lock().unwrap().push(Ev6::Complete {
-                result: result.to_string(),
-                loop_metrics,
-            });
-        }
-
-        fn emit_error(&self, message: &str) {
-            self.events
-                .lock()
-                .unwrap()
-                .push(Ev6::Error(message.to_string()));
-        }
-    }
-
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let emitter = TestEmitter6 {
-        events: events.clone(),
-    };
-
-    let cfg = AgentConfig {
-        provider: "anthropic".into(),
-        model: "claude-sonnet-4-5".into(),
-        anthropic_api_key: Some("test-key".into()),
-        anthropic_base_url: format!("http://{addr}"),
-        demo: false,
-        ..Default::default()
-    };
-
-    let cancel = CancellationToken::new();
-    solve(
-        "Write a plan for finishing the task",
-        &cfg,
-        &emitter,
-        cancel,
-    )
-    .await;
-
-    let recorded = events.lock().unwrap().clone();
-    assert!(
-        recorded.iter().any(|event| matches!(
-            event,
-            Ev6::Trace(message) if message.contains("rejected meta final answer")
-        )),
-        "expected a meta-final rejection trace, got: {recorded:?}"
-    );
-    assert!(
-        recorded.iter().any(|event| matches!(
-            event,
-            Ev6::Complete { result, loop_metrics }
-                if result.contains("Completed the task")
-                    && loop_metrics.as_ref().map(|metrics| metrics.final_rejections) == Some(1)
-        )),
-        "expected completion after rejecting process-meta response, got: {recorded:?}"
-    );
-    assert!(
-        !recorded.iter().any(|event| matches!(event, Ev6::Error(_))),
-        "did not expect errors, got: {recorded:?}"
     );
 }

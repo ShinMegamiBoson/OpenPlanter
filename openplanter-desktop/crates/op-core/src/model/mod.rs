@@ -8,17 +8,6 @@ use serde::{Deserialize, Serialize};
 use crate::events::DeltaEvent;
 use tokio_util::sync::CancellationToken;
 
-/// Structured model error for provider rate limiting.
-#[derive(Debug, Clone, thiserror::Error)]
-#[error("{message}")]
-pub struct RateLimitError {
-    pub message: String,
-    pub status_code: Option<u16>,
-    pub provider_code: Option<String>,
-    pub body: String,
-    pub retry_after_sec: Option<f64>,
-}
-
 /// A single tool call returned by the model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {

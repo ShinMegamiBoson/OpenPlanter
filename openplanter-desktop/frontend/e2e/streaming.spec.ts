@@ -113,27 +113,6 @@ async function sendStep(
   );
 }
 
-async function expectGraphPaneVisibleAndStable(page: Page) {
-  const graphPane = page.locator(".graph-pane");
-  await expect(graphPane).toBeVisible();
-
-  const box = await graphPane.boundingBox();
-  expect(box).not.toBeNull();
-
-  const viewport = page.viewportSize();
-  expect(viewport).not.toBeNull();
-
-  expect(box!.width).toBeGreaterThan(150);
-  expect(box!.x).toBeGreaterThanOrEqual(0);
-  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width + 1);
-
-  const appMetrics = await page.locator("#app").evaluate((el) => ({
-    clientWidth: el.clientWidth,
-    scrollWidth: el.scrollWidth,
-  }));
-  expect(appMetrics.scrollWidth).toBeLessThanOrEqual(appMetrics.clientWidth + 1);
-}
-
 test.describe("Streaming Display", () => {
   test.beforeEach(async ({ page }) => {
     await injectTauriMocks(page);
@@ -313,36 +292,5 @@ test.describe("Streaming Display", () => {
     await page.screenshot({
       path: "e2e/screenshots/35-activity-elapsed.png",
     });
-  });
-
-  test("long streamed preview text does not push graph pane off-screen", async ({
-    page,
-  }) => {
-    const longPreview = `Investigating_${"CentralFlorida".repeat(120)}`;
-
-    await sendDelta(page, "thinking", longPreview);
-    await expect(page.locator(".activity-preview")).toContainText("Investigating_");
-
-    await expectGraphPaneVisibleAndStable(page);
-  });
-
-  test("long tool call rows do not push graph pane off-screen", async ({
-    page,
-  }) => {
-    const longCommand = `find_${"central_florida_workspace".repeat(80)}`;
-
-    await sendDelta(page, "tool_call_start", "run_shell");
-    await sendDelta(
-      page,
-      "tool_call_args",
-      JSON.stringify({ command: longCommand })
-    );
-    await sendStep(page, 1, 6400, 1200);
-
-    const toolLine = page.locator(".step-tool-line").first();
-    await expect(toolLine).toBeVisible();
-    await expect(toolLine).toContainText("run_shell");
-
-    await expectGraphPaneVisibleAndStable(page);
   });
 });
