@@ -114,6 +114,41 @@ class ModelPayloadTests(unittest.TestCase):
             self.assertIn("reasoning_effort", calls[0])
             self.assertNotIn("reasoning_effort", calls[1])
 
+    def test_openai_retries_without_reasoning_for_ollama_thinking_error(self) -> None:
+        """Ollama's OpenAI-compat shim rejects reasoning with a message that
+        never mentions `reasoning_effort`, e.g. for llama3.2 (issue #20)."""
+        calls: list[dict] = []
+
+        def fake_http_json(url, method, headers, payload=None, timeout_sec=90):  # type: ignore[no-untyped-def]
+            calls.append(dict(payload or {}))
+            if len(calls) == 1:
+                raise ModelError(
+                    "HTTP 400 calling http://localhost:11434/v1/chat/completions: "
+                    "{\"error\":{\"message\":\"\\\"llama3.2\\\" does not support "
+                    "thinking\",\"type\":\"api_error\",\"param\":null,\"code\":null}}"
+                )
+            return {
+                "choices": [
+                    {
+                        "message": {"content": "ok", "tool_calls": None},
+                        "finish_reason": "stop",
+                    }
+                ]
+            }
+
+        with patch("agent.model._http_stream_sse", mock_openai_stream(fake_http_json)):
+            model = OpenAICompatibleModel(
+                model="llama3.2",
+                api_key="k",
+                base_url="http://localhost:11434/v1",
+                reasoning_effort="high",
+            )
+            conv = model.create_conversation("system", "user msg")
+            turn = model.complete(conv)
+            self.assertEqual(turn.text, "ok")
+            self.assertIn("reasoning_effort", calls[0])
+            self.assertNotIn("reasoning_effort", calls[1])
+
     def test_anthropic_retries_without_thinking_when_unsupported(self) -> None:
         calls: list[dict] = []
 
