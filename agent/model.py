@@ -730,8 +730,15 @@ class OpenAICompatibleModel:
         except ModelError as exc:
             text = str(exc).lower()
             unsupported_reasoning = effort and (
-                "reasoning_effort" in text
-                and ("unsupported_parameter" in text or "unknown" in text)
+                (
+                    "reasoning_effort" in text
+                    and ("unsupported_parameter" in text or "unknown" in text)
+                )
+                # Ollama's OpenAI-compat shim rejects reasoning on models that
+                # don't support it (e.g. llama3.2) with a message like
+                # `"llama3.2" does not support thinking`, which never
+                # mentions `reasoning_effort` at all.
+                or ("thinking" in text and "does not support" in text)
             )
             if not unsupported_reasoning:
                 raise
