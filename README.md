@@ -10,7 +10,7 @@ Pre-built binaries are available on the [Releases page](https://github.com/ShinM
 
 - **macOS** — `.dmg`
 - **Windows** — `.msi`
-- **Linux** — `.AppImage`
+- **Linux** — `.AppImage`, `.deb`, `.rpm`
 
 ## Desktop App
 

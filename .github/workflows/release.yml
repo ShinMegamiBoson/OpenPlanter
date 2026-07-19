@@ -73,5 +73,7 @@ jobs:
             openplanter-desktop/target/${{ matrix.target }}/release/bundle/**/*.dmg
             openplanter-desktop/target/${{ matrix.target }}/release/bundle/**/*.AppImage
             openplanter-desktop/target/${{ matrix.target }}/release/bundle/**/*.msi
+            openplanter-desktop/target/${{ matrix.target }}/release/bundle/**/*.deb
+            openplanter-desktop/target/${{ matrix.target }}/release/bundle/**/*.rpm
           draft: false
           generate_release_notes: true

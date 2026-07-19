@@ -24,11 +24,19 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "msi", "appimage"],
+    "targets": ["dmg", "msi", "appimage", "deb", "rpm"],
     "icon": [
       "icons/icon.png",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+      },
+      "rpm": {
+        "release": "1"
+      }
+    }
   },
   "plugins": {
     "shell": {
