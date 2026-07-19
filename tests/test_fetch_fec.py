@@ -10,7 +10,11 @@ import unittest
 import sys
 import os
 import json
+import io
+import tempfile
+from pathlib import Path
 from unittest import skipIf
+from unittest.mock import patch
 
 # Add scripts directory to path to import fetch_fec
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
@@ -39,6 +43,142 @@ class TestFecFetch(unittest.TestCase):
     def setUp(self):
         """Set up test client."""
         self.client = fetch_fec.FECAPIClient(api_key='DEMO_KEY')
+
+    def test_client_uses_fec_api_key_from_environment(self):
+        """FEC_API_KEY is the default credential for API requests."""
+        with patch.dict(os.environ, {"FEC_API_KEY": "env-fec-key"}, clear=False):
+            client = fetch_fec.FECAPIClient()
+
+        self.assertEqual(client.api_key, "env-fec-key")
+
+    def test_explicit_api_key_overrides_environment(self):
+        """An explicit --api-key value takes precedence over FEC_API_KEY."""
+        with patch.dict(os.environ, {"FEC_API_KEY": "env-fec-key"}, clear=False):
+            client = fetch_fec.FECAPIClient(api_key="explicit-fec-key")
+
+        self.assertEqual(client.api_key, "explicit-fec-key")
+
+    def test_openplanter_environment_key_overrides_generic_key(self):
+        """The app-specific process variable wins when both keys are set."""
+        with patch.dict(
+            os.environ,
+            {
+                "FEC_API_KEY": "generic-fec-key",
+                "OPENPLANTER_FEC_API_KEY": "openplanter-fec-key",
+            },
+            clear=False,
+        ):
+            client = fetch_fec.FECAPIClient()
+
+        self.assertEqual(client.api_key, "openplanter-fec-key")
+
+    def test_client_uses_fec_api_key_from_nearest_workspace_env(self):
+        """The nearest workspace .env supplies the default OpenFEC credential."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            (workspace / ".env").write_text("FEC_API_KEY=workspace-fec-key\n", encoding="utf-8")
+            nested = workspace / "nested"
+            nested.mkdir()
+            with patch.dict(
+                os.environ,
+                {"FEC_API_KEY": "", "OPENPLANTER_FEC_API_KEY": ""},
+                clear=False,
+            ), patch("pathlib.Path.cwd", return_value=nested):
+                client = fetch_fec.FECAPIClient()
+
+        self.assertEqual(client.api_key, "workspace-fec-key")
+
+    def test_http_errors_redact_api_key(self):
+        """Request diagnostics never disclose the OpenFEC credential."""
+        secret = "sensitive-fec-key"
+        client = fetch_fec.FECAPIClient(api_key=secret)
+        url = client._build_url("candidates", {})
+        error = fetch_fec.urllib.error.HTTPError(
+            url,
+            403,
+            f"upstream rejected {url}",
+            {},
+            None,
+        )
+        stderr = io.StringIO()
+
+        with patch("urllib.request.urlopen", side_effect=error), patch("sys.stderr", stderr):
+            with self.assertRaises(fetch_fec.urllib.error.HTTPError):
+                client._request(url)
+
+        output = stderr.getvalue()
+        self.assertNotIn(secret, output)
+        self.assertIn("api_key=REDACTED", output)
+
+    def test_url_errors_do_not_print_api_key_from_reason(self):
+        """URL error reasons are not trusted to be free of credentials."""
+        secret = "sensitive-url-error-key"
+        client = fetch_fec.FECAPIClient(api_key=secret)
+        url = client._build_url("candidates", {})
+        stderr = io.StringIO()
+
+        with patch(
+            "urllib.request.urlopen",
+            side_effect=fetch_fec.urllib.error.URLError(f"cannot fetch {url}"),
+        ), patch("sys.stderr", stderr):
+            with self.assertRaises(fetch_fec.urllib.error.URLError):
+                client._request(url)
+
+        self.assertNotIn(secret, stderr.getvalue())
+
+    def test_pagination_errors_do_not_print_api_key_from_exception(self):
+        """Pagination diagnostics reveal only the exception type."""
+        secret = "sensitive-pagination-key"
+        url = f"{fetch_fec.API_BASE}/candidates/?api_key={secret}"
+        stderr = io.StringIO()
+
+        def failing_endpoint(page):
+            raise RuntimeError(f"cannot fetch {url}")
+
+        with patch("sys.stderr", stderr):
+            result = fetch_fec.fetch_all_pages(
+                fetch_fec.FECAPIClient(api_key=secret),
+                failing_endpoint,
+            )
+
+        self.assertEqual(result, [])
+        self.assertNotIn(secret, stderr.getvalue())
+        self.assertIn("RuntimeError", stderr.getvalue())
+
+    def test_totals_cli_errors_do_not_print_api_key_from_exception(self):
+        """The top-level CLI handler does not reprint credential-bearing errors."""
+        secret = "sensitive-totals-key"
+        stderr = io.StringIO()
+
+        def failing_request(url, timeout):
+            raise fetch_fec.urllib.error.HTTPError(
+                url,
+                403,
+                f"upstream rejected {url}",
+                {},
+                None,
+            )
+
+        argv = [
+            "fetch_fec.py",
+            "--endpoint",
+            "totals",
+            "--candidate",
+            "P80001571",
+            "--api-key",
+            secret,
+        ]
+        with patch.object(sys, "argv", argv), patch(
+            "urllib.request.urlopen",
+            side_effect=failing_request,
+        ), patch("sys.stderr", stderr):
+            with self.assertRaisesRegex(SystemExit, "1"):
+                fetch_fec.main()
+
+        output = stderr.getvalue()
+        self.assertNotIn(secret, output)
+        self.assertIn("api_key=REDACTED", output)
+        self.assertIn("Error: HTTPError", output)
 
     @skipIf(not NETWORK_AVAILABLE, "Network or FEC API unavailable")
     def test_get_candidates_basic(self):

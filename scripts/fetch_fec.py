@@ -12,10 +12,12 @@ Uses only Python standard library (urllib, json, csv).
 import argparse
 import csv
 import json
+import os
 import sys
 import urllib.request
 import urllib.parse
 import urllib.error
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 
@@ -24,11 +26,55 @@ API_BASE = "https://api.open.fec.gov/v1"
 DEFAULT_API_KEY = "DEMO_KEY"  # Low rate limit; get free key at api.data.gov
 
 
+def redact_api_key(url: str) -> str:
+    """Return a URL safe for diagnostics by removing its OpenFEC credential."""
+    parsed = urllib.parse.urlsplit(url)
+    query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    redacted = [(key, "REDACTED" if key.lower() == "api_key" else value) for key, value in query]
+    return urllib.parse.urlunsplit(parsed._replace(query=urllib.parse.urlencode(redacted)))
+
+
+def resolve_api_key(start: Optional[Path] = None) -> str:
+    """Resolve OpenFEC credentials from the environment or nearest workspace .env."""
+    for name in ("OPENPLANTER_FEC_API_KEY", "FEC_API_KEY"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+
+    directory = (start or Path.cwd()).resolve()
+    for parent in (directory, *directory.parents):
+        env_path = parent / ".env"
+        if not env_path.is_file():
+            continue
+        values: Dict[str, str] = {}
+        try:
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            break
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+            if "=" not in line:
+                continue
+            name, value = line.split("=", 1)
+            values[name.strip()] = value.strip().strip("'\"")
+        for name in ("FEC_API_KEY", "OPENPLANTER_FEC_API_KEY"):
+            value = values.get(name, "").strip()
+            if value:
+                return value
+        break
+
+    return DEFAULT_API_KEY
+
+
 class FECAPIClient:
     """Simple FEC API client using urllib."""
 
-    def __init__(self, api_key: str = DEFAULT_API_KEY):
-        self.api_key = api_key
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or resolve_api_key()
         self.base_url = API_BASE
 
     def _build_url(self, endpoint: str, params: Dict[str, Any]) -> str:
@@ -46,13 +92,13 @@ class FECAPIClient:
                 data = response.read()
                 return json.loads(data.decode('utf-8'))
         except urllib.error.HTTPError as e:
-            print(f"HTTP Error {e.code}: {e.reason}", file=sys.stderr)
-            print(f"URL: {url}", file=sys.stderr)
+            print(f"HTTP Error {e.code}", file=sys.stderr)
+            print(f"URL: {redact_api_key(url)}", file=sys.stderr)
             if e.code == 403:
                 print("Hint: Check your API key or try a different endpoint", file=sys.stderr)
             raise
-        except urllib.error.URLError as e:
-            print(f"URL Error: {e.reason}", file=sys.stderr)
+        except urllib.error.URLError:
+            print("URL Error", file=sys.stderr)
             raise
 
     def get_candidates(
@@ -198,7 +244,7 @@ def fetch_all_pages(
             page += 1
 
         except Exception as e:
-            print(f"Error fetching page {page}: {e}", file=sys.stderr)
+            print(f"Error fetching page {page}: {type(e).__name__}", file=sys.stderr)
             break
 
     return all_results
@@ -273,8 +319,8 @@ Environment:
 
     parser.add_argument(
         '--api-key',
-        default=DEFAULT_API_KEY,
-        help=f'FEC API key (default: {DEFAULT_API_KEY})'
+        default=None,
+        help='FEC API key (overrides FEC_API_KEY; default: DEMO_KEY)'
     )
 
     parser.add_argument(
@@ -408,7 +454,7 @@ Environment:
         print("\nInterrupted by user", file=sys.stderr)
         sys.exit(130)
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"Error: {type(e).__name__}", file=sys.stderr)
         sys.exit(1)
 
 

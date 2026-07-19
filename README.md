@@ -99,9 +99,12 @@ openplanter-agent --provider ollama --list-models
 
 The base URL defaults to `http://localhost:11434/v1` and can be overridden with `OPENPLANTER_OLLAMA_BASE_URL` or `--base-url`. The first request may be slow while Ollama loads the model into memory; a 120-second first-byte timeout is used automatically.
 
-Additional service keys: `EXA_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings).
+Additional service keys: `EXA_API_KEY` (web search), `VOYAGE_API_KEY` (embeddings),
+and `FEC_API_KEY` (OpenFEC campaign-finance data; falls back to `DEMO_KEY`).
 
-All keys can also be set with an `OPENPLANTER_` prefix (e.g. `OPENPLANTER_OPENAI_API_KEY`), via `.env` files in the workspace, or via CLI flags.
+Provider and service keys can also be set with an `OPENPLANTER_` prefix (e.g.
+`OPENPLANTER_OPENAI_API_KEY`) or via `.env` files in the workspace. The OpenFEC
+fetcher also accepts an explicit `--api-key`, which overrides the environment.
 
 ## Agent Tools
 

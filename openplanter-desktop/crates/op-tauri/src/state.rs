@@ -1,8 +1,10 @@
+use op_core::config::AgentConfig;
+use op_core::credentials::{
+    credentials_from_env, discover_env_candidates, parse_env_file, CredentialBundle,
+};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
-use op_core::config::AgentConfig;
-use op_core::credentials::{credentials_from_env, discover_env_candidates, parse_env_file, CredentialBundle};
 
 /// Merge credentials into an AgentConfig.
 /// Priority: existing config value > env_creds > file_creds.
@@ -14,7 +16,9 @@ pub fn merge_credentials_into_config(
     macro_rules! merge {
         ($field:ident) => {
             if cfg.$field.is_none() {
-                cfg.$field = env_creds.$field.clone()
+                cfg.$field = env_creds
+                    .$field
+                    .clone()
                     .or_else(|| file_creds.$field.clone());
             }
         };
@@ -25,6 +29,7 @@ pub fn merge_credentials_into_config(
     merge!(cerebras_api_key);
     merge!(exa_api_key);
     merge!(voyage_api_key);
+    merge!(fec_api_key);
 }
 
 /// Application state shared across Tauri commands.
@@ -72,6 +77,7 @@ mod tests {
         cfg.cerebras_api_key = None;
         cfg.exa_api_key = None;
         cfg.voyage_api_key = None;
+        cfg.fec_api_key = None;
         cfg
     }
 

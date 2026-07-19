@@ -66,6 +66,7 @@ pub struct AgentConfig {
     pub cerebras_api_key: Option<String>,
     pub exa_api_key: Option<String>,
     pub voyage_api_key: Option<String>,
+    pub fec_api_key: Option<String>,
 
     // Limits
     pub max_depth: i64,
@@ -109,6 +110,7 @@ impl Default for AgentConfig {
             cerebras_api_key: None,
             exa_api_key: None,
             voyage_api_key: None,
+            fec_api_key: None,
             max_depth: 4,
             max_steps_per_call: 100,
             max_observation_chars: 6000,
@@ -136,23 +138,24 @@ impl AgentConfig {
     pub fn from_env(workspace: impl AsRef<Path>) -> Self {
         let ws = dunce_canonicalize(workspace.as_ref());
 
-        let openai_api_key = env_opt("OPENPLANTER_OPENAI_API_KEY")
-            .or_else(|| env_opt("OPENAI_API_KEY"));
+        let openai_api_key =
+            env_opt("OPENPLANTER_OPENAI_API_KEY").or_else(|| env_opt("OPENAI_API_KEY"));
 
-        let anthropic_api_key = env_opt("OPENPLANTER_ANTHROPIC_API_KEY")
-            .or_else(|| env_opt("ANTHROPIC_API_KEY"));
+        let anthropic_api_key =
+            env_opt("OPENPLANTER_ANTHROPIC_API_KEY").or_else(|| env_opt("ANTHROPIC_API_KEY"));
 
-        let openrouter_api_key = env_opt("OPENPLANTER_OPENROUTER_API_KEY")
-            .or_else(|| env_opt("OPENROUTER_API_KEY"));
+        let openrouter_api_key =
+            env_opt("OPENPLANTER_OPENROUTER_API_KEY").or_else(|| env_opt("OPENROUTER_API_KEY"));
 
-        let cerebras_api_key = env_opt("OPENPLANTER_CEREBRAS_API_KEY")
-            .or_else(|| env_opt("CEREBRAS_API_KEY"));
+        let cerebras_api_key =
+            env_opt("OPENPLANTER_CEREBRAS_API_KEY").or_else(|| env_opt("CEREBRAS_API_KEY"));
 
-        let exa_api_key = env_opt("OPENPLANTER_EXA_API_KEY")
-            .or_else(|| env_opt("EXA_API_KEY"));
+        let exa_api_key = env_opt("OPENPLANTER_EXA_API_KEY").or_else(|| env_opt("EXA_API_KEY"));
 
-        let voyage_api_key = env_opt("OPENPLANTER_VOYAGE_API_KEY")
-            .or_else(|| env_opt("VOYAGE_API_KEY"));
+        let voyage_api_key =
+            env_opt("OPENPLANTER_VOYAGE_API_KEY").or_else(|| env_opt("VOYAGE_API_KEY"));
+
+        let fec_api_key = env_opt("OPENPLANTER_FEC_API_KEY").or_else(|| env_opt("FEC_API_KEY"));
 
         let openai_base_url = env_opt("OPENPLANTER_OPENAI_BASE_URL")
             .or_else(|| env_opt("OPENPLANTER_BASE_URL"))
@@ -167,9 +170,7 @@ impl AgentConfig {
             Some(reasoning_effort_raw)
         };
 
-        let provider_raw = env_or("OPENPLANTER_PROVIDER", "auto")
-            .trim()
-            .to_lowercase();
+        let provider_raw = env_or("OPENPLANTER_PROVIDER", "auto").trim().to_lowercase();
         let provider = if provider_raw.is_empty() {
             "auto".into()
         } else {
@@ -196,10 +197,7 @@ impl AgentConfig {
                 "OPENPLANTER_CEREBRAS_BASE_URL",
                 "https://api.cerebras.ai/v1",
             ),
-            ollama_base_url: env_or(
-                "OPENPLANTER_OLLAMA_BASE_URL",
-                "http://localhost:11434/v1",
-            ),
+            ollama_base_url: env_or("OPENPLANTER_OLLAMA_BASE_URL", "http://localhost:11434/v1"),
             exa_base_url: env_or("OPENPLANTER_EXA_BASE_URL", "https://api.exa.ai"),
             openai_api_key,
             anthropic_api_key,
@@ -207,6 +205,7 @@ impl AgentConfig {
             cerebras_api_key,
             exa_api_key,
             voyage_api_key,
+            fec_api_key,
             max_depth: env_int("OPENPLANTER_MAX_DEPTH", 4),
             max_steps_per_call: env_int("OPENPLANTER_MAX_STEPS", 100),
             max_observation_chars: env_int("OPENPLANTER_MAX_OBS_CHARS", 6000),
@@ -303,10 +302,7 @@ mod tests {
             "OPENPLANTER_DEMO",
         ];
         // Save original values
-        let saved: Vec<_> = keys
-            .iter()
-            .map(|k| (*k, env::var(k).ok()))
-            .collect();
+        let saved: Vec<_> = keys.iter().map(|k| (*k, env::var(k).ok())).collect();
 
         // SAFETY: test-only; combined into one test to avoid parallel env mutation
         unsafe {

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// A bundle of API keys for all supported providers.
 ///
-/// Mirrors the Python `CredentialBundle` dataclass.
+/// Credential fields consumed by the desktop application.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CredentialBundle {
     pub openai_api_key: Option<String>,
@@ -18,24 +18,23 @@ pub struct CredentialBundle {
     pub cerebras_api_key: Option<String>,
     pub exa_api_key: Option<String>,
     pub voyage_api_key: Option<String>,
+    pub fec_api_key: Option<String>,
 }
 
 impl CredentialBundle {
     /// Returns `true` if any key has a non-empty value.
     pub fn has_any(&self) -> bool {
-        let keys: [&Option<String>; 6] = [
+        let keys: [&Option<String>; 7] = [
             &self.openai_api_key,
             &self.anthropic_api_key,
             &self.openrouter_api_key,
             &self.cerebras_api_key,
             &self.exa_api_key,
             &self.voyage_api_key,
+            &self.fec_api_key,
         ];
-        keys.iter().any(|k| {
-            k.as_ref()
-                .map(|v| !v.trim().is_empty())
-                .unwrap_or(false)
-        })
+        keys.iter()
+            .any(|k| k.as_ref().map(|v| !v.trim().is_empty()).unwrap_or(false))
     }
 
     /// Fill in missing keys from `other`.
@@ -53,6 +52,7 @@ impl CredentialBundle {
         fill!(cerebras_api_key);
         fill!(exa_api_key);
         fill!(voyage_api_key);
+        fill!(fec_api_key);
     }
 
     /// Serialize to JSON map, omitting `None` values.
@@ -71,6 +71,7 @@ impl CredentialBundle {
         add!(cerebras_api_key, "cerebras_api_key");
         add!(exa_api_key, "exa_api_key");
         add!(voyage_api_key, "voyage_api_key");
+        add!(fec_api_key, "fec_api_key");
         out
     }
 
@@ -89,6 +90,7 @@ impl CredentialBundle {
             cerebras_api_key: get_str(payload, "cerebras_api_key"),
             exa_api_key: get_str(payload, "exa_api_key"),
             voyage_api_key: get_str(payload, "voyage_api_key"),
+            fec_api_key: get_str(payload, "fec_api_key"),
         }
     }
 }
@@ -146,13 +148,10 @@ pub fn parse_env_file(path: &Path) -> CredentialBundle {
             "OPENROUTER_API_KEY",
             "OPENPLANTER_OPENROUTER_API_KEY",
         ),
-        cerebras_api_key: get_key(
-            &env_map,
-            "CEREBRAS_API_KEY",
-            "OPENPLANTER_CEREBRAS_API_KEY",
-        ),
+        cerebras_api_key: get_key(&env_map, "CEREBRAS_API_KEY", "OPENPLANTER_CEREBRAS_API_KEY"),
         exa_api_key: get_key(&env_map, "EXA_API_KEY", "OPENPLANTER_EXA_API_KEY"),
         voyage_api_key: get_key(&env_map, "VOYAGE_API_KEY", "OPENPLANTER_VOYAGE_API_KEY"),
+        fec_api_key: get_key(&env_map, "FEC_API_KEY", "OPENPLANTER_FEC_API_KEY"),
     }
 }
 
@@ -173,6 +172,7 @@ pub fn credentials_from_env() -> CredentialBundle {
         cerebras_api_key: env_key("OPENPLANTER_CEREBRAS_API_KEY", "CEREBRAS_API_KEY"),
         exa_api_key: env_key("OPENPLANTER_EXA_API_KEY", "EXA_API_KEY"),
         voyage_api_key: env_key("OPENPLANTER_VOYAGE_API_KEY", "VOYAGE_API_KEY"),
+        fec_api_key: env_key("OPENPLANTER_FEC_API_KEY", "FEC_API_KEY"),
     }
 }
 
@@ -351,6 +351,7 @@ mod tests {
 OPENAI_API_KEY=sk-from-env
 export ANTHROPIC_API_KEY='ant-key'
 EXA_API_KEY="exa-quoted"
+FEC_API_KEY=fec-from-env
 UNRELATED_VAR=foo
 "#,
         )
@@ -360,6 +361,7 @@ UNRELATED_VAR=foo
         assert_eq!(bundle.openai_api_key, Some("sk-from-env".into()));
         assert_eq!(bundle.anthropic_api_key, Some("ant-key".into()));
         assert_eq!(bundle.exa_api_key, Some("exa-quoted".into()));
+        assert_eq!(bundle.fec_api_key, Some("fec-from-env".into()));
         assert!(bundle.cerebras_api_key.is_none());
     }
 
