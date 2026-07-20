@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import AgentConfig
+from .crowd import CrowdStore, crowd_client_from_config
 from .engine import ContentDeltaCallback, ExternalContext, RLMEngine, StepCallback, TurnSummary
 from .replay_log import ReplayLogger
 
@@ -43,6 +44,7 @@ class SessionStore:
         self.root = (self.workspace / self.session_root_dir).resolve()
         self.sessions = self.root / "sessions"
         self.sessions.mkdir(parents=True, exist_ok=True)
+        self.crowd = CrowdStore(self.workspace, self.session_root_dir)
 
     def _session_dir(self, session_id: str) -> Path:
         return self.sessions / session_id

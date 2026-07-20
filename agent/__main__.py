@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from .builder import _fetch_models_for_provider, build_engine, infer_provider_for_model
 from .config import AgentConfig
+from .crowd import CrowdClient, CrowdIdentity
 from .credentials import (
     CredentialBundle,
     CredentialStore,
@@ -141,6 +142,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--demo",
         action="store_true",
         help="Censor entity names and workspace path segments in output (UI-only).",
+    )
+    parser.add_argument(
+        "--crowd",
+        action="store_true",
+        help="Enable the local crowd market (exposes /crowd, /claim, /trust slash commands).",
+    )
+    parser.add_argument(
+        "--crowd-publish-leaf",
+        action="store_true",
+        help="Publish leaf subtasks to the crowd instead of solving them locally.",
+    )
+    parser.add_argument(
+        "--crowd-relay-port",
+        type=int,
+        default=7777,
+        help="Local ws:// relay port for crowd events (default: 7777).",
+    )
+    parser.add_argument(
+        "--crowd-strfry",
+        action="store_true",
+        help="Attempt to spawn a local strfry relay/router binary.",
     )
     return parser
 
@@ -327,6 +349,14 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
         cfg.acceptance_criteria = True
     if args.demo:
         cfg.demo = True
+    if args.crowd:
+        cfg.crowd_enabled = True
+    if args.crowd_publish_leaf:
+        cfg.crowd_publish_leaf = True
+    if args.crowd_relay_port:
+        cfg.crowd_relay_port = args.crowd_relay_port
+    if args.crowd_strfry:
+        cfg.crowd_auto_spawn_strfry = True
 
 
 def run_plain_repl(ctx: ChatContext) -> None:
@@ -562,6 +592,19 @@ def main() -> None:
     startup_info["Session"] = runtime.session_id
 
     ctx = ChatContext(runtime=runtime, cfg=cfg, settings_store=settings_store)
+
+    if cfg.crowd_enabled:
+        settings = settings_store.load()
+        crowd = CrowdClient(
+            store=runtime.store.crowd,
+            identity=CrowdIdentity(settings.crowd_nsec),
+            upstream_relays=settings.crowd_relays,
+        )
+        uri = crowd.start_local_relay(port=cfg.crowd_relay_port)
+        if uri:
+            startup_info["Crowd"] = uri
+        if cfg.crowd_auto_spawn_strfry and crowd._strfry and crowd._strfry.find_binary():
+            startup_info["Crowd router"] = "starting"
 
     # Build optional censor for headless / plain text paths.
     censor_fn = None

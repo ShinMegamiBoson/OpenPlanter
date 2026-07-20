@@ -31,6 +31,10 @@ class PersistentSettings:
     default_model_openrouter: str | None = None
     default_model_cerebras: str | None = None
     default_model_ollama: str | None = None
+    crowd_relays: list[str] = field(default_factory=list)
+    crowd_nsec: str | None = None
+    crowd_worker_tags: list[str] = field(default_factory=list)
+    crowd_epsilon: float = 1.0
 
     def default_model_for_provider(self, provider: str) -> str | None:
         per_provider = {
@@ -58,8 +62,8 @@ class PersistentSettings:
             default_model_ollama=(self.default_model_ollama or "").strip() or None,
         )
 
-    def to_json(self) -> dict[str, str]:
-        payload: dict[str, str] = {}
+    def to_json(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
         if self.default_model:
             payload["default_model"] = self.default_model
         if self.default_reasoning_effort:
@@ -74,12 +78,23 @@ class PersistentSettings:
             payload["default_model_cerebras"] = self.default_model_cerebras
         if self.default_model_ollama:
             payload["default_model_ollama"] = self.default_model_ollama
+        if self.crowd_relays:
+            payload["crowd_relays"] = self.crowd_relays
+        if self.crowd_nsec:
+            payload["crowd_nsec"] = self.crowd_nsec
+        if self.crowd_worker_tags:
+            payload["crowd_worker_tags"] = self.crowd_worker_tags
+        if self.crowd_epsilon is not None:
+            payload["crowd_epsilon"] = self.crowd_epsilon
         return payload
 
     @classmethod
     def from_json(cls, payload: dict | None) -> "PersistentSettings":
         if not isinstance(payload, dict):
             return cls()
+        relays = payload.get("crowd_relays", [])
+        worker_tags = payload.get("crowd_worker_tags", [])
+        epsilon = payload.get("crowd_epsilon", 1.0)
         return cls(
             default_model=(str(payload.get("default_model", "")).strip() or None),
             default_reasoning_effort=(
@@ -90,6 +105,10 @@ class PersistentSettings:
             default_model_openrouter=(str(payload.get("default_model_openrouter", "")).strip() or None),
             default_model_cerebras=(str(payload.get("default_model_cerebras", "")).strip() or None),
             default_model_ollama=(str(payload.get("default_model_ollama", "")).strip() or None),
+            crowd_relays=relays if isinstance(relays, list) else [],
+            crowd_nsec=(str(payload.get("crowd_nsec", "")).strip() or None),
+            crowd_worker_tags=worker_tags if isinstance(worker_tags, list) else [],
+            crowd_epsilon=float(epsilon) if epsilon is not None else 1.0,
         ).normalized()
 
 

@@ -9,13 +9,17 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import AgentConfig
+from .crowd import CrowdClient, CrowdIdentity, CrowdStore, CrowdTask
 from .engine import RLMEngine, _MODEL_CONTEXT_WINDOWS, _DEFAULT_CONTEXT_WINDOW
 from .model import EchoFallbackModel, ModelError
 from .runtime import SessionRuntime
 from .settings import SettingsStore
 
 
-SLASH_COMMANDS: list[str] = ["/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning"]
+SLASH_COMMANDS: list[str] = [
+    "/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning",
+    "/crowd", "/claim", "/trust",
+]
 
 
 def _queue_prompt_style():
@@ -106,6 +110,9 @@ HELP_LINES: list[str] = [
     "  /model <name> --save  Switch and persist as default",
     "  /model list [all]   List available models",
     "  /reasoning [low|medium|high|off]  Change reasoning effort",
+    "  /crowd [list|#tag ...] <objective>  Publish a crowd task",
+    "  /claim <task-hash>  Claim an open crowd task",
+    "  /trust <npub>       Trust a worker public key",
     "  /status  /clear  /quit  /exit  /help",
 ]
 
@@ -139,6 +146,87 @@ class ChatContext:
     runtime: SessionRuntime
     cfg: AgentConfig
     settings_store: SettingsStore
+
+
+def _crowd_client(ctx: ChatContext) -> CrowdClient:
+    """Build a CrowdClient from settings and the active session store."""
+    settings = ctx.settings_store.load()
+    identity = CrowdIdentity(settings.crowd_nsec)
+    return CrowdClient(
+        store=ctx.runtime.store.crowd,
+        identity=identity,
+        upstream_relays=settings.crowd_relays,
+    )
+
+
+def handle_crowd_command(args: str, ctx: ChatContext) -> list[str]:
+    """Handle /crowd sub-commands. Returns display lines."""
+    cmd = args.strip()
+    if cmd == "list":
+        client = _crowd_client(ctx)
+        tasks = client.store.list_tasks(status="open")
+        if not tasks:
+            return ["No open crowd tasks."]
+        lines = [f"Open crowd tasks ({len(tasks)}):"]
+        for task in sorted(tasks, key=lambda t: t.created_at):
+            tags = ", ".join(task.tags) or "(none)"
+            lines.append(f"  {task.task_hash[:12]} | [{tags}] {task.objective[:80]}")
+        return lines
+
+    tokens = cmd.split()
+    tags = [t[1:].lower() for t in tokens if t.startswith("#") and len(t) > 1]
+    objective = " ".join(t for t in tokens if not t.startswith("#")).strip()
+    if not objective:
+        return [
+            "Usage: /crowd [#tag ...] <objective>",
+            "       /crowd list",
+        ]
+    client = _crowd_client(ctx)
+    task = CrowdTask.build(
+        objective=objective,
+        acceptance_criteria="",
+        tags=tags,
+        stake="low",
+    )
+    event = client.publish_task(task)
+    return [
+        f"Published crowd task {task.task_hash[:12]}",
+        f"  event id: {event.id[:16]}...",
+        f"  npub: {client.identity.npub_hex[:16]}...",
+    ]
+
+
+def handle_claim_command(args: str, ctx: ChatContext) -> list[str]:
+    """Handle /claim. Accepts a full hash or a 12-character prefix."""
+    prefix = args.strip().split()[0] if args.strip() else ""
+    if not prefix:
+        return ["Usage: /claim <task-hash>"]
+    client = _crowd_client(ctx)
+    task = client.store.get_task(prefix)
+    if task is None:
+        candidates = [t for t in client.store.list_tasks(status="open") if t.task_hash.startswith(prefix)]
+        if len(candidates) == 1:
+            task = candidates[0]
+        elif len(candidates) > 1:
+            return [f"Ambiguous prefix {prefix[:12]}: {len(candidates)} open tasks match."]
+    if task is None:
+        return [f"Could not claim task {prefix[:12]} (not found or already claimed)."]
+    event = client.claim_task(task.task_hash)
+    if event is None:
+        return [f"Could not claim task {task.task_hash[:12]} (not found or already claimed)."]
+    return [
+        f"Claimed task {task.task_hash[:12]}",
+        f"  claim event id: {event.id[:16]}...",
+    ]
+
+
+def handle_trust_command(args: str, ctx: ChatContext) -> list[str]:
+    """Handle /trust. Returns display lines."""
+    npub = args.strip().split()[0] if args.strip() else ""
+    if not npub:
+        return ["Usage: /trust <npub>"]
+    ctx.runtime.store.crowd.add_trusted(npub)
+    return [f"Added {npub[:16]}... to trusted workers."]
 
 
 def _format_token_count(n: int) -> str:
@@ -389,6 +477,24 @@ def dispatch_slash_command(
     if command.startswith("/reasoning"):
         cmd_args = command[len("/reasoning"):].strip()
         lines = handle_reasoning_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/crowd"):
+        cmd_args = command[len("/crowd"):].strip()
+        lines = handle_crowd_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/claim"):
+        cmd_args = command[len("/claim"):].strip()
+        lines = handle_claim_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/trust"):
+        cmd_args = command[len("/trust"):].strip()
+        lines = handle_trust_command(cmd_args, ctx)
         for line in lines:
             emit(line)
         return "handled"
