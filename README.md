@@ -14,7 +14,7 @@ Pre-built binaries are available on the [Releases page](https://github.com/ShinM
 
 ## Desktop App
 
-The desktop app (`openplanter-desktop/`) is a Tauri 2 application with a three-pane layout:
+The desktop app (`openplanter-desktop/`) is a Tauri 2 application with a three-pane layout and the same `/crowd`, `/claim`, `/cancel`, and `/trust` slash commands as the Python REPL:
 
 - **Sidebar** — Session management, provider/model settings, and API credential status
 - **Chat pane** — Conversational interface showing the agent's objectives, reasoning steps, tool calls, and findings with syntax-highlighted code blocks
@@ -119,7 +119,7 @@ In **recursive mode** (the default), the agent spawns sub-agents via `subtask` a
 
 ## Crowd Market
 
-OpenPlanter Crowd is a local, Nostr-compatible task market for publishing leaf subtasks, claiming work, and returning results. See [`CROWD.md`](CROWD.md) for the full design, CLI flags, and programmatic API.
+OpenPlanter Crowd is a local, Nostr-compatible task market for publishing leaf subtasks, claiming work, and returning results. It is available in the Python REPL, the Textual TUI, and the Tauri desktop chat. See [`CROWD.md`](CROWD.md) for the full design, CLI flags, and programmatic API.
 
 ## CLI Reference
 
@@ -197,7 +197,7 @@ Crowd-specific env vars include `OPENPLANTER_CROWD`, `OPENPLANTER_CROWD_PUBLISH_
 openplanter-desktop/         Tauri 2 desktop application
   crates/
     op-tauri/                 Tauri backend (Rust)
-      src/commands/           IPC command handlers (agent, wiki, config)
+      src/commands/           IPC command handlers (agent, crowd, wiki, config)
     op-core/                  Shared core library
   frontend/                   TypeScript/Vite frontend
     src/components/           UI components (ChatPane, GraphPane, InputBar, Sidebar)

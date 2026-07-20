@@ -102,6 +102,15 @@ export interface PersistentSettings {
   default_model_ollama?: string | null;
 }
 
+export interface CrowdTaskPreview {
+  task_hash: string;
+  objective: string;
+  tags: string[];
+  status: string;
+  stake: string;
+  created_at: string;
+}
+
 export interface SlashResult {
   output: string;
   success: boolean;

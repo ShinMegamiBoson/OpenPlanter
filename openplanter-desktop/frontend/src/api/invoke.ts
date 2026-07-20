@@ -2,12 +2,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ConfigView,
+  CrowdTaskPreview,
   GraphData,
   ModelInfo,
   PartialConfig,
   PersistentSettings,
   ReplayEntry,
   SessionInfo,
+  SlashResult,
 } from "./types";
 
 export async function solve(objective: string, sessionId: string): Promise<void> {
@@ -67,4 +69,24 @@ export async function readWikiFile(path: string): Promise<string> {
 
 export async function debugLog(msg: string): Promise<void> {
   return invoke("debug_log", { msg });
+}
+
+export async function crowdPublish(input: string): Promise<SlashResult> {
+  return invoke("crowd_publish", { input });
+}
+
+export async function crowdList(status?: string, tags?: string[]): Promise<{ tasks: CrowdTaskPreview[] }> {
+  return invoke("crowd_list", { status: status ?? null, tags: tags ?? null });
+}
+
+export async function crowdClaim(hash: string): Promise<SlashResult> {
+  return invoke("crowd_claim", { hash });
+}
+
+export async function crowdCancel(hash: string): Promise<SlashResult> {
+  return invoke("crowd_cancel", { hash });
+}
+
+export async function crowdTrust(npub: string): Promise<SlashResult> {
+  return invoke("crowd_trust", { npub });
 }
