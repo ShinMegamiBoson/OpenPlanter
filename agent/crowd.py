@@ -5,11 +5,9 @@ plumbing described in the OpenPlanter Crowd design document. This is a
 Phase 0/1 foundation: storage, task hashes, local publish/subscribe, and a
 strfry wrapper for later federation.
 
-Note on signing: the default signer uses HMAC-SHA256 over the Nostr event id.
-This is sufficient for the in-memory relay and local-only testing, but must be
-replaced with a BIP-340 Schnorr signer (e.g. coincurve/secp256k1) before
-publishing to public Nostr relays or a strfry instance that validates
-signatures.
+Event signing uses coincurve's BIP-340 Schnorr implementation. If coincurve is
+not installed, it falls back to an HMAC-SHA256 placeholder that is only valid
+for the in-memory relay.
 """
 
 from __future__ import annotations
@@ -140,18 +138,32 @@ class CrowdIdentity:
     """Local secp256k1 keypair for the OpenPlanter node.
 
     Generates a new key if *nsec_hex* is not supplied. The public key is the
-    32-byte x-coordinate used by Nostr (hex).
+    32-byte x-coordinate used by Nostr (hex). Signing uses BIP-340 Schnorr
+    via coincurve when available.
     """
 
     def __init__(self, nsec_hex: str | None = None) -> None:
-        if nsec_hex:
-            self._priv = _hex_to_bytes(nsec_hex.strip().lower())
-        else:
-            self._priv = self._generate_private()
-        self._pub = self._derive_public(self._priv)
+        try:
+            from coincurve import PrivateKey
+
+            if nsec_hex:
+                self._priv = PrivateKey.from_hex(nsec_hex.strip().lower())
+            else:
+                self._priv = PrivateKey()
+            self._pub = self._priv.public_key.format(compressed=False)[1:33]
+            self._use_schnorr = True
+        except Exception:
+            self._use_schnorr = False
+            if nsec_hex:
+                self._priv = _hex_to_bytes(nsec_hex.strip().lower())
+            else:
+                self._priv = secrets.token_bytes(32)
+            self._pub = hashlib.sha256(self._priv).digest()
 
     @property
     def private_hex(self) -> str:
+        if self._use_schnorr:
+            return self._priv.to_hex()
         return self._priv.hex()
 
     @property
@@ -166,34 +178,13 @@ class CrowdIdentity:
     def npub_hex(self) -> str:
         return self.public_hex
 
-    def _generate_private(self) -> bytes:
-        try:
-            from cryptography.hazmat.primitives.asymmetric import ec
-            key = ec.generate_private_key(ec.SECP256K1())
-            num = key.private_numbers().private_value
-            return num.to_bytes(32, "big")
-        except Exception:
-            # Fallback for environments without cryptography.
-            return secrets.token_bytes(32)
-
-    def _derive_public(self, priv: bytes) -> bytes:
-        try:
-            from cryptography.hazmat.primitives.asymmetric import ec
-            from cryptography.hazmat.backends import default_backend
-
-            curve = ec.SECP256K1()
-            n = int.from_bytes(priv, "big")
-            public = curve.curve.multiplication_base_point(n)
-            x = public.x
-            return x.to_bytes(32, "big")
-        except Exception:
-            # Placeholder: deterministic derivation from private key.
-            return hashlib.sha256(priv).digest()
-
     def sign_event(self, event: NostrEvent) -> None:
         event.id = _event_id(event.to_unsigned_dict())
-        # Local-only HMAC signer. Replace with BIP-340 for public relays.
-        event.sig = hmac.new(self._priv, event.id.encode("utf-8"), hashlib.sha256).hexdigest()
+        if self._use_schnorr:
+            aux = secrets.token_bytes(32)
+            event.sig = self._priv.sign_schnorr(bytes.fromhex(event.id), aux).hex()
+        else:
+            event.sig = hmac.new(self._priv, event.id.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 @dataclass
