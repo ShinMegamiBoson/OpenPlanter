@@ -18,7 +18,7 @@ from .settings import SettingsStore
 
 SLASH_COMMANDS: list[str] = [
     "/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning",
-    "/crowd", "/claim", "/trust",
+    "/crowd", "/claim", "/cancel", "/trust",
 ]
 
 
@@ -112,6 +112,7 @@ HELP_LINES: list[str] = [
     "  /reasoning [low|medium|high|off]  Change reasoning effort",
     "  /crowd [list|#tag ...] <objective>  Publish a crowd task",
     "  /claim <task-hash>  Claim an open crowd task",
+    "  /cancel <task-hash> Cancel a crowd task",
     "  /trust <npub>       Trust a worker public key",
     "  /status  /clear  /quit  /exit  /help",
 ]
@@ -217,6 +218,30 @@ def handle_claim_command(args: str, ctx: ChatContext) -> list[str]:
     return [
         f"Claimed task {task.task_hash[:12]}",
         f"  claim event id: {event.id[:16]}...",
+    ]
+
+
+def handle_cancel_command(args: str, ctx: ChatContext) -> list[str]:
+    """Handle /cancel. Accepts a full hash or a 12-character prefix."""
+    prefix = args.strip().split()[0] if args.strip() else ""
+    if not prefix:
+        return ["Usage: /cancel <task-hash>"]
+    client = _crowd_client(ctx)
+    task = client.store.get_task(prefix)
+    if task is None:
+        candidates = [t for t in client.store.list_tasks() if t.task_hash.startswith(prefix)]
+        if len(candidates) == 1:
+            task = candidates[0]
+        elif len(candidates) > 1:
+            return [f"Ambiguous prefix {prefix[:12]}: {len(candidates)} tasks match."]
+    if task is None:
+        return [f"Could not cancel task {prefix[:12]} (not found or already finished)."]
+    event = client.cancel_task(task.task_hash)
+    if event is None:
+        return [f"Could not cancel task {task.task_hash[:12]} (already finished or canceled)."]
+    return [
+        f"Canceled task {task.task_hash[:12]}",
+        f"  cancel event id: {event.id[:16]}...",
     ]
 
 
@@ -483,6 +508,12 @@ def dispatch_slash_command(
     if command.startswith("/crowd"):
         cmd_args = command[len("/crowd"):].strip()
         lines = handle_crowd_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/cancel"):
+        cmd_args = command[len("/cancel"):].strip()
+        lines = handle_cancel_command(cmd_args, ctx)
         for line in lines:
             emit(line)
         return "handled"

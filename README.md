@@ -168,7 +168,7 @@ openplanter-agent [options]
 
 | Flag | Description |
 |------|-------------|
-| `--crowd` | Enable the crowd market (`/crowd`, `/claim`, `/trust`) |
+| `--crowd` | Enable the crowd market (`/crowd`, `/claim`, `/cancel`, `/trust`) |
 | `--crowd-publish-leaf` | Publish leaf subtasks to the crowd |
 | `--crowd-relay-port N` | Local relay port (default: 7777) |
 | `--crowd-strfry` | Try to spawn a local `strfry` relay/router |

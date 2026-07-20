@@ -25,11 +25,13 @@ Three slash commands become available:
 ```text
 /crowd #python #debug fix flaky test in agent/crowd.py
 /claim 7b79285fc321
+/cancel cc042936bded
 /trust 89a1629857e6a7ef...
 ```
 
 - `/crowd` publishes a task. Tags are optional and start with `#`.
 - `/claim` claims an open task by full hash or 12-character prefix.
+- `/cancel` cancels a task that is still `open` or `claimed`.
 - `/trust` pins a worker public key (`npub`) as trusted.
 
 ## Configuration

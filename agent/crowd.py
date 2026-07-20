@@ -38,6 +38,7 @@ CROWD_KIND_CLAIM = 31002
 CROWD_KIND_RESULT = 31003
 CROWD_KIND_AVAILABLE = 31004
 CROWD_KIND_EMBEDDING = 31005
+CROWD_KIND_CANCEL = 31006
 
 NOSTR_KIND_METADATA = 0
 NOSTR_KIND_RELAY_LIST = 10002
@@ -347,6 +348,15 @@ class CrowdStore:
                 setattr(task, key, value)
         self._write_task(task)
         return task
+
+    def cancel_task(self, task_hash: str) -> CrowdTask | None:
+        with self._lock:
+            task = self.get_task(task_hash)
+            if task is None or task.status in {"done", "merged", "canceled"}:
+                return None
+            task.status = "canceled"
+            self._write_task(task)
+            return task
 
     def claim_task(self, task_hash: str, worker_pubkey: str) -> CrowdTask | None:
         with self._lock:
@@ -727,6 +737,21 @@ class CrowdClient:
             kind=CROWD_KIND_CLAIM,
             tags=[["e", task_hash], ["p", task.claimed_by or worker]],
             content=json.dumps({"task_hash": task_hash, "claimer": worker}, ensure_ascii=True),
+        )
+        self.identity.sign_event(event)
+        self.memory_relay.publish(event)
+        return event
+
+    def cancel_task(self, task_hash: str) -> NostrEvent | None:
+        task = self.store.cancel_task(task_hash)
+        if task is None:
+            return None
+        event = NostrEvent(
+            pubkey=self.identity.public_hex,
+            created_at=_unix_now(),
+            kind=CROWD_KIND_CANCEL,
+            tags=[["e", task_hash], ["status", "canceled"]],
+            content=json.dumps({"task_hash": task_hash, "status": "canceled"}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
         self.memory_relay.publish(event)
