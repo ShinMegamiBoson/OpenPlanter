@@ -125,7 +125,7 @@ pub async fn crowd_list(
     status: Option<String>,
     tags: Option<Vec<String>>,
     state: State<'_, AppState>,
-) -> Result<SlashResult, String> {
+) -> Result<Value, String> {
     let cfg = state.config.lock().await;
     let workspace = cfg.workspace.display().to_string();
     let session_root = cfg.session_root_dir.clone();
@@ -148,7 +148,16 @@ pub async fn crowd_list(
             .await
             .map_err(|e| format!("crowd cli task panicked: {e}"))?;
 
-    Ok(to_slash_result(output?))
+    let value = output?;
+    if value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+        Ok(serde_json::json!({ "tasks": value.get("tasks").cloned().unwrap_or(Value::Array(vec![])) }))
+    } else {
+        Err(value
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown crowd error")
+            .to_string())
+    }
 }
 
 /// Claim a crowd task.
