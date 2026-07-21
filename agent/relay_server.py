@@ -162,17 +162,21 @@ class CrowdRelayServer:
         cmd = msg[0]
         if cmd == "EVENT" and len(msg) == 2:
             event = msg[1]
-            ok = "true"
+            event_id = event.get("id", "") if isinstance(event, dict) else ""
+            ok = True
+            reason = ""
             if not isinstance(event, dict):
-                ok = "invalid: event is not an object"
+                ok = False
+                reason = "invalid: event is not an object"
             elif not self._verify_incoming(event):
-                ok = "invalid: failed id/signature verification"
+                ok = False
+                reason = "invalid: failed id/signature verification"
             else:
                 async with self._lock:
                     self._events.append(event)
                 await self._broadcast(event, exclude=client)
             try:
-                await client.ws.send(json.dumps(["OK", event.get("id", ""), ok, ""], separators=(",", ":")))
+                await client.ws.send(json.dumps(["OK", event_id, ok, reason], separators=(",", ":")))
             except Exception:
                 pass
 

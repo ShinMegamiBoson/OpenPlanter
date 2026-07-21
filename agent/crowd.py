@@ -98,19 +98,38 @@ def _normalize(text: str) -> str:
     return " ".join(text.split()).lower()
 
 
-def _task_hash(
+def _brief_hash(
     objective: str,
     acceptance_criteria: str,
     context_hash: str,
     tags: list[str],
+    stake: str = "low",
+    required_tier: str | None = None,
+    deadline: str | None = None,
+    expires_at: str | None = None,
 ) -> str:
+    """Hash of the canonical brief, used for deduplication and provenance."""
     body = json.dumps(
         {
             "objective": _normalize(objective),
             "acceptance_criteria": _normalize(acceptance_criteria),
             "context_hash": context_hash,
             "tags": sorted((t.lower() for t in tags)),
+            "stake": stake,
+            "required_tier": required_tier,
+            "deadline": deadline,
+            "expires_at": expires_at,
         },
+        sort_keys=True,
+        ensure_ascii=True,
+    )
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _task_id(publisher_hex: str, nonce: str, brief_hash: str) -> str:
+    """Unique job-offer identifier: H(publisher || nonce || brief_hash)."""
+    body = json.dumps(
+        {"publisher": publisher_hex, "nonce": nonce, "brief_hash": brief_hash},
         sort_keys=True,
         ensure_ascii=True,
     )
@@ -428,6 +447,11 @@ class CrowdTask:
     # Nostr addressable-event identifiers for this task, written when published.
     event_id: str | None = None
     event_pubkey: str | None = None
+    # Separate identifiers for the brief (deduplication/provenance) and the
+    # concrete job offer (publisher + nonce + brief_hash).
+    brief_hash: str | None = None
+    publisher: str | None = None
+    nonce: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -454,8 +478,18 @@ class CrowdTask:
         encrypted_brief: str | None = None,
     ) -> "CrowdTask":
         tags = sorted({t.lower().strip() for t in (tags or []) if t.strip()})
+        brief = _brief_hash(
+            objective,
+            acceptance_criteria,
+            context_hash,
+            tags,
+            stake=stake,
+            required_tier=required_tier,
+            deadline=deadline,
+            expires_at=expires_at,
+        )
         return cls(
-            task_hash=_task_hash(objective, acceptance_criteria, context_hash, tags),
+            task_hash=brief,
             objective=objective,
             acceptance_criteria=acceptance_criteria,
             context_hash=context_hash,
@@ -470,6 +504,7 @@ class CrowdTask:
             private=private,
             private_allowed=list(private_allowed or []),
             encrypted_brief=encrypted_brief,
+            brief_hash=brief,
         )
 
 
@@ -603,6 +638,14 @@ class CrowdStore:
             self._write_task(task)
             return task
 
+    def _publisher_allowed(self, task: CrowdTask, event: NostrEvent | None) -> bool:
+        """Only the task publisher may mutate its lifecycle state."""
+        if event is None:
+            return True
+        if not task.event_pubkey:
+            return True
+        return task.event_pubkey == event.pubkey
+
     def cancel_task(
         self,
         task_hash: str,
@@ -611,6 +654,8 @@ class CrowdStore:
         with self.locked():
             task = self.get_task(task_hash)
             if task is None or task.status in {"done", "merged", "canceled"}:
+                return None
+            if not self._publisher_allowed(task, event):
                 return None
             task.status = "canceled"
             self._write_task(task)
@@ -680,6 +725,8 @@ class CrowdStore:
             task = self.get_task(task_hash)
             if task is None or task.status not in {"done", "claimed"}:
                 return None
+            if not self._publisher_allowed(task, event):
+                return None
             task.status = "accepted"
             task.merged = True
             self._write_task(task)
@@ -696,6 +743,8 @@ class CrowdStore:
             task = self.get_task(task_hash)
             if task is None or task.status not in {"done", "claimed"}:
                 return None
+            if not self._publisher_allowed(task, event):
+                return None
             task.status = "rejected"
             self._write_task(task)
             if event is not None:
@@ -711,6 +760,8 @@ class CrowdStore:
             task = self.get_task(task_hash)
             if task is None or task.status in {"done", "accepted", "rejected", "canceled", "expired"}:
                 return None
+            if not self._publisher_allowed(task, event):
+                return None
             task.status = "expired"
             self._write_task(task)
             if event is not None:
@@ -725,6 +776,8 @@ class CrowdStore:
         with self.locked():
             task = self.get_task(task_hash)
             if task is None or task.status not in {"canceled", "rejected", "expired"}:
+                return None
+            if not self._publisher_allowed(task, event):
                 return None
             task.status = "open"
             task.claimed_by = None
@@ -971,11 +1024,16 @@ def _safe_parse_json(text: str) -> dict[str, Any]:
 
 
 def _task_hash_from_content(event: NostrEvent) -> str | None:
-    """Best-effort fallback to find the referenced task hash in old events."""
+    """Best-effort fallback to find the referenced task id in old events."""
     try:
         payload = json.loads(event.content)
         if isinstance(payload, dict):
-            return payload.get("task_hash") or payload.get("task", {}).get("task_hash")
+            return (
+                payload.get("task_id")
+                or payload.get("task_hash")
+                or payload.get("task", {}).get("task_id")
+                or payload.get("task", {}).get("task_hash")
+            )
     except (json.JSONDecodeError, AttributeError):
         pass
     # Look for a 64-character hex e tag that may be the task event id.
@@ -991,9 +1049,13 @@ def _task_from_event(event: NostrEvent) -> CrowdTask:
     if not isinstance(payload, dict):
         payload = {}
     task_hash = _get_d_tag(event.tags) or _task_hash_from_content(event) or event.id
+    brief_hash = payload.get("brief_hash") or task_hash
     encrypted_brief = payload.get("encrypted_brief")
     return CrowdTask(
         task_hash=task_hash,
+        brief_hash=brief_hash,
+        publisher=payload.get("publisher") or event.pubkey,
+        nonce=payload.get("nonce"),
         objective=payload.get("objective", ""),
         acceptance_criteria=payload.get("acceptance_criteria", ""),
         context_hash=payload.get("context_hash", ""),
@@ -1320,7 +1382,11 @@ class CrowdClient:
             return
 
         if event.kind == CROWD_KIND_CANCEL:
-            self.store.cancel_task(task_hash, event=event)
+            task = self.store.get_task(task_hash)
+            if task and task.event_pubkey and task.event_pubkey != event.pubkey:
+                self.store.append_event(event, task_hash)
+            elif self.store.cancel_task(task_hash, event=event) is None:
+                self.store.append_event(event, task_hash)
             self.memory_relay.publish(event)
             return
 
@@ -1443,7 +1509,31 @@ class CrowdClient:
             self._local_server_thread = None
 
     def publish_task(self, task: CrowdTask, scope: str = "public") -> NostrEvent:
+        # Separate the brief hash (deduplication/provenance) from the concrete
+        # job-offer id (publisher + nonce + brief_hash).
+        brief_hash = task.brief_hash or _brief_hash(
+            task.objective,
+            task.acceptance_criteria,
+            task.context_hash,
+            task.tags,
+            stake=task.stake,
+            required_tier=task.required_tier,
+            deadline=task.deadline,
+            expires_at=task.expires_at,
+        )
+        nonce = task.nonce or secrets.token_hex(16)
+        publisher = self.identity.public_hex
+        task_hash = _task_id(publisher, nonce, brief_hash)
+        task.brief_hash = brief_hash
+        task.nonce = nonce
+        task.publisher = publisher
+        task.task_hash = task_hash
+
         content: dict[str, Any] = {
+            "task_id": task.task_hash,
+            "brief_hash": task.brief_hash,
+            "publisher": task.publisher,
+            "nonce": task.nonce,
             "objective": task.objective,
             "acceptance_criteria": task.acceptance_criteria,
             "context_hash": task.context_hash,
@@ -1518,6 +1608,19 @@ class CrowdClient:
         encrypted = _encrypt_brief(original_brief, self.private_identity.private_hex, allowed)
         task.encrypted_brief = json.dumps(encrypted, ensure_ascii=True)
 
+        # Lock the brief hash to the original fields before replacing them with
+        # public placeholders; publish_task will derive task_id from this.
+        task.brief_hash = _brief_hash(
+            task.objective,
+            task.acceptance_criteria,
+            task.context_hash,
+            task.tags,
+            stake=task.stake,
+            required_tier=task.required_tier,
+            deadline=task.deadline,
+            expires_at=task.expires_at,
+        )
+
         # Public placeholders keep the real brief off plain relays.
         task.objective = "Private task"
         task.acceptance_criteria = "See encrypted brief"
@@ -1579,7 +1682,7 @@ class CrowdClient:
             created_at=_unix_now(),
             kind=CROWD_KIND_CLAIM,
             tags=tags,
-            content=json.dumps({"task_hash": task_hash, "claimer": claimer}, ensure_ascii=True),
+            content=json.dumps({"task_id": task_hash, "claimer": claimer}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
         task = self.store.claim_task(task_hash, claimer, event=event)
@@ -1590,6 +1693,11 @@ class CrowdClient:
         return event
 
     def cancel_task(self, task_hash: str) -> NostrEvent | None:
+        task = self.store.get_task(task_hash)
+        if task is None:
+            return None
+        if task.event_pubkey and task.event_pubkey != self.identity.public_hex:
+            return None
         task_event_id, task_event_pubkey = self._task_event_ref(task_hash)
         tags: list[list[str]] = [["d", task_hash]]
         if len(str(task_event_id)) == 64:
@@ -1600,7 +1708,7 @@ class CrowdClient:
             created_at=_unix_now(),
             kind=CROWD_KIND_CANCEL,
             tags=tags,
-            content=json.dumps({"task_hash": task_hash, "status": "canceled"}, ensure_ascii=True),
+            content=json.dumps({"task_id": task_hash, "status": "canceled"}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
         task = self.store.cancel_task(task_hash, event=event)
@@ -1661,7 +1769,7 @@ class CrowdClient:
             created_at=_unix_now(),
             kind=CROWD_KIND_FEEDBACK,
             tags=tags,
-            content=json.dumps({"task_hash": task_hash, "status": "accepted"}, ensure_ascii=True),
+            content=json.dumps({"task_id": task_hash, "status": "accepted"}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
         if self.store.accept_result(task_hash, event=event) is None:
@@ -1685,7 +1793,7 @@ class CrowdClient:
             created_at=_unix_now(),
             kind=CROWD_KIND_FEEDBACK,
             tags=tags,
-            content=json.dumps({"task_hash": task_hash, "status": "rejected"}, ensure_ascii=True),
+            content=json.dumps({"task_id": task_hash, "status": "rejected"}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
         if self.store.reject_result(task_hash, event=event) is None:
@@ -1709,7 +1817,7 @@ class CrowdClient:
             created_at=_unix_now(),
             kind=CROWD_KIND_FEEDBACK,
             tags=tags,
-            content=json.dumps({"task_hash": task_hash, "status": "expired"}, ensure_ascii=True),
+            content=json.dumps({"task_id": task_hash, "status": "expired"}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
         if self.store.expire_task(task_hash, event=event) is None:
@@ -1733,7 +1841,7 @@ class CrowdClient:
             created_at=_unix_now(),
             kind=CROWD_KIND_FEEDBACK,
             tags=tags,
-            content=json.dumps({"task_hash": task_hash, "status": "reopened"}, ensure_ascii=True),
+            content=json.dumps({"task_id": task_hash, "status": "reopened"}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
         if self.store.reopen_task(task_hash, event=event) is None:
@@ -1779,7 +1887,7 @@ class CrowdClient:
             created_at=_unix_now(),
             kind=CROWD_KIND_EMBEDDING,
             tags=etags,
-            content=json.dumps({"task_hash": task_hash, "vector": noisy}, ensure_ascii=True),
+            content=json.dumps({"task_id": task_hash, "vector": noisy}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
         self.memory_relay.publish(event)
