@@ -13,6 +13,7 @@ dependencies = [
     "prompt_toolkit>=3.0",
     "pyfiglet>=1.0",
     "coincurve>=21.0.0",
+    "filelock>=3.13,<4",
 ]
 
 [project.optional-dependencies]

@@ -27,12 +27,19 @@ import subprocess
 import threading
 import time
 import warnings
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from .config import AgentConfig
+
+try:
+    from filelock import FileLock, Timeout as _FileLockTimeout
+except Exception:  # pragma: no cover - filelock optional fallback
+    FileLock = None  # type: ignore[misc,assignment]
+    _FileLockTimeout = Exception
 
 CROWD_KIND_TASK = 31001
 CROWD_KIND_CLAIM = 31002
@@ -128,6 +135,18 @@ class NostrEvent:
             "tags": self.tags,
             "content": self.content,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "NostrEvent":
+        return cls(
+            pubkey=data.get("pubkey", ""),
+            created_at=data.get("created_at", 0),
+            kind=data.get("kind", 0),
+            tags=data.get("tags", []),
+            content=data.get("content", ""),
+            id=data.get("id", ""),
+            sig=data.get("sig", ""),
+        )
 
 
 def _hex_to_bytes(value: str) -> bytes:
@@ -256,20 +275,49 @@ class CrowdStore:
         self.workspace = Path(workspace).expanduser().resolve()
         self.root = (self.workspace / session_root_dir / "crowd").resolve()
         self.tasks_dir = self.root / "tasks"
+        self.events_dir = self.root / "events"
         self.trust_path = self.root / "trust.json"
         self.worker_profile_path = self.root / "worker_profile.json"
         self.vector_index_path = self.root / "vector_index.json"
-        self._lock = threading.Lock()
+        self._mutex = threading.Lock()
+        self.lock_path = self.root / ".crowd.lock"
+        self._file_lock = FileLock(str(self.lock_path), timeout=5) if FileLock is not None else None
         self._ensure_dirs()
 
     def _ensure_dirs(self) -> None:
         self.tasks_dir.mkdir(parents=True, exist_ok=True)
+        self.events_dir.mkdir(parents=True, exist_ok=True)
+
+    @contextmanager
+    def locked(self):
+        """Process- and thread-safe lock for all store mutations."""
+        with self._mutex:
+            if self._file_lock is None:
+                yield
+            else:
+                try:
+                    self._file_lock.acquire()
+                except _FileLockTimeout as exc:
+                    raise CrowdError("Timed out acquiring crowd store lock") from exc
+                try:
+                    yield
+                finally:
+                    try:
+                        self._file_lock.release()
+                    except Exception:
+                        pass
 
     def _task_dir(self, task_hash: str) -> Path:
         return self.tasks_dir / task_hash
 
     def _metadata_path(self, task_hash: str) -> Path:
         return self._task_dir(task_hash) / "metadata.json"
+
+    def _event_dir(self, task_hash: str) -> Path:
+        return self.events_dir / task_hash
+
+    def _event_path(self, task_hash: str, event_id: str) -> Path:
+        return self._event_dir(task_hash) / f"{event_id}.json"
 
     def context_bundle_dir(self, task_hash: str) -> Path:
         path = self._task_dir(task_hash) / "context_bundle"
@@ -288,28 +336,13 @@ class CrowdStore:
 
     def create_task(
         self,
-        objective: str,
-        acceptance_criteria: str,
-        context_hash: str = "",
-        parent_session_id: str | None = None,
-        parent_task_hash: str | None = None,
-        tags: list[str] | None = None,
-        stake: str = "low",
-        required_tier: str | None = None,
-        deadline: str | None = None,
+        task: CrowdTask,
+        event: NostrEvent | None = None,
     ) -> CrowdTask:
-        task = CrowdTask.build(
-            objective=objective,
-            acceptance_criteria=acceptance_criteria,
-            context_hash=context_hash,
-            parent_session_id=parent_session_id,
-            parent_task_hash=parent_task_hash,
-            tags=tags,
-            stake=stake,
-            required_tier=required_tier,
-            deadline=deadline,
-        )
-        self._write_task(task)
+        with self.locked():
+            self._write_task(task)
+            if event is not None:
+                self._write_event(event, task.task_hash)
         return task
 
     def _write_task(self, task: CrowdTask) -> None:
@@ -346,26 +379,38 @@ class CrowdStore:
         return tasks
 
     def update_task(self, task_hash: str, **updates: Any) -> CrowdTask | None:
-        task = self.get_task(task_hash)
-        if task is None:
-            return None
-        for key, value in updates.items():
-            if hasattr(task, key):
-                setattr(task, key, value)
-        self._write_task(task)
-        return task
+        with self.locked():
+            task = self.get_task(task_hash)
+            if task is None:
+                return None
+            for key, value in updates.items():
+                if hasattr(task, key):
+                    setattr(task, key, value)
+            self._write_task(task)
+            return task
 
-    def cancel_task(self, task_hash: str) -> CrowdTask | None:
-        with self._lock:
+    def cancel_task(
+        self,
+        task_hash: str,
+        event: NostrEvent | None = None,
+    ) -> CrowdTask | None:
+        with self.locked():
             task = self.get_task(task_hash)
             if task is None or task.status in {"done", "merged", "canceled"}:
                 return None
             task.status = "canceled"
             self._write_task(task)
+            if event is not None:
+                self._write_event(event, task_hash)
             return task
 
-    def claim_task(self, task_hash: str, worker_pubkey: str) -> CrowdTask | None:
-        with self._lock:
+    def claim_task(
+        self,
+        task_hash: str,
+        worker_pubkey: str,
+        event: NostrEvent | None = None,
+    ) -> CrowdTask | None:
+        with self.locked():
             task = self.get_task(task_hash)
             if task is None or task.status != "open":
                 return None
@@ -373,27 +418,31 @@ class CrowdStore:
             task.claimed_by = worker_pubkey
             task.claimed_at = _utc_now()
             self._write_task(task)
+            if event is not None:
+                self._write_event(event, task_hash)
             return task
 
     def write_result(
         self,
         task_hash: str,
         content: str,
-        result_event_id: str | None = None,
+        event: NostrEvent | None = None,
     ) -> CrowdTask | None:
-        with self._lock:
+        with self.locked():
             task = self.get_task(task_hash)
             if task is None or task.status != "claimed":
                 return None
             rdir = self.result_dir(task_hash)
             (rdir / "result.md").write_text(content, encoding="utf-8")
             task.status = "done"
-            task.result_event_id = result_event_id
+            task.result_event_id = event.id if event is not None else None
             self._write_task(task)
+            if event is not None:
+                self._write_event(event, task_hash)
             return task
 
     def merge_result(self, task_hash: str) -> CrowdTask | None:
-        with self._lock:
+        with self.locked():
             task = self.get_task(task_hash)
             if task is None or task.status != "done":
                 return None
@@ -426,6 +475,49 @@ class CrowdStore:
     def _save_json(self, path: Path, data: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2, ensure_ascii=True), encoding="utf-8")
+
+    def _write_event(self, event: NostrEvent, task_hash: str) -> None:
+        dest = self._event_dir(task_hash)
+        dest.mkdir(parents=True, exist_ok=True)
+        self._event_path(task_hash, event.id).write_text(
+            json.dumps(event.to_dict(), indent=2, ensure_ascii=True),
+            encoding="utf-8",
+        )
+
+    def append_event(self, event: NostrEvent, task_hash: str) -> None:
+        with self.locked():
+            self._write_event(event, task_hash)
+
+    def list_events(self, task_hash: str) -> list[NostrEvent]:
+        edir = self._event_dir(task_hash)
+        if not edir.exists():
+            return []
+        events: list[NostrEvent] = []
+        for p in edir.iterdir():
+            if p.suffix != ".json" or not p.is_file():
+                continue
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                events.append(NostrEvent.from_dict(data))
+            except (json.JSONDecodeError, TypeError):
+                continue
+        events.sort(key=lambda e: (e.created_at, e.id))
+        return events
+
+    def iter_all_events(self) -> Iterator[tuple[str, NostrEvent]]:
+        if not self.events_dir.exists():
+            return
+        for task_dir in self.events_dir.iterdir():
+            if not task_dir.is_dir():
+                continue
+            for p in task_dir.iterdir():
+                if p.suffix != ".json" or not p.is_file():
+                    continue
+                try:
+                    data = json.loads(p.read_text(encoding="utf-8"))
+                    yield task_dir.name, NostrEvent.from_dict(data)
+                except (json.JSONDecodeError, TypeError):
+                    continue
 
     def add_trusted(self, npub: str) -> None:
         trust = self._load_json(self.trust_path)
@@ -680,26 +772,46 @@ class CrowdClient:
         identity: CrowdIdentity | None = None,
         relay_uri: str | None = None,
         upstream_relays: list[str] | None = None,
+        auto_spawn_strfry: bool = False,
     ) -> None:
         self.store = store
         self.identity = identity or CrowdIdentity()
         self.relay_uri = relay_uri
-        self.upstream_relays = upstream_relays or []
+        self.upstream_relays = list(upstream_relays or [])
+        self.auto_spawn_strfry = auto_spawn_strfry
         self.memory_relay = MemoryRelay()
         self._strfry: StrfryWrapper | None = None
+        self._hydrate_memory_relay()
+
+    def _hydrate_memory_relay(self) -> None:
+        events = list(self.store.iter_all_events())
+        events.sort(key=lambda item: item[1].created_at)
+        for _task_hash, event in events:
+            self.memory_relay.publish(event)
 
     def local_uri(self) -> str:
         return self.relay_uri or "ws://127.0.0.1:7777"
 
     def start_local_relay(self, port: int = 7777) -> str | None:
-        self._strfry = StrfryWrapper(self.store.root / "strfry", port=port)
-        uri = self._strfry.start_relay()
-        if uri:
-            self.relay_uri = uri
-            return uri
-        # Fall back to the in-memory relay on the same URI for local-only use,
-        # but do not actually bind a websocket server in this scaffold.
+        if self.auto_spawn_strfry:
+            self._strfry = StrfryWrapper(self.store.root / "strfry", port=port)
+            uri = self._strfry.start_relay()
+            if uri:
+                self.relay_uri = uri
+                if self.upstream_relays:
+                    self._strfry.start_router(self.upstream_relays)
+                return self.relay_uri
+            warnings.warn(
+                "strfry binary not found; falling back to in-memory relay",
+                stacklevel=2,
+            )
         self.relay_uri = f"ws://127.0.0.1:{port}"
+        if self.upstream_relays and not self.auto_spawn_strfry:
+            warnings.warn(
+                "Upstream relays configured but --crowd-strfry not set; "
+                "federation will not start for the in-memory relay",
+                stacklevel=2,
+            )
         return self.relay_uri
 
     def stop(self) -> None:
@@ -723,39 +835,26 @@ class CrowdClient:
         )
         self.identity.sign_event(event)
         self.memory_relay.publish(event)
-        self.store.create_task(
-            objective=task.objective,
-            acceptance_criteria=task.acceptance_criteria,
-            context_hash=task.context_hash,
-            parent_session_id=task.parent_session_id,
-            parent_task_hash=task.parent_task_hash,
-            tags=task.tags,
-            stake=task.stake,
-            required_tier=task.required_tier,
-            deadline=task.deadline,
-        )
+        self.store.create_task(task, event=event)
         return event
 
     def claim_task(self, task_hash: str, pubkey: str | None = None) -> NostrEvent | None:
         worker = pubkey or self.identity.public_hex
-        task = self.store.claim_task(task_hash, worker)
-        if task is None:
-            return None
         event = NostrEvent(
             pubkey=worker,
             created_at=_unix_now(),
             kind=CROWD_KIND_CLAIM,
-            tags=[["e", task_hash], ["p", task.claimed_by or worker]],
+            tags=[["e", task_hash], ["p", worker]],
             content=json.dumps({"task_hash": task_hash, "claimer": worker}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
+        task = self.store.claim_task(task_hash, worker, event=event)
+        if task is None:
+            return None
         self.memory_relay.publish(event)
         return event
 
     def cancel_task(self, task_hash: str) -> NostrEvent | None:
-        task = self.store.cancel_task(task_hash)
-        if task is None:
-            return None
         event = NostrEvent(
             pubkey=self.identity.public_hex,
             created_at=_unix_now(),
@@ -764,6 +863,9 @@ class CrowdClient:
             content=json.dumps({"task_hash": task_hash, "status": "canceled"}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
+        task = self.store.cancel_task(task_hash, event=event)
+        if task is None:
+            return None
         self.memory_relay.publish(event)
         return event
 
@@ -776,7 +878,6 @@ class CrowdClient:
         task = self.store.get_task(task_hash)
         if task is None or task.claimed_by != self.identity.public_hex:
             return None
-        self.store.write_result(task_hash, content)
         tags = [["e", task_hash]]
         if parent_pubkey:
             tags.append(["p", parent_pubkey])
@@ -788,6 +889,9 @@ class CrowdClient:
             content=content[:8000],
         )
         self.identity.sign_event(event)
+        updated = self.store.write_result(task_hash, content, event=event)
+        if updated is None:
+            return None
         self.memory_relay.publish(event)
         return event
 
@@ -823,6 +927,7 @@ class CrowdClient:
         self.identity.sign_event(event)
         self.memory_relay.publish(event)
         self.store.add_embedding(task_hash, vector, tags)
+        self.store.append_event(event, task_hash)
         return event
 
 
@@ -873,7 +978,13 @@ def crowd_client_from_config(
     nsec = settings.get("crowd_nsec") if settings else None
     identity = CrowdIdentity(nsec) if nsec else CrowdIdentity()
     upstreams = settings.get("crowd_relays", []) if settings else []
-    return CrowdClient(store=store, identity=identity, upstream_relays=upstreams)
+    auto_spawn = getattr(config, "crowd_auto_spawn_strfry", False)
+    return CrowdClient(
+        store=store,
+        identity=identity,
+        upstream_relays=upstreams,
+        auto_spawn_strfry=auto_spawn,
+    )
 
 
 def _load_settings(workspace: Path, session_root_dir: str) -> dict[str, Any]:

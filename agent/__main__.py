@@ -606,13 +606,16 @@ def main() -> None:
                 store=runtime.store.crowd,
                 identity=crowd_identity,
                 upstream_relays=settings.crowd_relays,
+                auto_spawn_strfry=cfg.crowd_auto_spawn_strfry,
             )
             ctx.crowd = crowd
             uri = crowd.start_local_relay(port=cfg.crowd_relay_port)
             if uri:
                 startup_info["Crowd"] = uri
-            if cfg.crowd_auto_spawn_strfry and crowd._strfry and crowd._strfry.find_binary():
-                startup_info["Crowd router"] = "starting"
+            if crowd._strfry and crowd._strfry.router_proc:
+                startup_info["Crowd router"] = "federating to " + ", ".join(settings.crowd_relays)
+            elif cfg.crowd_auto_spawn_strfry and settings.crowd_relays:
+                startup_info["Crowd router"] = "strfry not found"
 
         # Build optional censor for headless / plain text paths.
         censor_fn = None

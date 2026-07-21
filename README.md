@@ -258,7 +258,7 @@ python -m pytest tests/
 python -m pytest tests/ --ignore=tests/test_live_models.py --ignore=tests/test_integration_live.py
 ```
 
-Requires Python 3.10+. Dependencies: `rich`, `prompt_toolkit`, `pyfiglet`, `coincurve`.
+Requires Python 3.10+. Dependencies: `rich`, `prompt_toolkit`, `pyfiglet`, `coincurve`, `filelock`.
 
 ## License
 

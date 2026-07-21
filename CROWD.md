@@ -91,13 +91,14 @@ Crowd data lives under `.openplanter/crowd/`:
 ```text
 .openplanter/crowd/
   tasks/           JSON task records
-  events/          Signed Nostr events
-  embeddings/      DP-noisy embedding vectors
+  events/          Signed Nostr events, stored per task as <event_id>.json
+  vector_index.json  DP-noisy embedding vectors
   trust.json       Trusted worker npubs
+  worker_profile.json  Advertised worker profile
   strfry/          Optional strfry relay/router config
 ```
 
-`CrowdStore` owns reads and writes; `CrowdClient` signs and publishes events; `MemoryRelay` routes events in-process.
+`CrowdStore` owns reads and writes; `CrowdClient` signs and publishes events; `MemoryRelay` routes events in-process. Task status changes (`claim`, `cancel`, `result`) use a process-wide `threading.Lock` plus an optional `filelock` on `.openplanter/crowd/.crowd.lock`, so claiming a task is safe across separate Python processes (e.g. multiple REPL sessions or Tauri CLI calls).
 
 ## Desktop (Tauri) support
 
@@ -113,11 +114,11 @@ The `openplanter-desktop` app exposes the same slash commands in its chat UI:
 
 The desktop frontend forwards these commands to the Rust Tauri backend, which runs the Python `agent/crowd_cli.py` helper. This reuses the same signing, storage, and hash logic used by the Python agent, so tasks created in the GUI are fully compatible with those created in the REPL. It requires a `python3` interpreter with the `agent` package on `PATH` (or set via `OPENPLANTER_PYTHON`).
 
-### Local relay
+### Local relay and federation
 
-`CrowdClient.start_local_relay()` first attempts to start a `strfry` relay on `ws://127.0.0.1:<port>`. If the binary is missing it falls back to the in-memory relay URI. The in-memory relay is a local message bus — it does not bind a real websocket server in this scaffold. When `strfry` is available, tasks can flow to configured upstream relays and be consumed by other OpenPlanter nodes.
+`CrowdClient.start_local_relay()` attempts to start a `strfry` relay on `ws://127.0.0.1:<port>` when `--crowd-strfry`/`OPENPLANTER_CROWD_STRFRY` is set. If the binary is missing it falls back to the in-memory relay URI and warns. The in-memory relay is a local message bus — it does not bind a real websocket server in this scaffold.
 
-When `crowd_relays` is configured and `--crowd-strfry` is set, `StrfryWrapper` can also start a `strfry router` process that relays `31001`–`31005` events up and down between the local node and the wider network.
+When `strfry` is available and `crowd_relays` has upstream `ws://`/`wss://` entries, `start_local_relay()` also starts a `strfry router` process that relays task/claim/result/available/embedding events (`31001`–`31005`) between the local node and the wider network. The in-memory `MemoryRelay` is hydrated from the persisted `events/` directory on `CrowdClient` construction, so a new process sees all previously signed events.
 
 ### Worker discovery and trust
 
