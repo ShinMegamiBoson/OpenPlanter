@@ -120,7 +120,7 @@ Crowd data lives under `.openplanter/crowd/`:
 
 `CrowdStore` owns reads and writes; `CrowdClient` signs and publishes events; `MemoryRelay` routes events in-process. Task status changes (`claim`, `cancel`, `result`) use a process-wide `threading.Lock` plus an optional `filelock` on `.openplanter/crowd/.crowd.lock`, so claiming a task is safe across separate Python processes (e.g. multiple REPL sessions or Tauri CLI calls).
 
-> **Known limitation:** Cross-process locking only protects processes that share the same on-disk workspace. Two independent nodes with separate `CrowdStore` instances can both broadcast a claim for the same task; there is no distributed consensus, and each node will believe its own claim wins until an explicit conflict-resolution layer is added.
+> **By-design limitation:** Cross-process locking only protects processes that share the same on-disk workspace. Two independent nodes with separate `CrowdStore` instances can both broadcast a claim for the same task; there is no distributed consensus. For the OSINT use case this is acceptable — dead-end or excess claims do not affect correctness — and it is not treated as a bug.
 
 ## Desktop (Tauri) support
 
