@@ -179,6 +179,7 @@ def _crowd_client(ctx: ChatContext) -> CrowdClient:
         store=ctx.runtime.store.crowd,
         identity=identity,
         upstream_relays=settings.crowd_relays,
+        epsilon=settings.crowd_epsilon,
         private_identity=private_identity,
         private_relays=settings.crowd_private_relays,
     )

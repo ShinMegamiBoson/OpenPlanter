@@ -596,17 +596,29 @@ def main() -> None:
     try:
         if cfg.crowd_enabled:
             settings = settings_store.load()
+            changed = False
             if not settings.crowd_nsec:
                 crowd_identity = CrowdIdentity()
                 settings.crowd_nsec = crowd_identity.nsec_hex
-                settings_store.save(settings)
+                changed = True
             else:
                 crowd_identity = CrowdIdentity(settings.crowd_nsec)
+            if not settings.crowd_private_nsec:
+                private_identity = CrowdIdentity()
+                settings.crowd_private_nsec = private_identity.nsec_hex
+                changed = True
+            else:
+                private_identity = CrowdIdentity(settings.crowd_private_nsec)
+            if changed:
+                settings_store.save(settings)
             crowd = CrowdClient(
                 store=runtime.store.crowd,
                 identity=crowd_identity,
                 upstream_relays=settings.crowd_relays,
                 auto_spawn_strfry=cfg.crowd_auto_spawn_strfry,
+                epsilon=settings.crowd_epsilon,
+                private_identity=private_identity,
+                private_relays=settings.crowd_private_relays,
             )
             ctx.crowd = crowd
             uri = crowd.start_local_relay(port=cfg.crowd_relay_port)

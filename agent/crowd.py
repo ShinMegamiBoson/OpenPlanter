@@ -579,6 +579,8 @@ class CrowdStore:
     ) -> list[CrowdTask]:
         tasks: list[CrowdTask] = []
         for p in self.tasks_dir.iterdir():
+            if not p.is_dir():
+                continue
             task = self.get_task(p.name)
             if task is None:
                 continue
@@ -884,21 +886,46 @@ class MemoryRelay:
 
     def publish(self, event: NostrEvent) -> None:
         with self._lock:
-            # Parameterised replaceable: replace previous event for same (kind, pubkey, d).
+            # Parameterised replaceable: keep only the newest event for each
+            # (kind, pubkey, d) address (NIP-33).
             if event.kind >= 30000 and event.kind < 40000:
                 d = _get_d_tag(event.tags)
                 if d:
-                    self._events = [
+                    addr = (event.kind, event.pubkey, d)
+                    same = [
                         e
                         for e in self._events
-                        if not (e.kind == event.kind and e.pubkey == event.pubkey and _get_d_tag(e.tags) == d)
+                        if (e.kind, e.pubkey, _get_d_tag(e.tags)) == addr
                     ]
-            self._events.append(event)
-            callbacks = [
-                callback
-                for _sub_id, (filter_, callback) in self._subs.items()
-                if _match_filter(event, filter_)
-            ]
+                    if same and max(e.created_at for e in same) > event.created_at:
+                        # A newer event already exists for this address.
+                        callbacks = []
+                    else:
+                        self._events = [
+                            e
+                            for e in self._events
+                            if (e.kind, e.pubkey, _get_d_tag(e.tags)) != addr
+                        ]
+                        self._events.append(event)
+                        callbacks = [
+                            callback
+                            for _sub_id, (filter_, callback) in self._subs.items()
+                            if _match_filter(event, filter_)
+                        ]
+                else:
+                    self._events.append(event)
+                    callbacks = [
+                        callback
+                        for _sub_id, (filter_, callback) in self._subs.items()
+                        if _match_filter(event, filter_)
+                    ]
+            else:
+                self._events.append(event)
+                callbacks = [
+                    callback
+                    for _sub_id, (filter_, callback) in self._subs.items()
+                    if _match_filter(event, filter_)
+                ]
         for callback in callbacks:
             callback(event)
 
@@ -1243,7 +1270,7 @@ class CrowdClient:
             "kinds": [CROWD_KIND_TASK, CROWD_KIND_CLAIM, CROWD_KIND_RESULT, CROWD_KIND_AVAILABLE, CROWD_KIND_EMBEDDING, CROWD_KIND_CANCEL, CROWD_KIND_FEEDBACK],
             "since": since,
         }
-        self._last_sync = _unix_now()
+        max_seen = self._last_sync
         for raw in self._strfry.scan_events(filter_):
             try:
                 event = NostrEvent.from_dict(raw)
@@ -1253,8 +1280,14 @@ class CrowdClient:
                 if not task_hash:
                     continue
                 self._ingest_event(event, task_hash)
+                if event.created_at > max_seen:
+                    max_seen = event.created_at
             except Exception:
                 continue
+        # Advance only after scanning so events created during the scan are
+        # re-checked on the next poll (the -1 second overlap keeps the window
+        # inclusive even with 1-second created_at granularity).
+        self._last_sync = max(max_seen, _unix_now())
 
     def _ingest_event(self, event: NostrEvent, task_hash: str) -> None:
         """Persist a remote event and update local task state accordingly."""
@@ -1436,10 +1469,13 @@ class CrowdClient:
         self.memory_relay.publish(event)
         self.store.create_task(task, event=event)
         if task.private or scope == "private":
-            if task.private and self.private_relays:
+            if self.private_relays:
                 self._relay_publish_private(event)
             else:
-                self._relay_publish(event)
+                warnings.warn(
+                    "Private task has no private relays configured; the event is stored locally only.",
+                    stacklevel=2,
+                )
         else:
             self._relay_publish(event)
         return event

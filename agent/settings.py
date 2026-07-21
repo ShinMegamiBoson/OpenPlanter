@@ -67,14 +67,16 @@ def _decrypt_sensitive_fields(
     encrypted = payload.pop(_ENCRYPTED_FIELDS_KEY, [])
     if not isinstance(encrypted, list):
         encrypted = []
+    out = dict(payload)
     if encrypted and not password:
         warnings.warn(
             "Settings file contains encrypted fields but OPENPLANTER_MASTER_PASSWORD is not set; "
             "crowd identity keys cannot be loaded.",
             stacklevel=2,
         )
-        return {}
-    out = dict(payload)
+        for key in encrypted:
+            out.pop(key, None)
+        return out
     for key in encrypted:
         value = out.get(key)
         if value and password:

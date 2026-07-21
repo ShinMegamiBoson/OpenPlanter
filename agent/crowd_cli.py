@@ -82,7 +82,10 @@ def cmd_publish_private(args: argparse.Namespace) -> int:
     if not objective.strip():
         _error("Missing objective. Usage: publish-private #tag ... <objective>")
         return 1
-    allowed = [a for a in (args.allowed or ".").split(",") if a.strip()] or [client.private_identity.public_hex]
+    if args.allowed:
+        allowed = [a.strip() for a in args.allowed.split(",") if a.strip()]
+    else:
+        allowed = [client.private_identity.public_hex]
     context: dict[str, Any] = {}
     if args.context_file:
         context = json.loads(Path(args.context_file).read_text(encoding="utf-8"))

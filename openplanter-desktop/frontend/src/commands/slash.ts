@@ -165,9 +165,10 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
     }
 
     case "/result": {
-      const parts = args.trim().split(/\s+/, 2);
-      const hash = parts[0] || "";
-      const content = parts[1] || "";
+      const trimmed = args.trim();
+      const firstSpace = trimmed.search(/\s/);
+      const hash = firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace);
+      const content = firstSpace === -1 ? "" : trimmed.slice(firstSpace + 1).trimStart();
       if (!hash || !content) {
         return { action: "handled", lines: ["Usage: /result <task-hash> <content>"] };
       }
