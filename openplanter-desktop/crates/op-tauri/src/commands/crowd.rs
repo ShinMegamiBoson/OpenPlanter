@@ -230,3 +230,62 @@ pub async fn crowd_trust(npub: String, state: State<'_, AppState>) -> Result<Sla
 
     Ok(to_slash_result(output?))
 }
+
+fn run_lifecycle(
+    command: &str,
+    hash: String,
+    workspace: String,
+    session_root: String,
+) -> Result<SlashResult, String> {
+    let output = run_crowd_blocking(workspace, session_root, vec![command.to_string(), hash])
+        .map_err(|e| format!("crowd {command} failed: {e}"))?;
+    Ok(to_slash_result(output))
+}
+
+/// Accept a submitted result.
+#[tauri::command]
+pub async fn crowd_accept(hash: String, state: State<'_, AppState>) -> Result<SlashResult, String> {
+    let cfg = state.config.lock().await;
+    let workspace = cfg.workspace.display().to_string();
+    let session_root = cfg.session_root_dir.clone();
+    drop(cfg);
+    tokio::task::spawn_blocking(move || run_lifecycle("accept", hash, workspace, session_root))
+        .await
+        .map_err(|e| format!("crowd cli task panicked: {e}"))?
+}
+
+/// Reject a submitted result.
+#[tauri::command]
+pub async fn crowd_reject(hash: String, state: State<'_, AppState>) -> Result<SlashResult, String> {
+    let cfg = state.config.lock().await;
+    let workspace = cfg.workspace.display().to_string();
+    let session_root = cfg.session_root_dir.clone();
+    drop(cfg);
+    tokio::task::spawn_blocking(move || run_lifecycle("reject", hash, workspace, session_root))
+        .await
+        .map_err(|e| format!("crowd cli task panicked: {e}"))?
+}
+
+/// Expire an unclaimed task.
+#[tauri::command]
+pub async fn crowd_expire(hash: String, state: State<'_, AppState>) -> Result<SlashResult, String> {
+    let cfg = state.config.lock().await;
+    let workspace = cfg.workspace.display().to_string();
+    let session_root = cfg.session_root_dir.clone();
+    drop(cfg);
+    tokio::task::spawn_blocking(move || run_lifecycle("expire", hash, workspace, session_root))
+        .await
+        .map_err(|e| format!("crowd cli task panicked: {e}"))?
+}
+
+/// Reopen a canceled / rejected / expired task.
+#[tauri::command]
+pub async fn crowd_reopen(hash: String, state: State<'_, AppState>) -> Result<SlashResult, String> {
+    let cfg = state.config.lock().await;
+    let workspace = cfg.workspace.display().to_string();
+    let session_root = cfg.session_root_dir.clone();
+    drop(cfg);
+    tokio::task::spawn_blocking(move || run_lifecycle("reopen", hash, workspace, session_root))
+        .await
+        .map_err(|e| format!("crowd cli task panicked: {e}"))?
+}

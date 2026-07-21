@@ -18,7 +18,7 @@ from .settings import SettingsStore
 
 SLASH_COMMANDS: list[str] = [
     "/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning",
-    "/crowd", "/claim", "/cancel", "/result", "/trust",
+    "/crowd", "/claim", "/cancel", "/result", "/accept", "/reject", "/expire", "/reopen", "/trust",
 ]
 
 
@@ -114,6 +114,10 @@ HELP_LINES: list[str] = [
     "  /claim <task-hash>  Claim an open crowd task",
     "  /cancel <task-hash> Cancel a crowd task",
     "  /result <hash> <content>  Submit a result for a claimed task",
+    "  /accept <hash>      Accept a result",
+    "  /reject <hash>      Reject a result",
+    "  /expire <hash>      Expire an unclaimed task",
+    "  /reopen <hash>      Reopen a canceled / rejected / expired task",
     "  /trust <npub>       Trust a worker public key",
     "  /status  /clear  /quit  /exit  /help",
 ]
@@ -156,16 +160,27 @@ def _crowd_client(ctx: ChatContext) -> CrowdClient:
     if ctx.crowd is not None:
         return ctx.crowd
     settings = ctx.settings_store.load()
+    changed = False
     if not settings.crowd_nsec:
         identity = CrowdIdentity()
         settings.crowd_nsec = identity.nsec_hex
-        ctx.settings_store.save(settings)
+        changed = True
     else:
         identity = CrowdIdentity(settings.crowd_nsec)
+    if not settings.crowd_private_nsec:
+        private_identity = CrowdIdentity()
+        settings.crowd_private_nsec = private_identity.nsec_hex
+        changed = True
+    else:
+        private_identity = CrowdIdentity(settings.crowd_private_nsec)
+    if changed:
+        ctx.settings_store.save(settings)
     ctx.crowd = CrowdClient(
         store=ctx.runtime.store.crowd,
         identity=identity,
         upstream_relays=settings.crowd_relays,
+        private_identity=private_identity,
+        private_relays=settings.crowd_private_relays,
     )
     return ctx.crowd
 
@@ -185,14 +200,50 @@ def handle_crowd_command(args: str, ctx: ChatContext) -> list[str]:
         return lines
 
     tokens = cmd.split()
-    tags = [t[1:].lower() for t in tokens if t.startswith("#") and len(t) > 1]
-    objective = " ".join(t for t in tokens if not t.startswith("#")).strip()
+    is_private = False
+    if tokens and tokens[0].lower() == "private":
+        is_private = True
+        tokens = tokens[1:]
+
+    allowed: list[str] = []
+    filtered: list[str] = []
+    for i, t in enumerate(tokens):
+        if t.lower() == "--allowed" and i + 1 < len(tokens):
+            allowed = [a.strip() for a in tokens[i + 1].split(",") if a.strip()]
+            continue
+        if t.lower() == "--allowed":
+            continue
+        if i > 0 and tokens[i - 1].lower() == "--allowed":
+            continue
+        filtered.append(t)
+
+    tags = [t[1:].lower() for t in filtered if t.startswith("#") and len(t) > 1]
+    objective = " ".join(t for t in filtered if not t.startswith("#")).strip()
     if not objective:
         return [
             "Usage: /crowd [#tag ...] <objective>",
+            "       /crowd private [--allowed npub1,npub2] [#tag ...] <objective>",
             "       /crowd list",
         ]
     client = _crowd_client(ctx)
+    if is_private:
+        own_private = client.private_identity.public_hex
+        if own_private not in allowed:
+            allowed.insert(0, own_private)
+        task = CrowdTask.build(
+            objective=objective,
+            acceptance_criteria="",
+            tags=tags,
+            stake="low",
+            private=True,
+            private_allowed=allowed,
+        )
+        event = client.publish_private_task(task, context={}, allowed=allowed)
+        return [
+            f"Published private crowd task {task.task_hash[:12]}",
+            f"  event id: {event.id[:16]}...",
+            f"  allowed: {', '.join(a[:12] for a in allowed)}",
+        ]
     task = CrowdTask.build(
         objective=objective,
         acceptance_criteria="",
@@ -255,6 +306,30 @@ def handle_cancel_command(args: str, ctx: ChatContext) -> list[str]:
     ]
 
 
+def handle_decrypt_private_command(args: str, ctx: ChatContext) -> list[str]:
+    """Handle /decrypt-private. Decrypt a private task brief if allowed."""
+    prefix = args.strip().split()[0] if args.strip() else ""
+    if not prefix:
+        return ["Usage: /decrypt-private <task-hash>"]
+    client = _crowd_client(ctx)
+    task = client.store.get_task(prefix)
+    if task is None:
+        candidates = [t for t in client.store.list_tasks() if t.task_hash.startswith(prefix)]
+        if len(candidates) == 1:
+            task = candidates[0]
+        elif len(candidates) > 1:
+            return [f"Ambiguous prefix {prefix[:12]}: {len(candidates)} tasks match."]
+    if task is None:
+        return [f"Could not find task {prefix[:12]}."]
+    updated = client.decrypt_private_task(task.task_hash)
+    if updated is None:
+        return [f"Could not decrypt task {task.task_hash[:12]} (not encrypted or not allowed)."]
+    return [
+        f"Decrypted private task {task.task_hash[:12]}",
+        f"  objective: {updated.objective[:80]}",
+    ]
+
+
 def handle_result_command(args: str, ctx: ChatContext) -> list[str]:
     """Handle /result. Submit result for a task claimed by this identity."""
     parts = args.strip().split(None, 1)
@@ -272,6 +347,45 @@ def handle_result_command(args: str, ctx: ChatContext) -> list[str]:
         f"Result submitted for {task.task_hash[:12]}",
         f"Event: {event.id[:16]}...",
     ]
+
+
+def _handle_lifecycle(args: str, ctx: ChatContext, action: str) -> list[str]:
+    """Shared helper for accept/reject/expire/reopen."""
+    prefix = args.strip().split()[0] if args.strip() else ""
+    if not prefix:
+        return [f"Usage: /{action} <task-hash>"]
+    client = _crowd_client(ctx)
+    task = client.store.get_task(prefix)
+    if task is None:
+        candidates = [
+            t for t in client.store.list_tasks()
+            if t.task_hash.startswith(prefix)
+        ]
+        if len(candidates) == 1:
+            task = candidates[0]
+        else:
+            return [f"Task not found: {prefix}"]
+    method = getattr(client, f"{action}_result" if action in ("accept", "reject") else f"{action}_task")
+    event = method(task.task_hash)
+    if event is None:
+        return [f"Could not {action} task {task.task_hash[:12]} (wrong status or not publisher)."]
+    return [f"Task {task.task_hash[:12]} {action}ed", f"Event: {event.id[:16]}..."]
+
+
+def handle_accept_command(args: str, ctx: ChatContext) -> list[str]:
+    return _handle_lifecycle(args, ctx, "accept")
+
+
+def handle_reject_command(args: str, ctx: ChatContext) -> list[str]:
+    return _handle_lifecycle(args, ctx, "reject")
+
+
+def handle_expire_command(args: str, ctx: ChatContext) -> list[str]:
+    return _handle_lifecycle(args, ctx, "expire")
+
+
+def handle_reopen_command(args: str, ctx: ChatContext) -> list[str]:
+    return _handle_lifecycle(args, ctx, "reopen")
 
 
 def handle_trust_command(args: str, ctx: ChatContext) -> list[str]:
@@ -552,9 +666,39 @@ def dispatch_slash_command(
         for line in lines:
             emit(line)
         return "handled"
+    if command.startswith("/decrypt-private"):
+        cmd_args = command[len("/decrypt-private"):].strip()
+        lines = handle_decrypt_private_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
     if command.startswith("/result"):
         cmd_args = command[len("/result"):].strip()
         lines = handle_result_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/accept"):
+        cmd_args = command[len("/accept"):].strip()
+        lines = handle_accept_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/reject"):
+        cmd_args = command[len("/reject"):].strip()
+        lines = handle_reject_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/expire"):
+        cmd_args = command[len("/expire"):].strip()
+        lines = handle_expire_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/reopen"):
+        cmd_args = command[len("/reopen"):].strip()
+        lines = handle_reopen_command(cmd_args, ctx)
         for line in lines:
             emit(line)
         return "handled"

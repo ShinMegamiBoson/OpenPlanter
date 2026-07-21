@@ -9,6 +9,10 @@ import {
   crowdClaim,
   crowdCancel,
   crowdResult,
+  crowdAccept,
+  crowdReject,
+  crowdExpire,
+  crowdReopen,
   crowdTrust,
 } from "../api/invoke";
 
@@ -172,6 +176,23 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
         return { action: "handled", lines: [result.output] };
       } catch (e) {
         return { action: "handled", lines: [`Crowd result failed: ${e}`] };
+      }
+    }
+
+    case "/accept":
+    case "/reject":
+    case "/expire":
+    case "/reopen": {
+      const hash = args.trim().split(/\s+/)[0] || "";
+      if (!hash) {
+        return { action: "handled", lines: [`Usage: ${cmd} <task-hash>`] };
+      }
+      const fn = { "/accept": crowdAccept, "/reject": crowdReject, "/expire": crowdExpire, "/reopen": crowdReopen }[cmd];
+      try {
+        const result = await fn!(hash);
+        return { action: "handled", lines: [result.output] };
+      } catch (e) {
+        return { action: "handled", lines: [`Crowd ${cmd.slice(1)} failed: ${e}`] };
       }
     }
 

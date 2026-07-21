@@ -26,6 +26,7 @@ import signal
 import subprocess
 import threading
 import time
+import traceback
 import warnings
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
@@ -41,12 +42,35 @@ except Exception:  # pragma: no cover - filelock optional fallback
     FileLock = None  # type: ignore[misc,assignment]
     _FileLockTimeout = Exception
 
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+    from cryptography.hazmat.primitives import hashes
+    HAS_CRYPTOGRAPHY = True
+except Exception:  # pragma: no cover - encryption optional fallback
+    AESGCM = None  # type: ignore[misc,assignment]
+    HKDF = None  # type: ignore[misc,assignment]
+    hashes = None  # type: ignore[misc,assignment]
+    HAS_CRYPTOGRAPHY = False
+
+try:
+    from .relay import RelayPool, NostrRelayConnection
+except Exception:  # pragma: no cover - websockets optional fallback
+    RelayPool = None  # type: ignore[misc,assignment]
+    NostrRelayConnection = None  # type: ignore[misc,assignment]
+
+try:
+    from .relay_server import CrowdRelayServer
+except Exception:  # pragma: no cover - websockets optional fallback
+    CrowdRelayServer = None  # type: ignore[misc,assignment]
+
 CROWD_KIND_TASK = 31001
 CROWD_KIND_CLAIM = 31002
 CROWD_KIND_RESULT = 31003
 CROWD_KIND_AVAILABLE = 31004
 CROWD_KIND_EMBEDDING = 31005
 CROWD_KIND_CANCEL = 31006
+CROWD_KIND_FEEDBACK = 31007
 
 NOSTR_KIND_METADATA = 0
 NOSTR_KIND_RELAY_LIST = 10002
@@ -90,6 +114,130 @@ def _task_hash(
         ensure_ascii=True,
     )
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _xonly_to_pubkey_bytes(xonly_hex: str) -> bytes:
+    """Convert a NIP-01 x-only pubkey hex to a compressed secp256k1 point.
+
+    NIP-01 x-only keys use the even-y point, so ``02 || xonly`` is canonical.
+    """
+    raw = bytes.fromhex(xonly_hex[:64])
+    try:
+        from coincurve import PublicKey
+
+        return PublicKey(b"\x02" + raw).format()
+    except Exception:
+        return b"\x02" + raw
+
+
+def _derive_aes_key(shared_secret: bytes) -> bytes:
+    """Derive a 32-byte AES key from an ECDH shared secret using HKDF-SHA256."""
+    if AESGCM is None or HKDF is None or hashes is None:
+        raise CrowdError("cryptography library required for private tasks")
+    return HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=None,
+        info=b"openplanter-private-brief",
+    ).derive(shared_secret)
+
+
+def _encrypt_brief(brief: str, sender_priv_hex: str, recipient_xonlys: list[str]) -> dict[str, Any]:
+    """Encrypt a brief for a list of NIP-01 x-only recipient public keys.
+
+    Returns a dict with one encrypted item per recipient.  Recipients can try
+    each item and decrypt the one intended for them using their own private key.
+    """
+    if not HAS_CRYPTOGRAPHY:
+        raise CrowdError("cryptography not installed")
+    from coincurve import PrivateKey, PublicKey
+
+    sender_sk = PrivateKey.from_hex(sender_priv_hex.strip().lower())
+    items: list[dict[str, str]] = []
+    brief_bytes = brief.encode("utf-8")
+    for r in recipient_xonlys:
+        recipient_pub = PublicKey(_xonly_to_pubkey_bytes(r))
+        ephemeral = PrivateKey()
+        ephemeral_pub = ephemeral.public_key.format()
+        shared = ephemeral.ecdh(recipient_pub.format())
+        key = _derive_aes_key(shared)
+        nonce = os.urandom(12)
+        ct = AESGCM(key).encrypt(nonce, brief_bytes, None)
+        items.append(
+            {
+                "ephemeral_pub": ephemeral_pub.hex(),
+                "nonce": nonce.hex(),
+                "ciphertext": ct.hex(),
+            }
+        )
+    return {"version": 1, "items": items}
+
+
+def _bip340_secret_hex(private_hex: str) -> str:
+    """Return the BIP-340 secret scalar that corresponds to an x-only pubkey.
+
+    Coincurve private keys map to public points that can have odd or even y.
+    BIP-340 public keys are the x-coordinate with even-y lift, so the secret
+    for an odd-y private key is ``n - d``.
+    """
+    from coincurve import PrivateKey
+    from coincurve.utils import GROUP_ORDER_INT
+
+    sk = PrivateKey.from_hex(private_hex.strip().lower())
+    if sk.public_key.format()[0] == 0x02:
+        return private_hex.strip().lower()
+    d = sk.to_int()
+    d_prime = (GROUP_ORDER_INT - d) % GROUP_ORDER_INT
+    return PrivateKey.from_int(d_prime).to_hex()
+
+
+def _decrypt_brief(encrypted: dict[str, Any], private_hex: str) -> str | None:
+    """Try to decrypt any item of an encrypted brief with the given private key."""
+    if not HAS_CRYPTOGRAPHY:
+        return None
+    from coincurve import PrivateKey
+
+    sk = PrivateKey.from_hex(_bip340_secret_hex(private_hex))
+    for item in encrypted.get("items", []):
+        try:
+            ephemeral_pub = bytes.fromhex(item["ephemeral_pub"])
+            shared = sk.ecdh(ephemeral_pub)
+            key = _derive_aes_key(shared)
+            nonce = bytes.fromhex(item["nonce"])
+            ct = bytes.fromhex(item["ciphertext"])
+            plain = AESGCM(key).decrypt(nonce, ct, None)
+            return plain.decode("utf-8")
+        except Exception:
+            continue
+    return None
+
+
+def _sanitize_context(context: dict[str, Any]) -> dict[str, Any]:
+    """Return a privacy-safe view of a context bundle.
+
+    Keys known to contain sensitive literals (credentials, raw data, files) are
+    replaced by type hints or hashes.  The sanitized bundle can be used as a
+    public task context hash without leaking the underlying content.
+    """
+    if not isinstance(context, dict):
+        return {"hint": str(context)[:80]}
+    sanitized: dict[str, Any] = {}
+    secret_keys = {"api_key", "api_keys", "token", "tokens", "secret", "password", "credentials", "authorization"}
+    for key, value in context.items():
+        k_lower = str(key).lower()
+        if k_lower in secret_keys:
+            sanitized[key] = "<redacted>"
+        elif isinstance(value, (dict, list, tuple)):
+            # For nested structures, summarize lengths and recurse one level for dicts.
+            if isinstance(value, dict):
+                sanitized[key] = {k: "<redacted>" if str(k).lower() in secret_keys else f"<{type(v).__name__} len={len(str(v))}>" for k, v in value.items()}
+            else:
+                sanitized[key] = f"<list len={len(value)}>"
+        elif isinstance(value, (str, bytes)) and len(str_value := str(value)) > 200:
+            sanitized[key] = str_value[:200] + "..."
+        else:
+            sanitized[key] = value
+    return sanitized
 
 
 def _event_id(event: dict[str, Any]) -> str:
@@ -265,12 +413,17 @@ class CrowdTask:
     stake: str = "low"
     required_tier: str | None = None
     deadline: str | None = None
+    expires_at: str | None = None
     status: str = "open"
     created_at: str = field(default_factory=_utc_now)
     claimed_by: str | None = None
     claimed_at: str | None = None
     result_event_id: str | None = None
     merged: bool = False
+    # Private-task support
+    private: bool = False
+    private_allowed: list[str] = field(default_factory=list)
+    encrypted_brief: str | None = None
     # Nostr addressable-event identifiers for this task, written when published.
     event_id: str | None = None
     event_pubkey: str | None = None
@@ -294,6 +447,10 @@ class CrowdTask:
         stake: str = "low",
         required_tier: str | None = None,
         deadline: str | None = None,
+        expires_at: str | None = None,
+        private: bool = False,
+        private_allowed: list[str] | None = None,
+        encrypted_brief: str | None = None,
     ) -> "CrowdTask":
         tags = sorted({t.lower().strip() for t in (tags or []) if t.strip()})
         return cls(
@@ -307,7 +464,11 @@ class CrowdTask:
             stake=stake,
             required_tier=required_tier,
             deadline=deadline,
+            expires_at=expires_at,
             status="open",
+            private=private,
+            private_allowed=list(private_allowed or []),
+            encrypted_brief=encrypted_brief,
         )
 
 
@@ -491,6 +652,70 @@ class CrowdStore:
                 return None
             task.merged = True
             self._write_task(task)
+            return task
+
+    def accept_result(
+        self,
+        task_hash: str,
+        event: NostrEvent | None = None,
+    ) -> CrowdTask | None:
+        with self.locked():
+            task = self.get_task(task_hash)
+            if task is None or task.status not in {"done", "claimed"}:
+                return None
+            task.status = "accepted"
+            task.merged = True
+            self._write_task(task)
+            if event is not None:
+                self._write_event(event, task_hash)
+            return task
+
+    def reject_result(
+        self,
+        task_hash: str,
+        event: NostrEvent | None = None,
+    ) -> CrowdTask | None:
+        with self.locked():
+            task = self.get_task(task_hash)
+            if task is None or task.status not in {"done", "claimed"}:
+                return None
+            task.status = "rejected"
+            self._write_task(task)
+            if event is not None:
+                self._write_event(event, task_hash)
+            return task
+
+    def expire_task(
+        self,
+        task_hash: str,
+        event: NostrEvent | None = None,
+    ) -> CrowdTask | None:
+        with self.locked():
+            task = self.get_task(task_hash)
+            if task is None or task.status in {"done", "accepted", "rejected", "canceled", "expired"}:
+                return None
+            task.status = "expired"
+            self._write_task(task)
+            if event is not None:
+                self._write_event(event, task_hash)
+            return task
+
+    def reopen_task(
+        self,
+        task_hash: str,
+        event: NostrEvent | None = None,
+    ) -> CrowdTask | None:
+        with self.locked():
+            task = self.get_task(task_hash)
+            if task is None or task.status not in {"canceled", "rejected", "expired"}:
+                return None
+            task.status = "open"
+            task.claimed_by = None
+            task.claimed_at = None
+            task.result_event_id = None
+            self._write_task(task)
+            if event is not None:
+                self._write_event(event, task_hash)
             return task
 
     def write_artifact(
@@ -693,6 +918,16 @@ def _get_d_tag(tags: list[list[str]]) -> str | None:
     return None
 
 
+def _safe_parse_json(text: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(text)
+        if isinstance(payload, dict):
+            return payload
+    except json.JSONDecodeError:
+        pass
+    return {}
+
+
 def _task_hash_from_content(event: NostrEvent) -> str | None:
     """Best-effort fallback to find the referenced task hash in old events."""
     try:
@@ -714,6 +949,7 @@ def _task_from_event(event: NostrEvent) -> CrowdTask:
     if not isinstance(payload, dict):
         payload = {}
     task_hash = _get_d_tag(event.tags) or _task_hash_from_content(event) or event.id
+    encrypted_brief = payload.get("encrypted_brief")
     return CrowdTask(
         task_hash=task_hash,
         objective=payload.get("objective", ""),
@@ -726,6 +962,9 @@ def _task_from_event(event: NostrEvent) -> CrowdTask:
         event_id=event.id,
         event_pubkey=event.pubkey,
         status="open",
+        private=bool(payload.get("private", False)),
+        private_allowed=list(payload.get("allowed", [])) if isinstance(payload.get("allowed"), list) else [],
+        encrypted_brief=json.dumps(encrypted_brief, ensure_ascii=True) if isinstance(encrypted_brief, dict) else (encrypted_brief if isinstance(encrypted_brief, str) else None),
     )
 
 
@@ -911,11 +1150,15 @@ class CrowdClient:
         upstream_relays: list[str] | None = None,
         auto_spawn_strfry: bool = False,
         epsilon: float = 1.0,
+        private_identity: CrowdIdentity | None = None,
+        private_relays: list[str] | None = None,
     ) -> None:
         self.store = store
         self.identity = identity or CrowdIdentity()
+        self.private_identity = private_identity or CrowdIdentity(self.identity.nsec_hex)
         self.relay_uri = relay_uri
         self.upstream_relays = list(upstream_relays or [])
+        self.private_relays = list(private_relays or [])
         self.auto_spawn_strfry = auto_spawn_strfry
         self.epsilon = epsilon
         self.memory_relay = MemoryRelay()
@@ -923,6 +1166,15 @@ class CrowdClient:
         self._ingest_thread: threading.Thread | None = None
         self._stop_ingest = threading.Event()
         self._last_sync = 0
+        self._local_server: Any = None
+        self._local_server_thread: threading.Thread | None = None
+        self.relay_pool = RelayPool(on_event=self._on_remote_event) if RelayPool else None
+        if self.relay_uri:
+            self.relay_pool.add(self.relay_uri) if self.relay_pool else None
+        for uri in self.upstream_relays:
+            self.relay_pool.add(uri) if self.relay_pool else None
+        for uri in self.private_relays:
+            self.relay_pool.add(uri) if self.relay_pool else None
         self._hydrate_memory_relay()
 
     def _hydrate_memory_relay(self) -> None:
@@ -944,13 +1196,31 @@ class CrowdClient:
             return False
         return self._strfry.import_event(event)
 
+    def _relay_publish(self, event: NostrEvent) -> None:
+        """Send a signed event to every connected WebSocket relay (local + upstream)."""
+        if self.relay_pool is not None:
+            try:
+                self.relay_pool.publish(event.to_dict())
+            except Exception:
+                pass
+        self._bridge_to_strfry(event)
+
+    def _relay_publish_private(self, event: NostrEvent) -> None:
+        """Publish a private task event only to configured private relays."""
+        if self.relay_pool is not None and self.private_relays:
+            try:
+                self.relay_pool.publish_to(event.to_dict(), self.private_relays)
+            except Exception:
+                pass
+        # Private events stay off the public strfry bridge: do not call _bridge_to_strfry.
+
     def _ingest_from_strfry(self) -> None:
         """Pull events from the local strfry DB into the store and memory relay."""
         if self._strfry is None or not self._strfry.is_running():
             return
         since = max(0, self._last_sync - 1)
         filter_ = {
-            "kinds": [CROWD_KIND_TASK, CROWD_KIND_CLAIM, CROWD_KIND_RESULT, CROWD_KIND_AVAILABLE, CROWD_KIND_EMBEDDING, CROWD_KIND_CANCEL],
+            "kinds": [CROWD_KIND_TASK, CROWD_KIND_CLAIM, CROWD_KIND_RESULT, CROWD_KIND_AVAILABLE, CROWD_KIND_EMBEDDING, CROWD_KIND_CANCEL, CROWD_KIND_FEEDBACK],
             "since": since,
         }
         self._last_sync = _unix_now()
@@ -962,12 +1232,85 @@ class CrowdClient:
                 task_hash = _get_d_tag(event.tags) or _task_hash_from_content(event)
                 if not task_hash:
                     continue
-                if self.store.get_task(task_hash) is None and event.kind == CROWD_KIND_TASK:
-                    self.store.create_task(_task_from_event(event), event=event)
-                self.store.append_event(event, task_hash)
-                self.memory_relay.publish(event)
+                self._ingest_event(event, task_hash)
             except Exception:
                 continue
+
+    def _ingest_event(self, event: NostrEvent, task_hash: str) -> None:
+        """Persist a remote event and update local task state accordingly."""
+        if self.store.get_task(task_hash) is None and event.kind == CROWD_KIND_TASK:
+            self.store.create_task(_task_from_event(event), event=event)
+            if _task_from_event(event).private:
+                self.decrypt_private_task(task_hash)
+            self.memory_relay.publish(event)
+            return
+
+        if event.kind == CROWD_KIND_CLAIM:
+            claimer = event.pubkey
+            if not claimer:
+                payload = _safe_parse_json(event.content)
+                claimer = payload.get("claimer", "")
+            if self.store.claim_task(task_hash, claimer, event=event) is None:
+                self.store.append_event(event, task_hash)
+            else:
+                self.memory_relay.publish(event)
+            return
+
+        if event.kind == CROWD_KIND_RESULT:
+            task = self.store.get_task(task_hash)
+            if task and task.status == "claimed" and task.claimed_by == event.pubkey:
+                self.store.write_result(task_hash, event.content, event=event)
+            else:
+                self.store.append_event(event, task_hash)
+            self.memory_relay.publish(event)
+            return
+
+        if event.kind == CROWD_KIND_CANCEL:
+            self.store.cancel_task(task_hash, event=event)
+            self.memory_relay.publish(event)
+            return
+
+        if event.kind == CROWD_KIND_FEEDBACK:
+            task = self.store.get_task(task_hash)
+            if task and (not task.event_pubkey or task.event_pubkey == event.pubkey):
+                payload = _safe_parse_json(event.content)
+                status = payload.get("status", "")
+                if status == "accepted":
+                    self.store.accept_result(task_hash, event=event)
+                elif status == "rejected":
+                    self.store.reject_result(task_hash, event=event)
+                elif status == "expired":
+                    self.store.expire_task(task_hash, event=event)
+                elif status == "reopened":
+                    self.store.reopen_task(task_hash, event=event)
+                else:
+                    self.store.append_event(event, task_hash)
+            else:
+                self.store.append_event(event, task_hash)
+            self.memory_relay.publish(event)
+            return
+
+        if event.kind in {CROWD_KIND_AVAILABLE, CROWD_KIND_EMBEDDING}:
+            self.store.append_event(event, task_hash)
+            self.memory_relay.publish(event)
+            return
+
+        self.store.append_event(event, task_hash)
+        self.memory_relay.publish(event)
+
+    def _on_remote_event(self, raw: dict[str, Any]) -> None:
+        """Callback used by RelayPool when a remote event arrives."""
+        try:
+            event = NostrEvent.from_dict(raw)
+        except Exception:
+            return
+        if not verify_event(event):
+            warnings.warn("Discarding event with invalid id/signature", stacklevel=2)
+            return
+        task_hash = _get_d_tag(event.tags) or _task_hash_from_content(event)
+        if not task_hash:
+            return
+        self._ingest_event(event, task_hash)
 
     def _sync_loop(self) -> None:
         """Poll strfry DB periodically for new downstream events."""
@@ -985,7 +1328,7 @@ class CrowdClient:
         self._ingest_thread = threading.Thread(target=self._sync_loop, daemon=True)
         self._ingest_thread.start()
 
-    def start_local_relay(self, port: int = 7777) -> str | None:
+    def start_local_relay(self, port: int = 7777, start_python_server: bool = True) -> str | None:
         if self.auto_spawn_strfry:
             self._strfry = StrfryWrapper(self.store.root / "strfry", port=port)
             uri = self._strfry.start_relay()
@@ -993,7 +1336,8 @@ class CrowdClient:
                 self.relay_uri = uri
                 if self.upstream_relays:
                     self._strfry.start_router(self.upstream_relays)
-                # Wait briefly for strfry to open its DB, then hydrate.
+                if self.relay_pool is not None:
+                    self.relay_pool.add(uri)
                 time.sleep(0.5)
                 self._ingest_from_strfry()
                 self._start_federation_sync()
@@ -1002,11 +1346,21 @@ class CrowdClient:
                 "strfry binary not found; falling back to in-memory relay",
                 stacklevel=2,
             )
+
         self.relay_uri = f"ws://127.0.0.1:{port}"
+        if start_python_server and CrowdRelayServer is not None:
+            self._local_server = CrowdRelayServer(host="127.0.0.1", port=port)
+            self._local_server_thread = self._local_server.start_in_thread()
+
+        if self.relay_pool is not None:
+            self.relay_pool.add(self.relay_uri)
+            for uri in self.upstream_relays:
+                self.relay_pool.add(uri)
+
         if self.upstream_relays and not self.auto_spawn_strfry:
             warnings.warn(
                 "Upstream relays configured but --crowd-strfry not set; "
-                "federation will not start for the in-memory relay",
+                "federation will not start unless a real relay is available",
                 stacklevel=2,
             )
         return self.relay_uri
@@ -1018,21 +1372,42 @@ class CrowdClient:
             self._ingest_thread = None
         if self._strfry:
             self._strfry.stop()
+        if self.relay_pool is not None:
+            try:
+                self.relay_pool.stop()
+            except Exception:
+                pass
+        if self._local_server is not None:
+            try:
+                self._local_server.stop()
+                if self._local_server_thread is not None:
+                    self._local_server_thread.join(timeout=2)
+            except Exception:
+                pass
+            self._local_server = None
+            self._local_server_thread = None
 
-    def publish_task(self, task: CrowdTask) -> NostrEvent:
+    def publish_task(self, task: CrowdTask, scope: str = "public") -> NostrEvent:
+        content: dict[str, Any] = {
+            "objective": task.objective,
+            "acceptance_criteria": task.acceptance_criteria,
+            "context_hash": task.context_hash,
+            "required_tier": task.required_tier,
+            "deadline": task.deadline,
+            "stake": task.stake,
+        }
+        if task.private:
+            content["private"] = True
+            if task.private_allowed:
+                content["allowed"] = list(task.private_allowed)
+            if task.encrypted_brief:
+                content["encrypted_brief"] = task.encrypted_brief
         event = NostrEvent(
             pubkey=self.identity.public_hex,
             created_at=_unix_now(),
             kind=CROWD_KIND_TASK,
             tags=_task_tags(task),
-            content=json.dumps({
-                "objective": task.objective,
-                "acceptance_criteria": task.acceptance_criteria,
-                "context_hash": task.context_hash,
-                "required_tier": task.required_tier,
-                "deadline": task.deadline,
-                "stake": task.stake,
-            }, ensure_ascii=True),
+            content=json.dumps(content, ensure_ascii=True),
         )
         self.identity.sign_event(event)
         # Record the Nostr addressable coordinates for follow-up claims/results.
@@ -1040,8 +1415,96 @@ class CrowdClient:
         task.event_pubkey = event.pubkey
         self.memory_relay.publish(event)
         self.store.create_task(task, event=event)
-        self._bridge_to_strfry(event)
+        if task.private or scope == "private":
+            if task.private and self.private_relays:
+                self._relay_publish_private(event)
+            else:
+                self._relay_publish(event)
+        else:
+            self._relay_publish(event)
         return event
+
+    def publish_private_task(
+        self,
+        task: CrowdTask,
+        context: dict[str, Any] | None = None,
+        allowed: list[str] | None = None,
+    ) -> NostrEvent:
+        """Publish a private task: brief is encrypted for the allowed recipients.
+
+        The public event carries placeholder objective/acceptance criteria, an
+        obfuscated context hash, and an encrypted brief that only the listed
+        NIP-01 x-only recipients can read. The publisher is always added to the
+        allowed list.
+        """
+        allowed = list(allowed or task.private_allowed or [])
+        publisher_private_key = self.private_identity.public_hex
+        if publisher_private_key not in allowed:
+            allowed.insert(0, publisher_private_key)
+        task.private_allowed = allowed
+
+        sanitized_context = _sanitize_context(context or {})
+        context_text = json.dumps(sanitized_context, sort_keys=True, ensure_ascii=True)
+        task.context_hash = hashlib.sha256(context_text.encode("utf-8")).hexdigest()
+
+        original_brief = json.dumps(
+            {
+                "objective": task.objective,
+                "acceptance_criteria": task.acceptance_criteria,
+                "context_hash": context_text,
+            },
+            ensure_ascii=True,
+        )
+        encrypted = _encrypt_brief(original_brief, self.private_identity.private_hex, allowed)
+        task.encrypted_brief = json.dumps(encrypted, ensure_ascii=True)
+
+        # Public placeholders keep the real brief off plain relays.
+        task.objective = "Private task"
+        task.acceptance_criteria = "See encrypted brief"
+        task.private = True
+
+        event = self.publish_task(task, scope="private")
+        # The publisher can decrypt it locally for their own view.
+        self.decrypt_private_task(task.task_hash, identity=self.private_identity)
+        return event
+
+    def decrypt_private_task(
+        self,
+        task_hash: str,
+        identity: CrowdIdentity | None = None,
+    ) -> CrowdTask | None:
+        """Try to decrypt a private task brief using the provided identity.
+
+        If successful, the plaintext is written back to the local task store so
+        downstream commands can display the real objective and acceptance criteria.
+        """
+        task = self.store.get_task(task_hash)
+        if task is None or not task.private or not task.encrypted_brief:
+            return None
+        identity = identity or self.private_identity
+        try:
+            encrypted = json.loads(task.encrypted_brief)
+        except json.JSONDecodeError:
+            return None
+        plain = _decrypt_brief(encrypted, identity.private_hex)
+        if plain is None:
+            return None
+        try:
+            brief = json.loads(plain)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(brief, dict):
+            return None
+        return self.store.update_task(
+            task_hash,
+            objective=brief.get("objective", task.objective),
+            acceptance_criteria=brief.get("acceptance_criteria", task.acceptance_criteria),
+            context_hash=hashlib.sha256(
+                json.dumps(brief.get("context_hash", task.context_hash), sort_keys=True, ensure_ascii=True).encode("utf-8")
+            ).hexdigest()
+            if isinstance(brief.get("context_hash"), str)
+            else task.context_hash,
+        )
 
     def claim_task(self, task_hash: str, pubkey: str | None = None) -> NostrEvent | None:
         claimer = self.identity.public_hex
@@ -1069,7 +1532,7 @@ class CrowdClient:
         if task is None:
             return None
         self.memory_relay.publish(event)
-        self._bridge_to_strfry(event)
+        self._relay_publish(event)
         return event
 
     def cancel_task(self, task_hash: str) -> NostrEvent | None:
@@ -1090,7 +1553,7 @@ class CrowdClient:
         if task is None:
             return None
         self.memory_relay.publish(event)
-        self._bridge_to_strfry(event)
+        self._relay_publish(event)
         return event
 
     def return_result(
@@ -1120,7 +1583,103 @@ class CrowdClient:
         if updated is None:
             return None
         self.memory_relay.publish(event)
-        self._bridge_to_strfry(event)
+        self._relay_publish(event)
+        return event
+
+    def accept_result(self, task_hash: str) -> NostrEvent | None:
+        task = self.store.get_task(task_hash)
+        if task is None or task.status not in {"done", "claimed"}:
+            return None
+        if task.event_pubkey and task.event_pubkey != self.identity.public_hex:
+            return None
+        task_event_id, task_event_pubkey = self._task_event_ref(task_hash)
+        tags: list[list[str]] = [["d", task_hash], ["status", "accepted"]]
+        if len(str(task_event_id)) == 64:
+            tags.append(["e", task_event_id, "", task_event_pubkey])
+        event = NostrEvent(
+            pubkey=self.identity.public_hex,
+            created_at=_unix_now(),
+            kind=CROWD_KIND_FEEDBACK,
+            tags=tags,
+            content=json.dumps({"task_hash": task_hash, "status": "accepted"}, ensure_ascii=True),
+        )
+        self.identity.sign_event(event)
+        if self.store.accept_result(task_hash, event=event) is None:
+            return None
+        self.memory_relay.publish(event)
+        self._relay_publish(event)
+        return event
+
+    def reject_result(self, task_hash: str) -> NostrEvent | None:
+        task = self.store.get_task(task_hash)
+        if task is None or task.status not in {"done", "claimed"}:
+            return None
+        if task.event_pubkey and task.event_pubkey != self.identity.public_hex:
+            return None
+        task_event_id, task_event_pubkey = self._task_event_ref(task_hash)
+        tags: list[list[str]] = [["d", task_hash], ["status", "rejected"]]
+        if len(str(task_event_id)) == 64:
+            tags.append(["e", task_event_id, "", task_event_pubkey])
+        event = NostrEvent(
+            pubkey=self.identity.public_hex,
+            created_at=_unix_now(),
+            kind=CROWD_KIND_FEEDBACK,
+            tags=tags,
+            content=json.dumps({"task_hash": task_hash, "status": "rejected"}, ensure_ascii=True),
+        )
+        self.identity.sign_event(event)
+        if self.store.reject_result(task_hash, event=event) is None:
+            return None
+        self.memory_relay.publish(event)
+        self._relay_publish(event)
+        return event
+
+    def expire_task(self, task_hash: str) -> NostrEvent | None:
+        task = self.store.get_task(task_hash)
+        if task is None or task.status in {"done", "accepted", "rejected", "canceled", "expired"}:
+            return None
+        if task.event_pubkey and task.event_pubkey != self.identity.public_hex:
+            return None
+        task_event_id, task_event_pubkey = self._task_event_ref(task_hash)
+        tags: list[list[str]] = [["d", task_hash], ["status", "expired"]]
+        if len(str(task_event_id)) == 64:
+            tags.append(["e", task_event_id, "", task_event_pubkey])
+        event = NostrEvent(
+            pubkey=self.identity.public_hex,
+            created_at=_unix_now(),
+            kind=CROWD_KIND_FEEDBACK,
+            tags=tags,
+            content=json.dumps({"task_hash": task_hash, "status": "expired"}, ensure_ascii=True),
+        )
+        self.identity.sign_event(event)
+        if self.store.expire_task(task_hash, event=event) is None:
+            return None
+        self.memory_relay.publish(event)
+        self._relay_publish(event)
+        return event
+
+    def reopen_task(self, task_hash: str) -> NostrEvent | None:
+        task = self.store.get_task(task_hash)
+        if task is None or task.status not in {"canceled", "rejected", "expired"}:
+            return None
+        if task.event_pubkey and task.event_pubkey != self.identity.public_hex:
+            return None
+        task_event_id, task_event_pubkey = self._task_event_ref(task_hash)
+        tags: list[list[str]] = [["d", task_hash], ["status", "reopened"]]
+        if len(str(task_event_id)) == 64:
+            tags.append(["e", task_event_id, "", task_event_pubkey])
+        event = NostrEvent(
+            pubkey=self.identity.public_hex,
+            created_at=_unix_now(),
+            kind=CROWD_KIND_FEEDBACK,
+            tags=tags,
+            content=json.dumps({"task_hash": task_hash, "status": "reopened"}, ensure_ascii=True),
+        )
+        self.identity.sign_event(event)
+        if self.store.reopen_task(task_hash, event=event) is None:
+            return None
+        self.memory_relay.publish(event)
+        self._relay_publish(event)
         return event
 
     def advertise_worker(self, tags: list[str], max_complexity: str = "medium", available: bool = True) -> NostrEvent:
@@ -1140,7 +1699,7 @@ class CrowdClient:
         )
         self.identity.sign_event(event)
         self.memory_relay.publish(event)
-        self._bridge_to_strfry(event)
+        self._relay_publish(event)
         return event
 
     def publish_embedding(
@@ -1166,7 +1725,7 @@ class CrowdClient:
         self.memory_relay.publish(event)
         self.store.add_embedding(task_hash, noisy, tags)
         self.store.append_event(event, task_hash)
-        self._bridge_to_strfry(event)
+        self._relay_publish(event)
         return event
 
 
@@ -1225,6 +1784,9 @@ def crowd_client_from_config(
     nsec = settings.get("crowd_nsec") if settings else None
     identity = CrowdIdentity(nsec) if nsec else CrowdIdentity()
     upstreams = settings.get("crowd_relays", []) if settings else []
+    private_nsec = settings.get("crowd_private_nsec") if settings else None
+    private_identity = CrowdIdentity(private_nsec) if private_nsec else None
+    private_relays = settings.get("crowd_private_relays", []) if settings else []
     auto_spawn = getattr(config, "crowd_auto_spawn_strfry", False)
     epsilon = (
         float(settings.get("crowd_epsilon"))
@@ -1237,6 +1799,8 @@ def crowd_client_from_config(
         upstream_relays=upstreams,
         auto_spawn_strfry=auto_spawn,
         epsilon=epsilon,
+        private_identity=private_identity,
+        private_relays=private_relays,
     )
 
 

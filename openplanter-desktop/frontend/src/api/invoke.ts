@@ -91,6 +91,22 @@ export async function crowdResult(hash: string, content: string): Promise<SlashR
   return invoke("crowd_result", { hash, content });
 }
 
+export async function crowdAccept(hash: string): Promise<SlashResult> {
+  return invoke("crowd_accept", { hash });
+}
+
+export async function crowdReject(hash: string): Promise<SlashResult> {
+  return invoke("crowd_reject", { hash });
+}
+
+export async function crowdExpire(hash: string): Promise<SlashResult> {
+  return invoke("crowd_expire", { hash });
+}
+
+export async function crowdReopen(hash: string): Promise<SlashResult> {
+  return invoke("crowd_reopen", { hash });
+}
+
 export async function crowdTrust(npub: string): Promise<SlashResult> {
   return invoke("crowd_trust", { npub });
 }
