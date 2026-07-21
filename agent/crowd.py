@@ -106,6 +106,40 @@ def _event_id(event: dict[str, Any]) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def _can_schnorr_verify() -> bool:
+    """Return True if coincurve BIP-340 Schnorr verification is available."""
+    try:
+        from coincurve import PublicKeyXOnly  # noqa: F401
+        return True
+    except Exception:  # pragma: no cover - coincurve optional
+        return False
+
+
+def verify_event(event: NostrEvent) -> bool:
+    """Verify a Nostr event's id and BIP-340 Schnorr signature.
+
+    Returns True if the event id matches NIP-01 serialization and the
+    signature is valid for the claimed public key. Returns False for HMAC
+    placeholder events when coincurve is unavailable.
+    """
+    try:
+        expected = _event_id(event.to_unsigned_dict())
+        if event.id != expected:
+            return False
+        if len(event.pubkey) != 64 or len(event.sig) != 128:
+            return False
+        if not _can_schnorr_verify():
+            return False
+        from coincurve import PublicKeyXOnly
+
+        pubkey = bytes.fromhex(event.pubkey)
+        sig = bytes.fromhex(event.sig)
+        digest = bytes.fromhex(event.id)
+        return bool(PublicKeyXOnly(pubkey).verify(sig, digest))
+    except Exception:  # pragma: no cover - malformed hex/key
+        return False
+
+
 @dataclass
 class NostrEvent:
     pubkey: str
@@ -212,6 +246,12 @@ class CrowdIdentity:
         else:
             event.sig = hmac.new(self._priv, event.id.encode("utf-8"), hashlib.sha256).hexdigest()
 
+    def verify_event(self, event: NostrEvent) -> bool:
+        """Verify the event id and signature were produced by this identity."""
+        if event.pubkey != self.public_hex:
+            return False
+        return verify_event(event)
+
 
 @dataclass
 class CrowdTask:
@@ -231,6 +271,9 @@ class CrowdTask:
     claimed_at: str | None = None
     result_event_id: str | None = None
     merged: bool = False
+    # Nostr addressable-event identifiers for this task, written when published.
+    event_id: str | None = None
+    event_pubkey: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -650,6 +693,42 @@ def _get_d_tag(tags: list[list[str]]) -> str | None:
     return None
 
 
+def _task_hash_from_content(event: NostrEvent) -> str | None:
+    """Best-effort fallback to find the referenced task hash in old events."""
+    try:
+        payload = json.loads(event.content)
+        if isinstance(payload, dict):
+            return payload.get("task_hash") or payload.get("task", {}).get("task_hash")
+    except (json.JSONDecodeError, AttributeError):
+        pass
+    # Look for a 64-character hex e tag that may be the task event id.
+    for tag in event.tags:
+        if len(tag) >= 2 and tag[0] == "e" and len(tag[1]) == 64:
+            return tag[1]
+    return None
+
+
+def _task_from_event(event: NostrEvent) -> CrowdTask:
+    """Reconstruct a CrowdTask from a kind 31001 event payload."""
+    payload = json.loads(event.content) if event.content else {}
+    if not isinstance(payload, dict):
+        payload = {}
+    task_hash = _get_d_tag(event.tags) or _task_hash_from_content(event) or event.id
+    return CrowdTask(
+        task_hash=task_hash,
+        objective=payload.get("objective", ""),
+        acceptance_criteria=payload.get("acceptance_criteria", ""),
+        context_hash=payload.get("context_hash", ""),
+        required_tier=payload.get("required_tier"),
+        deadline=payload.get("deadline"),
+        stake=payload.get("stake", "low"),
+        tags=[t[1] for t in event.tags if len(t) >= 2 and t[0] == "t"],
+        event_id=event.id,
+        event_pubkey=event.pubkey,
+        status="open",
+    )
+
+
 def _match_filter(event: NostrEvent, filter_: dict[str, Any]) -> bool:
     kinds = filter_.get("kinds")
     if kinds and event.kind not in kinds:
@@ -677,7 +756,12 @@ def _match_filter(event: NostrEvent, filter_: dict[str, Any]) -> bool:
 
 
 class StrfryWrapper:
-    """Detect and spawn the local strfry relay and router binaries."""
+    """Detect and spawn the local strfry relay and router binaries.
+
+    Also provides a bridge into the strfry LMDB database via ``strfry import``
+    (push) and ``strfry scan`` (pull) so OpenPlanter events actually flow into
+    the relay that the router replicates upstream.
+    """
 
     def __init__(self, root: Path, port: int = 7777) -> None:
         self.root = Path(root)
@@ -713,10 +797,11 @@ class StrfryWrapper:
     def _write_router_config(self, upstreams: list[str]) -> Path:
         conf = self.root / "router.conf"
         urls = ", ".join(f'"{u}"' for u in upstreams)
+        kinds = list(map(str, [CROWD_KIND_TASK, CROWD_KIND_CLAIM, CROWD_KIND_RESULT, CROWD_KIND_AVAILABLE, CROWD_KIND_EMBEDDING, CROWD_KIND_CANCEL]))
         lines = [
             "streams {",
-            f'    from_public {{\n        dir = "down"\n        urls = [{urls}]\n        filter = {{ kinds = [0, 10002, 31001, 31002, 31003, 31004, 31005] }}\n    }}',
-            f'    to_public {{\n        dir = "up"\n        urls = [{urls}]\n        filter = {{ kinds = [31001, 31002, 31003, 31004, 31005] }}\n    }}',
+            f'    from_public {{\n        dir = "down"\n        urls = [{urls}]\n        filter = {{ kinds = [0, 10002, {", ".join(kinds)}] }}\n    }}',
+            f'    to_public {{\n        dir = "up"\n        urls = [{urls}]\n        filter = {{ kinds = [{", ".join(kinds)}] }}\n    }}',
             "}",
         ]
         conf.write_text("\n".join(lines), encoding="utf-8")
@@ -741,14 +826,66 @@ class StrfryWrapper:
         if not binary or not upstreams:
             return None
         conf = self._write_router_config(upstreams)
+        # strfry router usage: ``strfry router <routerConfigFile>``
         self.router_proc = subprocess.Popen(
-            [str(binary), "--config", str(conf), "router"],
+            [str(binary), "router", str(conf.name)],
             cwd=str(self.root),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
         return str(conf)
+
+    def is_running(self) -> bool:
+        return self.relay_proc is not None and self.relay_proc.poll() is None
+
+    def import_event(self, event: NostrEvent) -> bool:
+        """Insert a single event into the strfry database via ``strfry import``."""
+        binary = self.find_binary()
+        if not binary or not self.is_running():
+            return False
+        try:
+            line = json.dumps(event.to_dict(), separators=(",", ":"), ensure_ascii=True) + "\n"
+            subprocess.run(
+                [str(binary), "import", "--no-verify"],
+                cwd=str(self.root),
+                input=line,
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=True,
+            )
+            return True
+        except Exception:
+            return False
+
+    def scan_events(self, filter_: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Scan the local strfry DB with a Nostr filter and return raw event dicts."""
+        binary = self.find_binary()
+        if not binary or not self.is_running():
+            return []
+        try:
+            filter_json = json.dumps(filter_ or {}, separators=(",", ":"))
+            result = subprocess.run(
+                [str(binary), "scan", filter_json],
+                cwd=str(self.root),
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=True,
+            )
+        except Exception:
+            return []
+        events: list[dict[str, Any]] = []
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return events
 
     def stop(self) -> None:
         for proc in (self.relay_proc, self.router_proc):
@@ -773,14 +910,19 @@ class CrowdClient:
         relay_uri: str | None = None,
         upstream_relays: list[str] | None = None,
         auto_spawn_strfry: bool = False,
+        epsilon: float = 1.0,
     ) -> None:
         self.store = store
         self.identity = identity or CrowdIdentity()
         self.relay_uri = relay_uri
         self.upstream_relays = list(upstream_relays or [])
         self.auto_spawn_strfry = auto_spawn_strfry
+        self.epsilon = epsilon
         self.memory_relay = MemoryRelay()
         self._strfry: StrfryWrapper | None = None
+        self._ingest_thread: threading.Thread | None = None
+        self._stop_ingest = threading.Event()
+        self._last_sync = 0
         self._hydrate_memory_relay()
 
     def _hydrate_memory_relay(self) -> None:
@@ -789,8 +931,59 @@ class CrowdClient:
         for _task_hash, event in events:
             self.memory_relay.publish(event)
 
-    def local_uri(self) -> str:
-        return self.relay_uri or "ws://127.0.0.1:7777"
+    def _task_event_ref(self, task_hash: str) -> tuple[str, str]:
+        """Return (event_id, publisher_pubkey) for a task if known, else (task_hash, '')."""
+        task = self.store.get_task(task_hash)
+        if task and task.event_id and task.event_pubkey:
+            return task.event_id, task.event_pubkey
+        return task_hash, ""
+
+    def _bridge_to_strfry(self, event: NostrEvent) -> bool:
+        """Push a local event into the strfry LMDB database (and upstream router)."""
+        if self._strfry is None:
+            return False
+        return self._strfry.import_event(event)
+
+    def _ingest_from_strfry(self) -> None:
+        """Pull events from the local strfry DB into the store and memory relay."""
+        if self._strfry is None or not self._strfry.is_running():
+            return
+        since = max(0, self._last_sync - 1)
+        filter_ = {
+            "kinds": [CROWD_KIND_TASK, CROWD_KIND_CLAIM, CROWD_KIND_RESULT, CROWD_KIND_AVAILABLE, CROWD_KIND_EMBEDDING, CROWD_KIND_CANCEL],
+            "since": since,
+        }
+        self._last_sync = _unix_now()
+        for raw in self._strfry.scan_events(filter_):
+            try:
+                event = NostrEvent.from_dict(raw)
+                if not verify_event(event):
+                    continue
+                task_hash = _get_d_tag(event.tags) or _task_hash_from_content(event)
+                if not task_hash:
+                    continue
+                if self.store.get_task(task_hash) is None and event.kind == CROWD_KIND_TASK:
+                    self.store.create_task(_task_from_event(event), event=event)
+                self.store.append_event(event, task_hash)
+                self.memory_relay.publish(event)
+            except Exception:
+                continue
+
+    def _sync_loop(self) -> None:
+        """Poll strfry DB periodically for new downstream events."""
+        while not self._stop_ingest.wait(5.0):
+            try:
+                self._ingest_from_strfry()
+            except Exception:
+                pass
+
+    def _start_federation_sync(self) -> None:
+        """Start a background thread that periodically pulls from strfry."""
+        if self._ingest_thread is not None:
+            return
+        self._stop_ingest.clear()
+        self._ingest_thread = threading.Thread(target=self._sync_loop, daemon=True)
+        self._ingest_thread.start()
 
     def start_local_relay(self, port: int = 7777) -> str | None:
         if self.auto_spawn_strfry:
@@ -800,6 +993,10 @@ class CrowdClient:
                 self.relay_uri = uri
                 if self.upstream_relays:
                     self._strfry.start_router(self.upstream_relays)
+                # Wait briefly for strfry to open its DB, then hydrate.
+                time.sleep(0.5)
+                self._ingest_from_strfry()
+                self._start_federation_sync()
                 return self.relay_uri
             warnings.warn(
                 "strfry binary not found; falling back to in-memory relay",
@@ -815,6 +1012,10 @@ class CrowdClient:
         return self.relay_uri
 
     def stop(self) -> None:
+        self._stop_ingest.set()
+        if self._ingest_thread is not None:
+            self._ingest_thread.join(timeout=1)
+            self._ingest_thread = None
         if self._strfry:
             self._strfry.stop()
 
@@ -834,32 +1035,54 @@ class CrowdClient:
             }, ensure_ascii=True),
         )
         self.identity.sign_event(event)
+        # Record the Nostr addressable coordinates for follow-up claims/results.
+        task.event_id = event.id
+        task.event_pubkey = event.pubkey
         self.memory_relay.publish(event)
         self.store.create_task(task, event=event)
+        self._bridge_to_strfry(event)
         return event
 
     def claim_task(self, task_hash: str, pubkey: str | None = None) -> NostrEvent | None:
-        worker = pubkey or self.identity.public_hex
+        claimer = self.identity.public_hex
+        if pubkey is not None and pubkey != claimer:
+            warnings.warn(
+                "claim_task() pubkey argument is only advisory and must match the signer; "
+                "the event will be signed with the local identity",
+                stacklevel=2,
+            )
+        task_event_id, task_event_pubkey = self._task_event_ref(task_hash)
+        tags: list[list[str]] = [["d", task_hash]]
+        # Reference the task via a NIP-10-style ``e`` tag with the task event id.
+        if len(str(task_event_id)) == 64:
+            tags.append(["e", task_event_id, "", task_event_pubkey])
+        tags.append(["p", claimer])
         event = NostrEvent(
-            pubkey=worker,
+            pubkey=claimer,
             created_at=_unix_now(),
             kind=CROWD_KIND_CLAIM,
-            tags=[["e", task_hash], ["p", worker]],
-            content=json.dumps({"task_hash": task_hash, "claimer": worker}, ensure_ascii=True),
+            tags=tags,
+            content=json.dumps({"task_hash": task_hash, "claimer": claimer}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
-        task = self.store.claim_task(task_hash, worker, event=event)
+        task = self.store.claim_task(task_hash, claimer, event=event)
         if task is None:
             return None
         self.memory_relay.publish(event)
+        self._bridge_to_strfry(event)
         return event
 
     def cancel_task(self, task_hash: str) -> NostrEvent | None:
+        task_event_id, task_event_pubkey = self._task_event_ref(task_hash)
+        tags: list[list[str]] = [["d", task_hash]]
+        if len(str(task_event_id)) == 64:
+            tags.append(["e", task_event_id, "", task_event_pubkey])
+        tags.append(["status", "canceled"])
         event = NostrEvent(
             pubkey=self.identity.public_hex,
             created_at=_unix_now(),
             kind=CROWD_KIND_CANCEL,
-            tags=[["e", task_hash], ["status", "canceled"]],
+            tags=tags,
             content=json.dumps({"task_hash": task_hash, "status": "canceled"}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
@@ -867,6 +1090,7 @@ class CrowdClient:
         if task is None:
             return None
         self.memory_relay.publish(event)
+        self._bridge_to_strfry(event)
         return event
 
     def return_result(
@@ -878,7 +1102,10 @@ class CrowdClient:
         task = self.store.get_task(task_hash)
         if task is None or task.claimed_by != self.identity.public_hex:
             return None
-        tags = [["e", task_hash]]
+        task_event_id, task_event_pubkey = self._task_event_ref(task_hash)
+        tags: list[list[str]] = [["d", task_hash]]
+        if len(str(task_event_id)) == 64:
+            tags.append(["e", task_event_id, "", task_event_pubkey])
         if parent_pubkey:
             tags.append(["p", parent_pubkey])
         event = NostrEvent(
@@ -893,14 +1120,18 @@ class CrowdClient:
         if updated is None:
             return None
         self.memory_relay.publish(event)
+        self._bridge_to_strfry(event)
         return event
 
     def advertise_worker(self, tags: list[str], max_complexity: str = "medium", available: bool = True) -> NostrEvent:
+        # One availability profile per public key; use the pubkey as d-tag to
+        # avoid replacement collisions between different workers.
+        d = self.identity.public_hex[:32] or "profile"
         event = NostrEvent(
             pubkey=self.identity.public_hex,
             created_at=_unix_now(),
             kind=CROWD_KIND_AVAILABLE,
-            tags=[["t", t] for t in tags],
+            tags=[["d", d]] + [["t", t] for t in tags],
             content=json.dumps({
                 "max_complexity": max_complexity,
                 "available": available,
@@ -909,6 +1140,7 @@ class CrowdClient:
         )
         self.identity.sign_event(event)
         self.memory_relay.publish(event)
+        self._bridge_to_strfry(event)
         return event
 
     def publish_embedding(
@@ -917,17 +1149,24 @@ class CrowdClient:
         vector: list[float],
         tags: list[str] | None = None,
     ) -> NostrEvent:
+        noisy = NoisyEmbedding(epsilon=self.epsilon).perturb(vector)
+        task_event_id, task_event_pubkey = self._task_event_ref(task_hash)
+        etags: list[list[str]] = [["d", task_hash]]
+        if len(str(task_event_id)) == 64:
+            etags.append(["e", task_event_id, "", task_event_pubkey])
+        etags += [["t", t] for t in (tags or [])]
         event = NostrEvent(
             pubkey=self.identity.public_hex,
             created_at=_unix_now(),
             kind=CROWD_KIND_EMBEDDING,
-            tags=[["d", task_hash]] + [["t", t] for t in (tags or [])],
-            content=json.dumps({"task_hash": task_hash, "vector": vector}, ensure_ascii=True),
+            tags=etags,
+            content=json.dumps({"task_hash": task_hash, "vector": noisy}, ensure_ascii=True),
         )
         self.identity.sign_event(event)
         self.memory_relay.publish(event)
-        self.store.add_embedding(task_hash, vector, tags)
+        self.store.add_embedding(task_hash, noisy, tags)
         self.store.append_event(event, task_hash)
+        self._bridge_to_strfry(event)
         return event
 
 
@@ -942,15 +1181,23 @@ def _task_tags(task: CrowdTask) -> list[list[str]]:
     return tags
 
 
-class DifferentialPrivacyEmbedding:
-    """Local differential privacy noise for embedding vectors."""
+class NoisyEmbedding:
+    """Randomized noise for embedding vectors.
+
+    This is intentionally *not* a formal differential-privacy mechanism. A real
+    DP guarantee would require sensitivity, clipping, delta accounting, and an
+    explicit privacy budget. OpenPlanter instead applies simple Laplace/Gaussian
+    noise controlled by ``epsilon`` to make exact vector matching harder.
+    """
+
+    MIN_EPSILON = 1e-9
 
     def __init__(self, epsilon: float = 1.0, mechanism: str = "gaussian") -> None:
-        self.epsilon = max(epsilon, 0.0)
+        self.epsilon = max(float(epsilon), self.MIN_EPSILON)
         self.mechanism = mechanism
 
     def perturb(self, vector: list[float]) -> list[float]:
-        if self.epsilon == 0 or not vector:
+        if not vector:
             return vector
         scale = 1.0 / self.epsilon
         if self.mechanism == "laplace":
@@ -962,7 +1209,7 @@ class DifferentialPrivacyEmbedding:
         u = random.random() - 0.5
         return -scale * math.copysign(math.log(1.0 - 2.0 * abs(u)), u)
 
-    def __enter__(self) -> "DifferentialPrivacyEmbedding":
+    def __enter__(self) -> "NoisyEmbedding":
         return self
 
     def __exit__(self, *args: Any) -> None:
@@ -979,11 +1226,17 @@ def crowd_client_from_config(
     identity = CrowdIdentity(nsec) if nsec else CrowdIdentity()
     upstreams = settings.get("crowd_relays", []) if settings else []
     auto_spawn = getattr(config, "crowd_auto_spawn_strfry", False)
+    epsilon = (
+        float(settings.get("crowd_epsilon"))
+        if settings and settings.get("crowd_epsilon") is not None
+        else 1.0
+    )
     return CrowdClient(
         store=store,
         identity=identity,
         upstream_relays=upstreams,
         auto_spawn_strfry=auto_spawn,
+        epsilon=epsilon,
     )
 
 

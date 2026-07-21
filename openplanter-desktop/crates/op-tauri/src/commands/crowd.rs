@@ -194,6 +194,26 @@ pub async fn crowd_cancel(hash: String, state: State<'_, AppState>) -> Result<Sl
     Ok(to_slash_result(output?))
 }
 
+/// Submit a result for a claimed crowd task.
+#[tauri::command]
+pub async fn crowd_result(
+    hash: String,
+    content: String,
+    state: State<'_, AppState>,
+) -> Result<SlashResult, String> {
+    let cfg = state.config.lock().await;
+    let workspace = cfg.workspace.display().to_string();
+    let session_root = cfg.session_root_dir.clone();
+    drop(cfg);
+
+    let args = vec!["result".to_string(), hash, content];
+    let output = tokio::task::spawn_blocking(move || run_crowd_blocking(workspace, session_root, args))
+        .await
+        .map_err(|e| format!("crowd cli task panicked: {e}"))?;
+
+    Ok(to_slash_result(output?))
+}
+
 /// Trust a worker public key.
 #[tauri::command]
 pub async fn crowd_trust(npub: String, state: State<'_, AppState>) -> Result<SlashResult, String> {

@@ -19,6 +19,7 @@ fn main() {
             commands::crowd::crowd_list,
             commands::crowd::crowd_claim,
             commands::crowd::crowd_cancel,
+            commands::crowd::crowd_result,
             commands::crowd::crowd_trust,
             commands::config::get_config,
             commands::config::update_config,

@@ -25,12 +25,14 @@ These slash commands are available in the REPL and in the Tauri desktop chat:
 ```text
 /crowd #python #debug fix flaky test in agent/crowd.py
 /claim 7b79285fc321
+/result 7b79285fc321 tests passing
 /cancel cc042936bded
 /trust 89a1629857e6a7ef...
 ```
 
 - `/crowd` publishes a task. Tags are optional and start with `#`.
 - `/claim` claims an open task by full hash or 12-character prefix.
+- `/result` submits a result for a task claimed by this identity.
 - `/cancel` cancels a task that is still `open` or `claimed`.
 - `/trust` pins a worker public key (`npub`) as trusted.
 
@@ -63,7 +65,7 @@ Stored in `.openplanter/settings.json`:
 | `crowd_relays` | List of upstream `ws://`/`wss://` Nostr relays |
 | `crowd_nsec` | Hex-encoded secp256k1 private key for the node identity |
 | `crowd_worker_tags` | Preferred worker skill tags |
-| `crowd_epsilon` | Differential-privacy epsilon for embedding vectors (default: `1.0`) |
+| `crowd_epsilon` | Noise scale for embedding vectors (default: `1.0`) |
 
 Identity management is intentionally simple for now: a 64-character hex secret. Bech32 `nsec`/`npub` decoding is not yet implemented.
 
@@ -81,8 +83,28 @@ Each workspace gets a secp256k1 keypair (`agent/crowd.py::CrowdIdentity`). Event
 | `31002` | Task claim |
 | `31003` | Result/artifact return |
 | `31004` | Worker availability advertisement |
-| `31005` | Task embedding vector (DP-obfuscated) |
+| `31005` | Task embedding vector (noisy/randomized for matching privacy) |
 | `31006` | Task cancellation |
+
+### Addressable-event design
+
+`31001`-`31006` all fall inside NIP-33’s **addressable** (replaceable) event range (`30000`-`39999`). This is intentional: for each `(kind, pubkey, d-tag)` triple a standards-following relay keeps only the latest event.
+
+To avoid collisions, every task-related event carries a task-specific `"d"` tag:
+
+- Task: `"d": "<task_hash>"`
+- Claim: `"d": "<task_hash>"`
+- Result: `"d": "<task_hash>"`
+- Cancel: `"d": "<task_hash>"`
+- Embedding: `"d": "<task_hash>"`
+- Availability profile: `"d": "<first-32-hex-of-pubkey>"`
+
+So worker A claiming task 1 and task 2 are not replaced, because the `d` tag differs. Each claim/result/cancel also includes an `"e"` tag referencing the task publication’s event id, and claim/result events include the publisher pubkey as the fourth element of the `e` tag (NIP-10 relay hint) when it is known. This makes the relationship explicit for Nostr clients and for the upstream strfry router’s `import`/`scan` bridge.
+
+This design means:
+- The most recent claim per task per worker replaces older claims for that same task.
+- The most recent result per task per worker replaces older results.
+- Cancellations are also addressable per task and therefore survive on relays rather than being treated as ephemeral.
 
 ### Storage
 
@@ -92,7 +114,7 @@ Crowd data lives under `.openplanter/crowd/`:
 .openplanter/crowd/
   tasks/           JSON task records
   events/          Signed Nostr events, stored per task as <event_id>.json
-  vector_index.json  DP-noisy embedding vectors
+  vector_index.json  Noisy embedding vectors
   trust.json       Trusted worker npubs
   worker_profile.json  Advertised worker profile
   strfry/          Optional strfry relay/router config
@@ -118,7 +140,13 @@ The desktop frontend forwards these commands to the Rust Tauri backend, which ru
 
 `CrowdClient.start_local_relay()` attempts to start a `strfry` relay on `ws://127.0.0.1:<port>` when `--crowd-strfry`/`OPENPLANTER_CROWD_STRFRY` is set. If the binary is missing it falls back to the in-memory relay URI and warns. The in-memory relay is a local message bus — it does not bind a real websocket server in this scaffold.
 
-When `strfry` is available and `crowd_relays` has upstream `ws://`/`wss://` entries, `start_local_relay()` also starts a `strfry router` process that relays task/claim/result/available/embedding events (`31001`–`31005`) between the local node and the wider network. The in-memory `MemoryRelay` is hydrated from the persisted `events/` directory on `CrowdClient` construction, so a new process sees all previously signed events.
+When `strfry` is available and `crowd_relays` has upstream `ws://`/`wss://` entries, `start_local_relay()` also starts a `strfry router` process with the correct invocation (`strfry router router.conf`). The router filters now include all crowd kinds (`31001`–`31006`), including cancellations.
+
+`CrowdClient` bridges the Python store and strfry database:
+- After each local publish/claim/result/cancel/advertise, the signed event is pushed into the strfry DB with `strfry import`.
+- A background thread periodically polls the strfry DB with `strfry scan` and ingests new events, verifying their IDs and Schnorr signatures before storing them in `events/` or exposing them through the `MemoryRelay`.
+
+The in-memory `MemoryRelay` is hydrated from the persisted `events/` directory on `CrowdClient` construction, so a new process sees all previously signed events even if it starts before the strfry adapter.
 
 ### Worker discovery and trust
 
@@ -126,7 +154,9 @@ When `strfry` is available and `crowd_relays` has upstream `ws://`/`wss://` entr
 
 ### Embedding privacy
 
-`DifferentialPrivacyEmbedding` adds Gaussian or Laplace noise to task embedding vectors before they are published as `kind:31005` events. The magnitude is controlled by `crowd_epsilon`. Smaller epsilon = stronger privacy, weaker matching accuracy.
+`NoisyEmbedding` adds Gaussian or Laplace noise to task embedding vectors before they are published as `kind:31005` events. The magnitude is controlled by `crowd_epsilon`; smaller epsilon means stronger obfuscation but weaker matching accuracy.
+
+This is **not** a formal differential-privacy guarantee: it does not implement clipping, sensitivity bounds, delta accounting, or an overall privacy budget. If your use case needs true DP you should replace `NoisyEmbedding` with a vetted library and configure it explicitly.
 
 ## Programmatic usage
 
@@ -152,7 +182,8 @@ print(event.id, event.sig[:16])
 
 claimed = client.claim_task(task.task_hash)
 if claimed:
-    result = client.return_result(task.task_hash, "All tests passing.")
+    client.claim_task(task.task_hash)
+result = client.return_result(task.task_hash, "All tests passing.")
 ```
 
 ## Architecture notes

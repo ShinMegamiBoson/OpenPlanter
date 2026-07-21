@@ -8,6 +8,7 @@ import {
   crowdList,
   crowdClaim,
   crowdCancel,
+  crowdResult,
   crowdTrust,
 } from "../api/invoke";
 
@@ -40,6 +41,7 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
           "  /crowd [list|#tag ...] <objective>  Publish or list crowd tasks",
           "  /claim <task-hash>  Claim an open crowd task",
           "  /cancel <task-hash> Cancel a crowd task",
+          "  /result <hash> <content>  Submit result for a claimed task",
           "  /trust <npub>       Trust a worker public key",
         ],
       };
@@ -155,6 +157,21 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
         return { action: "handled", lines: [result.output] };
       } catch (e) {
         return { action: "handled", lines: [`Crowd cancel failed: ${e}`] };
+      }
+    }
+
+    case "/result": {
+      const parts = args.trim().split(/\s+/, 2);
+      const hash = parts[0] || "";
+      const content = parts[1] || "";
+      if (!hash || !content) {
+        return { action: "handled", lines: ["Usage: /result <task-hash> <content>"] };
+      }
+      try {
+        const result = await crowdResult(hash, content);
+        return { action: "handled", lines: [result.output] };
+      } catch (e) {
+        return { action: "handled", lines: [`Crowd result failed: ${e}`] };
       }
     }
 

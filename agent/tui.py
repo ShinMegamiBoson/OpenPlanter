@@ -18,7 +18,7 @@ from .settings import SettingsStore
 
 SLASH_COMMANDS: list[str] = [
     "/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning",
-    "/crowd", "/claim", "/cancel", "/trust",
+    "/crowd", "/claim", "/cancel", "/result", "/trust",
 ]
 
 
@@ -113,6 +113,7 @@ HELP_LINES: list[str] = [
     "  /crowd [list|#tag ...] <objective>  Publish a crowd task",
     "  /claim <task-hash>  Claim an open crowd task",
     "  /cancel <task-hash> Cancel a crowd task",
+    "  /result <hash> <content>  Submit a result for a claimed task",
     "  /trust <npub>       Trust a worker public key",
     "  /status  /clear  /quit  /exit  /help",
 ]
@@ -251,6 +252,25 @@ def handle_cancel_command(args: str, ctx: ChatContext) -> list[str]:
     return [
         f"Canceled task {task.task_hash[:12]}",
         f"  cancel event id: {event.id[:16]}...",
+    ]
+
+
+def handle_result_command(args: str, ctx: ChatContext) -> list[str]:
+    """Handle /result. Submit result for a task claimed by this identity."""
+    parts = args.strip().split(None, 1)
+    if len(parts) < 2:
+        return ["Usage: /result <task-hash> <content>"]
+    prefix, content = parts
+    client = _crowd_client(ctx)
+    task = client.store.get_task(prefix)
+    if task is None:
+        return [f"Task not found: {prefix}"]
+    event = client.return_result(task.task_hash, content)
+    if event is None:
+        return [f"Could not submit result for {task.task_hash[:12]} (must be claimed by this identity)."]
+    return [
+        f"Result submitted for {task.task_hash[:12]}",
+        f"Event: {event.id[:16]}...",
     ]
 
 
@@ -529,6 +549,12 @@ def dispatch_slash_command(
     if command.startswith("/claim"):
         cmd_args = command[len("/claim"):].strip()
         lines = handle_claim_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/result"):
+        cmd_args = command[len("/result"):].strip()
+        lines = handle_result_command(cmd_args, ctx)
         for line in lines:
             emit(line)
         return "handled"

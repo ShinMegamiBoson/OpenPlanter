@@ -87,6 +87,10 @@ export async function crowdCancel(hash: string): Promise<SlashResult> {
   return invoke("crowd_cancel", { hash });
 }
 
+export async function crowdResult(hash: string, content: string): Promise<SlashResult> {
+  return invoke("crowd_result", { hash, content });
+}
+
 export async function crowdTrust(npub: string): Promise<SlashResult> {
   return invoke("crowd_trust", { npub });
 }

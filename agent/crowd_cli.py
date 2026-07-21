@@ -107,6 +107,26 @@ def cmd_cancel(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_result(args: argparse.Namespace) -> int:
+    client = _load_client(args.workspace)
+    prefix = args.hash or ""
+    content = " ".join(args.content) if args.content else ""
+    if not content.strip():
+        _error("Missing result content")
+        return 1
+    task = _resolve_task(client.store, prefix)
+    if task is None:
+        _error(f"Task not found: {prefix}")
+        return 1
+    event = client.return_result(task.task_hash, content)
+    if event is None:
+        _error(f"Could not submit result for {task.task_hash[:12]} (must be claimed by this identity)")
+        return 1
+    updated = client.store.get_task(task.task_hash)
+    _ok({"task": _task_preview(updated or task), "event_id": event.id, "result_event_id": event.id})
+    return 0
+
+
 def cmd_trust(args: argparse.Namespace) -> int:
     client = _load_client(args.workspace)
     npub = args.npub or ""
@@ -178,6 +198,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("cancel", help="Cancel a task")
     p.add_argument("hash", help="Task hash or prefix")
     p.set_defaults(func=cmd_cancel)
+
+    p = sub.add_parser("result", help="Submit a result for a claimed task")
+    p.add_argument("hash", help="Task hash or prefix")
+    p.add_argument("content", nargs="*", help="Result content")
+    p.set_defaults(func=cmd_result)
 
     p = sub.add_parser("trust", help="Trust a worker npub")
     p.add_argument("npub", help="Worker public key (hex)")
