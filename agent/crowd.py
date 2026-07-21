@@ -94,7 +94,8 @@ def _event_id(event: dict[str, Any]) -> str:
         event["tags"],
         event["content"],
     ]
-    return hashlib.sha256(json.dumps(normed, ensure_ascii=False).encode("utf-8")).hexdigest()
+    serialized = json.dumps(normed, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -682,7 +683,7 @@ class CrowdClient:
         return self.relay_uri or "ws://127.0.0.1:7777"
 
     def start_local_relay(self, port: int = 7777) -> str | None:
-        self._strfry = StrfryWrapper(self.store.workspace / self.store.root.relative_to(self.store.workspace) / "strfry", port=port)
+        self._strfry = StrfryWrapper(self.store.root / "strfry", port=port)
         uri = self._strfry.start_relay()
         if uri:
             self.relay_uri = uri
