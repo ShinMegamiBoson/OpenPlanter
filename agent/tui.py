@@ -379,7 +379,13 @@ def _handle_lifecycle(args: str, ctx: ChatContext, action: str) -> list[str]:
     event = method(task.task_hash)
     if event is None:
         return [f"Could not {action} task {task.task_hash[:12]} (wrong status or not publisher)."]
-    return [f"Task {task.task_hash[:12]} {action}ed", f"Event: {event.id[:16]}..."]
+    past_tense = {
+        "accept": "accepted",
+        "reject": "rejected",
+        "expire": "expired",
+        "reopen": "reopened",
+    }.get(action, f"{action}ed")
+    return [f"Task {task.task_hash[:12]} {past_tense}", f"Event: {event.id[:16]}..."]
 
 
 def handle_accept_command(args: str, ctx: ChatContext) -> list[str]:
