@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import AgentConfig
-from .crowd import CrowdIdentity, CrowdStore, CrowdTask, crowd_client_from_config
+from .crowd import CrowdStore, CrowdTask, crowd_client_from_config, ensure_crowd_identities
 from .settings import SettingsStore
 
 
@@ -24,15 +24,9 @@ def _load_client(workspace: str):
     cfg.crowd_enabled = True
     settings_store = SettingsStore(ws, cfg.session_root_dir)
     settings = settings_store.load()
-    changed = False
-    if not settings.crowd_nsec:
-        identity = CrowdIdentity()
-        settings.crowd_nsec = identity.nsec_hex
-        changed = True
-    if not settings.crowd_private_nsec:
-        private_identity = CrowdIdentity()
-        settings.crowd_private_nsec = private_identity.nsec_hex
-        changed = True
+    identity, private_identity, changed = ensure_crowd_identities(
+        settings, settings_store
+    )
     if changed:
         settings_store.save(settings)
     client = crowd_client_from_config(cfg, settings.to_json())

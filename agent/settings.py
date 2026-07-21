@@ -240,6 +240,17 @@ class SettingsStore:
         parsed = _decrypt_sensitive_fields(parsed, _master_password())
         return PersistentSettings.from_json(parsed)
 
+    def has_encrypted_fields(self) -> bool:
+        """Return True if the on-disk settings contain encrypted identity keys."""
+        if not self.settings_path.exists():
+            return False
+        try:
+            parsed = json.loads(self.settings_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+        encrypted = parsed.get(_ENCRYPTED_FIELDS_KEY, [])
+        return isinstance(encrypted, list) and len(encrypted) > 0
+
     def save(self, settings: PersistentSettings) -> None:
         normalized = settings.normalized()
         payload = normalized.to_json()
@@ -247,6 +258,15 @@ class SettingsStore:
         if password:
             payload = _encrypt_sensitive_fields(payload, password)
         else:
+            identity_plaintext = any(
+                payload.get(k) for k in ("crowd_nsec", "crowd_private_nsec")
+            )
+            if identity_plaintext:
+                warnings.warn(
+                    "Crowd identity keys are being stored in plaintext. "
+                    "Set OPENPLANTER_MASTER_PASSWORD to encrypt them at rest.",
+                    stacklevel=2,
+                )
             # If the on-disk settings were previously encrypted and no password
             # is available, preserve the encrypted identity keys rather than
             # overwriting them with a newly-generated plaintext key.

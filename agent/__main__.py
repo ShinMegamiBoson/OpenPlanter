@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from .builder import _fetch_models_for_provider, build_engine, infer_provider_for_model
 from .config import AgentConfig
-from .crowd import CrowdClient, CrowdIdentity
+from .crowd import CrowdClient, CrowdIdentity, ensure_crowd_identities
 from .credentials import (
     CredentialBundle,
     CredentialStore,
@@ -589,19 +589,9 @@ def main() -> None:
     try:
         if cfg.crowd_enabled:
             settings = settings_store.load()
-            changed = False
-            if not settings.crowd_nsec:
-                crowd_identity = CrowdIdentity()
-                settings.crowd_nsec = crowd_identity.nsec_hex
-                changed = True
-            else:
-                crowd_identity = CrowdIdentity(settings.crowd_nsec)
-            if not settings.crowd_private_nsec:
-                private_identity = CrowdIdentity()
-                settings.crowd_private_nsec = private_identity.nsec_hex
-                changed = True
-            else:
-                private_identity = CrowdIdentity(settings.crowd_private_nsec)
+            crowd_identity, private_identity, changed = ensure_crowd_identities(
+                settings, settings_store
+            )
             if changed:
                 settings_store.save(settings)
             crowd = CrowdClient(

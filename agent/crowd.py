@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from .config import AgentConfig
+from .settings import SettingsStore, _master_password
 
 try:
     from filelock import FileLock, Timeout as _FileLockTimeout
@@ -1284,10 +1285,10 @@ class CrowdClient:
                     max_seen = event.created_at
             except Exception:
                 continue
-        # Advance only after scanning so events created during the scan are
-        # re-checked on the next poll (the -1 second overlap keeps the window
-        # inclusive even with 1-second created_at granularity).
-        self._last_sync = max(max_seen, _unix_now())
+        # Advance only to the newest event actually seen.  Advancing to wall
+        # clock time would skip upstream events relayed down from strfry with
+        # older created_at timestamps.
+        self._last_sync = max_seen
 
     def _ingest_event(self, event: NostrEvent, task_hash: str) -> None:
         """Persist a remote event and update local task state accordingly."""
@@ -1830,6 +1831,51 @@ class NoisyEmbedding:
 
     def __exit__(self, *args: Any) -> None:
         pass
+
+
+def ensure_crowd_identities(
+    settings: "PersistentSettings",
+    settings_store: SettingsStore,
+) -> tuple[CrowdIdentity, CrowdIdentity | None, bool]:
+    """Load or create crowd identities, respecting encrypted on-disk keys.
+
+    When the settings file already contains encrypted keys but no master
+    password is available, a temporary in-memory identity is used for the
+    session and a warning is emitted so the user knows it will not persist.
+    """
+    password = _master_password()
+    encrypted_on_disk = settings_store.has_encrypted_fields() and not password
+
+    changed = False
+    if settings.crowd_nsec:
+        identity = CrowdIdentity(settings.crowd_nsec)
+    else:
+        if encrypted_on_disk:
+            warnings.warn(
+                "Encrypted crowd identity exists but OPENPLANTER_MASTER_PASSWORD is not set; "
+                "using a temporary identity for this session.",
+                stacklevel=3,
+            )
+        identity = CrowdIdentity()
+        if not encrypted_on_disk:
+            settings.crowd_nsec = identity.nsec_hex
+            changed = True
+
+    if settings.crowd_private_nsec:
+        private_identity = CrowdIdentity(settings.crowd_private_nsec)
+    else:
+        if encrypted_on_disk:
+            warnings.warn(
+                "Encrypted private crowd identity exists but OPENPLANTER_MASTER_PASSWORD is not set; "
+                "using a temporary private identity for this session.",
+                stacklevel=3,
+            )
+        private_identity = CrowdIdentity()
+        if not encrypted_on_disk:
+            settings.crowd_private_nsec = private_identity.nsec_hex
+            changed = True
+
+    return identity, private_identity, changed
 
 
 def crowd_client_from_config(

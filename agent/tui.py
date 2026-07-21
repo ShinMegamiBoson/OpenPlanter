@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import AgentConfig
-from .crowd import CrowdClient, CrowdIdentity, CrowdStore, CrowdTask
+from .crowd import CrowdClient, CrowdIdentity, CrowdStore, CrowdTask, ensure_crowd_identities
 from .engine import RLMEngine, _MODEL_CONTEXT_WINDOWS, _DEFAULT_CONTEXT_WINDOW
 from .model import EchoFallbackModel, ModelError
 from .runtime import SessionRuntime
@@ -160,19 +160,9 @@ def _crowd_client(ctx: ChatContext) -> CrowdClient:
     if ctx.crowd is not None:
         return ctx.crowd
     settings = ctx.settings_store.load()
-    changed = False
-    if not settings.crowd_nsec:
-        identity = CrowdIdentity()
-        settings.crowd_nsec = identity.nsec_hex
-        changed = True
-    else:
-        identity = CrowdIdentity(settings.crowd_nsec)
-    if not settings.crowd_private_nsec:
-        private_identity = CrowdIdentity()
-        settings.crowd_private_nsec = private_identity.nsec_hex
-        changed = True
-    else:
-        private_identity = CrowdIdentity(settings.crowd_private_nsec)
+    identity, private_identity, changed = ensure_crowd_identities(
+        settings, ctx.settings_store
+    )
     if changed:
         ctx.settings_store.save(settings)
     ctx.crowd = CrowdClient(
