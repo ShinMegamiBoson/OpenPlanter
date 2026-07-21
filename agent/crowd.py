@@ -1468,8 +1468,10 @@ class CrowdClient:
         # Record the Nostr addressable coordinates for follow-up claims/results.
         task.event_id = event.id
         task.event_pubkey = event.pubkey
-        self.memory_relay.publish(event)
+        # Persist before publishing so in-process subscribers never observe the
+        # event before the task record exists on disk.
         self.store.create_task(task, event=event)
+        self.memory_relay.publish(event)
         if task.private or scope == "private":
             if self.private_relays:
                 self._relay_publish_private(event)
@@ -1824,7 +1826,10 @@ class NoisyEmbedding:
     @staticmethod
     def _laplace(scale: float) -> float:
         u = random.random() - 0.5
-        return -scale * math.copysign(math.log(1.0 - 2.0 * abs(u)), u)
+        # clamp away from 0.0 so that random.random() == 0.0 does not produce
+        # math.log(0.0) and raise a ValueError.
+        x = max(1.0 - 2.0 * abs(u), 1e-15)
+        return -scale * math.copysign(math.log(x), u)
 
     def __enter__(self) -> "NoisyEmbedding":
         return self
