@@ -1,11 +1,92 @@
 from __future__ import annotations
 
+import base64
 import json
+import os
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 
 VALID_REASONING_EFFORTS: set[str] = {"low", "medium", "high"}
+
+
+# Sentinel used in settings.json to mark which fields were encrypted at rest.
+_ENCRYPTED_FIELDS_KEY = "_encrypted_fields"
+
+
+def _master_password() -> str | None:
+    return os.getenv("OPENPLANTER_MASTER_PASSWORD", "").strip() or None
+
+
+def _fernet_key(password: str) -> bytes:
+    """Derive a Fernet-compatible key from a user-supplied password."""
+    # Fernet keys are 32 bytes encoded with URL-safe base64.  We derive them
+    # with PBKDF2-HMAC-SHA256 so the password is not stored on disk.
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b"openplanter-settings-v1",
+        iterations=100_000,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
+
+
+def _encrypt_value(plaintext: str, password: str) -> str:
+    from cryptography.fernet import Fernet
+
+    return Fernet(_fernet_key(password)).encrypt(plaintext.encode("utf-8")).decode("utf-8")
+
+
+def _decrypt_value(ciphertext: str, password: str) -> str:
+    from cryptography.fernet import Fernet
+
+    return Fernet(_fernet_key(password)).decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+
+
+def _encrypt_sensitive_fields(payload: dict[str, Any], password: str) -> dict[str, Any]:
+    encrypted = set()
+    out = dict(payload)
+    for key in ("crowd_nsec", "crowd_private_nsec"):
+        value = out.get(key)
+        if value:
+            out[key] = _encrypt_value(value, password)
+            encrypted.add(key)
+    if encrypted:
+        out[_ENCRYPTED_FIELDS_KEY] = sorted(encrypted)
+    return out
+
+
+def _decrypt_sensitive_fields(
+    payload: dict[str, Any], password: str | None
+) -> dict[str, Any]:
+    encrypted = payload.pop(_ENCRYPTED_FIELDS_KEY, [])
+    if not isinstance(encrypted, list):
+        encrypted = []
+    if encrypted and not password:
+        warnings.warn(
+            "Settings file contains encrypted fields but OPENPLANTER_MASTER_PASSWORD is not set; "
+            "crowd identity keys cannot be loaded.",
+            stacklevel=2,
+        )
+        return {}
+    out = dict(payload)
+    for key in encrypted:
+        value = out.get(key)
+        if value and password:
+            try:
+                out[key] = _decrypt_value(value, password)
+            except Exception:
+                warnings.warn(
+                    f"Could not decrypt settings field {key}; using defaults.",
+                    stacklevel=2,
+                )
+                out.pop(key, None)
+    return out
 
 
 def normalize_reasoning_effort(value: str | None) -> str | None:
@@ -140,6 +221,11 @@ class SettingsStore:
         self.workspace = self.workspace.expanduser().resolve()
         root = self.workspace / self.session_root_dir
         root.mkdir(parents=True, exist_ok=True)
+        # Restrict workspace metadata so secret keys are readable only by the owner.
+        try:
+            os.chmod(root, 0o700)
+        except OSError:
+            pass
         self.settings_path = root / "settings.json"
 
     def load(self) -> PersistentSettings:
@@ -149,11 +235,20 @@ class SettingsStore:
             parsed = json.loads(self.settings_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return PersistentSettings()
+        parsed = _decrypt_sensitive_fields(parsed, _master_password())
         return PersistentSettings.from_json(parsed)
 
     def save(self, settings: PersistentSettings) -> None:
         normalized = settings.normalized()
+        payload = normalized.to_json()
+        password = _master_password()
+        if password:
+            payload = _encrypt_sensitive_fields(payload, password)
         self.settings_path.write_text(
-            json.dumps(normalized.to_json(), indent=2),
+            json.dumps(payload, indent=2),
             encoding="utf-8",
         )
+        try:
+            os.chmod(self.settings_path, 0o600)
+        except OSError:
+            pass

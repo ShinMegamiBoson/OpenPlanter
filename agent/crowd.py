@@ -489,8 +489,15 @@ class CrowdStore:
         self._ensure_dirs()
 
     def _ensure_dirs(self) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
         self.tasks_dir.mkdir(parents=True, exist_ok=True)
         self.events_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(self.root, 0o700)
+            os.chmod(self.tasks_dir, 0o700)
+            os.chmod(self.events_dir, 0o700)
+        except OSError:
+            pass
 
     @contextmanager
     def locked(self):
@@ -645,10 +652,17 @@ class CrowdStore:
                 self._write_event(event, task_hash)
             return task
 
-    def merge_result(self, task_hash: str) -> CrowdTask | None:
+    def merge_result(
+        self,
+        task_hash: str,
+        claimer: str | None = None,
+    ) -> CrowdTask | None:
         with self.locked():
             task = self.get_task(task_hash)
             if task is None or task.status != "done":
+                return None
+            trusted = self._load_json(self.trust_path).get("trusted", [])
+            if trusted and claimer not in trusted:
                 return None
             task.merged = True
             self._write_task(task)
@@ -1181,6 +1195,12 @@ class CrowdClient:
         events = list(self.store.iter_all_events())
         events.sort(key=lambda item: item[1].created_at)
         for _task_hash, event in events:
+            if not verify_event(event):
+                warnings.warn(
+                    f"Ignoring stored event with invalid id/signature: {event.id[:16]}...",
+                    stacklevel=2,
+                )
+                continue
             self.memory_relay.publish(event)
 
     def _task_event_ref(self, task_hash: str) -> tuple[str, str]:
@@ -1506,14 +1526,8 @@ class CrowdClient:
             else task.context_hash,
         )
 
-    def claim_task(self, task_hash: str, pubkey: str | None = None) -> NostrEvent | None:
+    def claim_task(self, task_hash: str) -> NostrEvent | None:
         claimer = self.identity.public_hex
-        if pubkey is not None and pubkey != claimer:
-            warnings.warn(
-                "claim_task() pubkey argument is only advisory and must match the signer; "
-                "the event will be signed with the local identity",
-                stacklevel=2,
-            )
         task_event_id, task_event_pubkey = self._task_event_ref(task_hash)
         tags: list[list[str]] = [["d", task_hash]]
         # Reference the task via a NIP-10-style ``e`` tag with the task event id.
@@ -1591,6 +1605,12 @@ class CrowdClient:
         if task is None or task.status not in {"done", "claimed"}:
             return None
         if task.event_pubkey and task.event_pubkey != self.identity.public_hex:
+            return None
+        if task.claimed_by and self.store.list_trusted() and not self.store.is_trusted(task.claimed_by):
+            warnings.warn(
+                f"Refusing to accept result from untrusted worker {task.claimed_by[:16]}...",
+                stacklevel=2,
+            )
             return None
         task_event_id, task_event_pubkey = self._task_event_ref(task_hash)
         tags: list[list[str]] = [["d", task_hash], ["status", "accepted"]]
