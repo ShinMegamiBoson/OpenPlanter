@@ -52,6 +52,8 @@ class PersistentSettings:
     def normalized(self) -> "PersistentSettings":
         model = (self.default_model or "").strip() or None
         effort = normalize_reasoning_effort(self.default_reasoning_effort)
+        relays = list(self.crowd_relays) if self.crowd_relays else []
+        worker_tags = list(self.crowd_worker_tags) if self.crowd_worker_tags else []
         return PersistentSettings(
             default_model=model,
             default_reasoning_effort=effort,
@@ -60,6 +62,10 @@ class PersistentSettings:
             default_model_openrouter=(self.default_model_openrouter or "").strip() or None,
             default_model_cerebras=(self.default_model_cerebras or "").strip() or None,
             default_model_ollama=(self.default_model_ollama or "").strip() or None,
+            crowd_relays=relays,
+            crowd_nsec=(self.crowd_nsec or "").strip() or None,
+            crowd_worker_tags=worker_tags,
+            crowd_epsilon=self.crowd_epsilon if self.crowd_epsilon is not None else 1.0,
         )
 
     def to_json(self) -> dict[str, Any]:

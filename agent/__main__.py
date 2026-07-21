@@ -156,8 +156,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--crowd-relay-port",
         type=int,
-        default=7777,
-        help="Local ws:// relay port for crowd events (default: 7777).",
+        default=None,
+        help="Local ws:// relay port for crowd events (defaults to env/7777).",
     )
     parser.add_argument(
         "--crowd-strfry",
@@ -353,7 +353,7 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
         cfg.crowd_enabled = True
     if args.crowd_publish_leaf:
         cfg.crowd_publish_leaf = True
-    if args.crowd_relay_port:
+    if args.crowd_relay_port is not None:
         cfg.crowd_relay_port = args.crowd_relay_port
     if args.crowd_strfry:
         cfg.crowd_auto_spawn_strfry = True
@@ -593,68 +593,80 @@ def main() -> None:
 
     ctx = ChatContext(runtime=runtime, cfg=cfg, settings_store=settings_store)
 
-    if cfg.crowd_enabled:
-        settings = settings_store.load()
-        crowd = CrowdClient(
-            store=runtime.store.crowd,
-            identity=CrowdIdentity(settings.crowd_nsec),
-            upstream_relays=settings.crowd_relays,
-        )
-        uri = crowd.start_local_relay(port=cfg.crowd_relay_port)
-        if uri:
-            startup_info["Crowd"] = uri
-        if cfg.crowd_auto_spawn_strfry and crowd._strfry and crowd._strfry.find_binary():
-            startup_info["Crowd router"] = "starting"
-
-    # Build optional censor for headless / plain text paths.
-    censor_fn = None
-    if cfg.demo:
-        from .demo import DemoCensor
-        censor_fn = DemoCensor(cfg.workspace).censor_text
-
-    def _print_startup(info: dict[str, str]) -> None:
-        for key, val in info.items():
-            line = f"{key:>10}  {val}"
-            print(censor_fn(line) if censor_fn else line)
-        print()
-
-    if args.task:
-        # Headless task mode — print config plainly, then run.
-        _print_startup(startup_info)
-        result = runtime.solve(args.task, on_event=lambda ev: print(
-            censor_fn(f"trace> {_clip_event(ev)}") if censor_fn else f"trace> {_clip_event(ev)}"
-        ))
-        print(censor_fn(result) if censor_fn else result)
-        return
-
-    if args.no_tui:
-        if not sys.stdin.isatty():
-            print("No interactive stdin available; use --task for headless execution.")
-            raise SystemExit(2)
-        _print_startup(startup_info)
-        run_plain_repl(ctx)
-        return
-
-    # Default: Textual TUI (with wiki graph panel) if available,
-    # Rich REPL fallback, plain REPL last resort.
-    # --textual flag forces Textual (hard error if not installed).
     try:
-        from .textual_tui import run_textual_app
-    except ImportError:
-        if args.textual:
-            print("Textual TUI requires extra dependencies: pip install openplanter-agent[textual]")
-            raise SystemExit(1)
-        run_textual_app = None  # type: ignore[assignment]
+        if cfg.crowd_enabled:
+            settings = settings_store.load()
+            if not settings.crowd_nsec:
+                crowd_identity = CrowdIdentity()
+                settings.crowd_nsec = crowd_identity.nsec_hex
+                settings_store.save(settings)
+            else:
+                crowd_identity = CrowdIdentity(settings.crowd_nsec)
+            crowd = CrowdClient(
+                store=runtime.store.crowd,
+                identity=crowd_identity,
+                upstream_relays=settings.crowd_relays,
+            )
+            ctx.crowd = crowd
+            uri = crowd.start_local_relay(port=cfg.crowd_relay_port)
+            if uri:
+                startup_info["Crowd"] = uri
+            if cfg.crowd_auto_spawn_strfry and crowd._strfry and crowd._strfry.find_binary():
+                startup_info["Crowd router"] = "starting"
 
-    if run_textual_app is not None:
-        run_textual_app(ctx, startup_info=startup_info)
-        return
+        # Build optional censor for headless / plain text paths.
+        censor_fn = None
+        if cfg.demo:
+            from .demo import DemoCensor
+            censor_fn = DemoCensor(cfg.workspace).censor_text
 
-    try:
-        run_rich_repl(ctx, startup_info=startup_info)
-    except ImportError:
-        _print_startup(startup_info)
-        run_plain_repl(ctx)
+        def _print_startup(info: dict[str, str]) -> None:
+            for key, val in info.items():
+                line = f"{key:>10}  {val}"
+                print(censor_fn(line) if censor_fn else line)
+            print()
+
+        if args.task:
+            # Headless task mode — print config plainly, then run.
+            _print_startup(startup_info)
+            result = runtime.solve(args.task, on_event=lambda ev: print(
+                censor_fn(f"trace> {_clip_event(ev)}") if censor_fn else f"trace> {_clip_event(ev)}"
+            ))
+            print(censor_fn(result) if censor_fn else result)
+            return
+
+        if args.no_tui:
+            if not sys.stdin.isatty():
+                print("No interactive stdin available; use --task for headless execution.")
+                raise SystemExit(2)
+            _print_startup(startup_info)
+            run_plain_repl(ctx)
+            return
+
+        # Default: Textual TUI (with wiki graph panel) if available,
+        # Rich REPL fallback, plain REPL last resort.
+        # --textual flag forces Textual (hard error if not installed).
+        try:
+            from .textual_tui import run_textual_app
+        except ImportError:
+            if args.textual:
+                print("Textual TUI requires extra dependencies: pip install openplanter-agent[textual]")
+                raise SystemExit(1)
+            run_textual_app = None  # type: ignore[assignment]
+
+        if run_textual_app is not None:
+            run_textual_app(ctx, startup_info=startup_info)
+            return
+
+        try:
+            run_rich_repl(ctx, startup_info=startup_info)
+        except ImportError:
+            _print_startup(startup_info)
+            run_plain_repl(ctx)
+
+    finally:
+        if ctx.crowd is not None:
+            ctx.crowd.stop()
 
 
 if __name__ == "__main__":

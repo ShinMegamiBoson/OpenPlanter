@@ -147,17 +147,26 @@ class ChatContext:
     runtime: SessionRuntime
     cfg: AgentConfig
     settings_store: SettingsStore
+    crowd: CrowdClient | None = None
 
 
 def _crowd_client(ctx: ChatContext) -> CrowdClient:
-    """Build a CrowdClient from settings and the active session store."""
+    """Return the shared CrowdClient, or build and persist one from settings."""
+    if ctx.crowd is not None:
+        return ctx.crowd
     settings = ctx.settings_store.load()
-    identity = CrowdIdentity(settings.crowd_nsec)
-    return CrowdClient(
+    if not settings.crowd_nsec:
+        identity = CrowdIdentity()
+        settings.crowd_nsec = identity.nsec_hex
+        ctx.settings_store.save(settings)
+    else:
+        identity = CrowdIdentity(settings.crowd_nsec)
+    ctx.crowd = CrowdClient(
         store=ctx.runtime.store.crowd,
         identity=identity,
         upstream_relays=settings.crowd_relays,
     )
+    return ctx.crowd
 
 
 def handle_crowd_command(args: str, ctx: ChatContext) -> list[str]:

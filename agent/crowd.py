@@ -26,6 +26,7 @@ import signal
 import subprocess
 import threading
 import time
+import warnings
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -154,7 +155,11 @@ class CrowdIdentity:
                 self._priv = PrivateKey()
             self._pub = self._priv.public_key.format(compressed=False)[1:33]
             self._use_schnorr = True
-        except Exception:
+        except ImportError:
+            warnings.warn(
+                "coincurve not installed; using local-only HMAC placeholder identity",
+                stacklevel=2,
+            )
             self._use_schnorr = False
             if nsec_hex:
                 self._priv = _hex_to_bytes(nsec_hex.strip().lower())
@@ -515,9 +520,13 @@ class MemoryRelay:
                         if not (e.kind == event.kind and e.pubkey == event.pubkey and _get_d_tag(e.tags) == d)
                     ]
             self._events.append(event)
-            for _sub_id, (filter_, callback) in self._subs.items():
-                if _match_filter(event, filter_):
-                    callback(event)
+            callbacks = [
+                callback
+                for _sub_id, (filter_, callback) in self._subs.items()
+                if _match_filter(event, filter_)
+            ]
+        for callback in callbacks:
+            callback(event)
 
     def subscribe(
         self,

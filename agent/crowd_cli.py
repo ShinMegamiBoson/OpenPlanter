@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 from .config import AgentConfig
-from .crowd import CrowdStore, CrowdTask, crowd_client_from_config
+from .crowd import CrowdIdentity, CrowdStore, CrowdTask, crowd_client_from_config
 from .settings import SettingsStore
 
 
@@ -20,8 +20,13 @@ def _load_client(workspace: str):
     ws = Path(workspace)
     cfg = AgentConfig.from_env(ws)
     cfg.crowd_enabled = True
-    settings = SettingsStore(ws, cfg.session_root_dir).load().to_json()
-    return crowd_client_from_config(cfg, settings)
+    settings_store = SettingsStore(ws, cfg.session_root_dir)
+    settings = settings_store.load()
+    if not settings.crowd_nsec:
+        identity = CrowdIdentity()
+        settings.crowd_nsec = identity.nsec_hex
+        settings_store.save(settings)
+    return crowd_client_from_config(cfg, settings.to_json())
 
 
 def _task_preview(task: CrowdTask) -> dict[str, object]:
@@ -73,7 +78,7 @@ def cmd_list(args: argparse.Namespace) -> int:
 def cmd_claim(args: argparse.Namespace) -> int:
     client = _load_client(args.workspace)
     prefix = args.hash or ""
-    task = _resolve_task(client.store, prefix)
+    task = _resolve_task(client.store, prefix, status="open")
     if task is None:
         _error(f"Task not found: {prefix}")
         return 1
@@ -110,11 +115,17 @@ def cmd_trust(args: argparse.Namespace) -> int:
     return 0
 
 
-def _resolve_task(store: CrowdStore, prefix: str):
+def _resolve_task(store: CrowdStore, prefix: str, status: str | None = None):
     task = store.get_task(prefix)
     if task is not None:
-        return task
-    candidates = [t for t in store.list_tasks() if t.task_hash.startswith(prefix)]
+        if status is None or task.status == status:
+            return task
+        return None
+    candidates = [
+        t
+        for t in store.list_tasks(status=status)
+        if t.task_hash.startswith(prefix)
+    ]
     if len(candidates) == 1:
         return candidates[0]
     return None
