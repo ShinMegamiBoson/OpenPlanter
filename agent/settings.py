@@ -246,6 +246,32 @@ class SettingsStore:
         password = _master_password()
         if password:
             payload = _encrypt_sensitive_fields(payload, password)
+        else:
+            # If the on-disk settings were previously encrypted and no password
+            # is available, preserve the encrypted identity keys rather than
+            # overwriting them with a newly-generated plaintext key.
+            existing: dict[str, Any] | None = None
+            if self.settings_path.exists():
+                try:
+                    existing = json.loads(self.settings_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    existing = None
+            encrypted_keys = (
+                existing.get(_ENCRYPTED_FIELDS_KEY, [])
+                if isinstance(existing, dict)
+                else []
+            )
+            if encrypted_keys:
+                warnings.warn(
+                    "Settings file contains encrypted identity keys; "
+                    "set OPENPLANTER_MASTER_PASSWORD to load them. "
+                    "Plaintext identity keys will not be written.",
+                    stacklevel=2,
+                )
+                for key in encrypted_keys:
+                    if existing and key in existing:
+                        payload[key] = existing[key]
+                payload[_ENCRYPTED_FIELDS_KEY] = list(encrypted_keys)
         self.settings_path.write_text(
             json.dumps(payload, indent=2),
             encoding="utf-8",

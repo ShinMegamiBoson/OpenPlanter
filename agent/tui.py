@@ -340,6 +340,15 @@ def handle_result_command(args: str, ctx: ChatContext) -> list[str]:
     client = _crowd_client(ctx)
     task = client.store.get_task(prefix)
     if task is None:
+        candidates = [
+            t for t in client.store.list_tasks()
+            if t.task_hash.startswith(prefix)
+        ]
+        if len(candidates) == 1:
+            task = candidates[0]
+        elif len(candidates) > 1:
+            return [f"Ambiguous prefix {prefix[:12]}: {len(candidates)} tasks match."]
+    if task is None:
         return [f"Task not found: {prefix}"]
     event = client.return_result(task.task_hash, content)
     if event is None:

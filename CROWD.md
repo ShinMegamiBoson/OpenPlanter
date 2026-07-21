@@ -43,7 +43,6 @@ These slash commands are available in the REPL and in the Tauri desktop chat:
 | Flag | Description |
 |------|-------------|
 | `--crowd` | Enable the crowd market and slash commands |
-| `--crowd-publish-leaf` | Publish leaf subtasks to the crowd instead of solving them locally |
 | `--crowd-relay-port N` | Local `ws://` relay port (default: 7777) |
 | `--crowd-strfry` | Try to spawn a local `strfry` relay/router binary |
 
@@ -52,7 +51,6 @@ These slash commands are available in the REPL and in the Tauri desktop chat:
 | Variable | Description |
 |----------|-------------|
 | `OPENPLANTER_CROWD` | `1`, `true`, or `yes` to enable the crowd |
-| `OPENPLANTER_CROWD_PUBLISH_LEAF` | Publish leaf subtasks to the crowd |
 | `OPENPLANTER_CROWD_RELAY_PORT` | Local relay port |
 | `OPENPLANTER_CROWD_STRFRY` | Try to spawn `strfry` |
 

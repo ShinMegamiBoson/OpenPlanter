@@ -6,6 +6,7 @@ Used by the Tauri desktop app to perform crowd tasks via the Python backend.
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import re
 import sys
@@ -34,7 +35,9 @@ def _load_client(workspace: str):
         changed = True
     if changed:
         settings_store.save(settings)
-    return crowd_client_from_config(cfg, settings.to_json())
+    client = crowd_client_from_config(cfg, settings.to_json())
+    atexit.register(client.stop)
+    return client
 
 
 def _task_preview(task: CrowdTask) -> dict[str, object]:

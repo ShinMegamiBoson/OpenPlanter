@@ -52,7 +52,6 @@ class AgentConfig:
     max_turn_summaries: int = 50
     demo: bool = False
     crowd_enabled: bool = False
-    crowd_publish_leaf: bool = False
     crowd_relay_port: int = 7777
     crowd_auto_spawn_strfry: bool = False
 
@@ -110,7 +109,6 @@ class AgentConfig:
             max_turn_summaries=int(os.getenv("OPENPLANTER_MAX_TURN_SUMMARIES", "50")),
             demo=os.getenv("OPENPLANTER_DEMO", "").strip().lower() in ("1", "true", "yes"),
             crowd_enabled=os.getenv("OPENPLANTER_CROWD", "").strip().lower() in ("1", "true", "yes"),
-            crowd_publish_leaf=os.getenv("OPENPLANTER_CROWD_PUBLISH_LEAF", "").strip().lower() in ("1", "true", "yes"),
             crowd_relay_port=int(os.getenv("OPENPLANTER_CROWD_RELAY_PORT", "7777")),
             crowd_auto_spawn_strfry=os.getenv("OPENPLANTER_CROWD_STRFRY", "").strip().lower() in ("1", "true", "yes"),
         )

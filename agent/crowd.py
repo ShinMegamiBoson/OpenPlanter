@@ -1427,6 +1427,7 @@ class CrowdClient:
             self._strfry.stop()
         if self.relay_pool is not None:
             try:
+                self.relay_pool.flush(timeout=3.0)
                 self.relay_pool.stop()
             except Exception:
                 pass

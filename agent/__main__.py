@@ -149,11 +149,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Enable the local crowd market (exposes /crowd, /claim, /trust slash commands).",
     )
     parser.add_argument(
-        "--crowd-publish-leaf",
-        action="store_true",
-        help="Publish leaf subtasks to the crowd instead of solving them locally.",
-    )
-    parser.add_argument(
         "--crowd-relay-port",
         type=int,
         default=None,
@@ -351,8 +346,6 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
         cfg.demo = True
     if args.crowd:
         cfg.crowd_enabled = True
-    if args.crowd_publish_leaf:
-        cfg.crowd_publish_leaf = True
     if args.crowd_relay_port is not None:
         cfg.crowd_relay_port = args.crowd_relay_port
     if args.crowd_strfry:

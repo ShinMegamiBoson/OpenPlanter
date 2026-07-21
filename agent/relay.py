@@ -107,6 +107,16 @@ class NostrRelayConnection:
     def is_connected(self) -> bool:
         return self._connected.is_set() and self._ws is not None
 
+    def flush(self, timeout: float = 3.0) -> bool:
+        """Wait for the outbound message queue to drain up to ``timeout``."""
+        self._connected.wait(timeout)
+        if not self.is_connected():
+            return False
+        deadline = time.monotonic() + timeout
+        while not self._pending.empty() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        return self._pending.empty()
+
     def publish(self, event: dict[str, Any]) -> None:
         self.send(["EVENT", event])
 
@@ -314,6 +324,16 @@ class RelayPool:
             relays = list(self._relays.values())
         for relay in relays:
             relay.subscribe(filters=filters)
+
+    def flush(self, timeout: float = 3.0) -> list[str]:
+        """Flush every relay's outbound queue and return the URIs that drained."""
+        with self._lock:
+            relays = list(self._relays.values())
+        flushed: list[str] = []
+        for relay in relays:
+            if relay.flush(timeout):
+                flushed.append(relay.uri)
+        return flushed
 
     def connected_uris(self) -> list[str]:
         with self._lock:

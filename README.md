@@ -189,7 +189,7 @@ Keys are resolved in this priority order (highest wins):
 
 All runtime settings can also be set via `OPENPLANTER_*` environment variables (e.g. `OPENPLANTER_MAX_DEPTH=8`).
 
-Crowd-specific env vars include `OPENPLANTER_CROWD`, `OPENPLANTER_CROWD_PUBLISH_LEAF`, `OPENPLANTER_CROWD_RELAY_PORT`, and `OPENPLANTER_CROWD_STRFRY`.
+Crowd-specific env vars include `OPENPLANTER_CROWD`, `OPENPLANTER_CROWD_RELAY_PORT`, and `OPENPLANTER_CROWD_STRFRY`.
 
 ## Project Structure
 
