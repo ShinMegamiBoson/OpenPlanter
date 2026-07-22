@@ -44,15 +44,16 @@ except Exception:  # pragma: no cover - filelock optional fallback
     _FileLockTimeout = Exception
 
 try:
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-    from cryptography.hazmat.primitives import hashes
-    HAS_CRYPTOGRAPHY = True
-except Exception:  # pragma: no cover - encryption optional fallback
-    AESGCM = None  # type: ignore[misc,assignment]
-    HKDF = None  # type: ignore[misc,assignment]
-    hashes = None  # type: ignore[misc,assignment]
-    HAS_CRYPTOGRAPHY = False
+    from nostrkey.crypto import encrypt as _nip44_encrypt
+    from nostrkey.crypto import decrypt as _nip44_decrypt
+    from nostrkey.keys import private_key_to_public_key as _nip44_priv_to_pub
+
+    HAS_NIP44 = True
+except Exception:  # pragma: no cover - nip44 optional fallback
+    _nip44_encrypt = None  # type: ignore[misc,assignment]
+    _nip44_decrypt = None  # type: ignore[misc,assignment]
+    _nip44_priv_to_pub = None  # type: ignore[misc,assignment]
+    HAS_NIP44 = False
 
 try:
     from .relay import RelayPool, NostrRelayConnection
@@ -136,97 +137,71 @@ def _task_id(publisher_hex: str, nonce: str, brief_hash: str) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
-def _xonly_to_pubkey_bytes(xonly_hex: str) -> bytes:
-    """Convert a NIP-01 x-only pubkey hex to a compressed secp256k1 point.
+def _encrypt_brief(
+    brief: str,
+    sender_priv_hex: str,
+    recipient_xonlys: list[str],
+    sender_pub_hex: str | None = None,
+) -> dict[str, Any]:
+    """Encrypt a brief with NIP-44 v2 for a list of x-only recipients.
 
-    NIP-01 x-only keys use the even-y point, so ``02 || xonly`` is canonical.
+    Produces one ciphertext per recipient.  The sender's public key is stored
+    alongside the items so recipients can form the correct NIP-44 conversation
+    key during decryption.
     """
-    raw = bytes.fromhex(xonly_hex[:64])
-    try:
-        from coincurve import PublicKey
-
-        return PublicKey(b"\x02" + raw).format()
-    except Exception:
-        return b"\x02" + raw
-
-
-def _derive_aes_key(shared_secret: bytes) -> bytes:
-    """Derive a 32-byte AES key from an ECDH shared secret using HKDF-SHA256."""
-    if AESGCM is None or HKDF is None or hashes is None:
-        raise CrowdError("cryptography library required for private tasks")
-    return HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=None,
-        info=b"openplanter-private-brief",
-    ).derive(shared_secret)
-
-
-def _encrypt_brief(brief: str, sender_priv_hex: str, recipient_xonlys: list[str]) -> dict[str, Any]:
-    """Encrypt a brief for a list of NIP-01 x-only recipient public keys.
-
-    Returns a dict with one encrypted item per recipient.  Recipients can try
-    each item and decrypt the one intended for them using their own private key.
-    """
-    if not HAS_CRYPTOGRAPHY:
-        raise CrowdError("cryptography not installed")
-    from coincurve import PrivateKey, PublicKey
-
-    sender_sk = PrivateKey.from_hex(sender_priv_hex.strip().lower())
+    if not HAS_NIP44 or _nip44_encrypt is None:
+        raise CrowdError("nostrkey not installed; NIP-44 unavailable")
+    sender_priv_hex = sender_priv_hex.strip().lower()
+    if sender_pub_hex is None:
+        if _nip44_priv_to_pub is None:
+            raise CrowdError("nostrkey not installed; cannot derive sender pubkey")
+        sender_pub_hex = _nip44_priv_to_pub(sender_priv_hex)
+    else:
+        sender_pub_hex = sender_pub_hex.strip().lower()
     items: list[dict[str, str]] = []
-    brief_bytes = brief.encode("utf-8")
     for r in recipient_xonlys:
-        recipient_pub = PublicKey(_xonly_to_pubkey_bytes(r))
-        ephemeral = PrivateKey()
-        ephemeral_pub = ephemeral.public_key.format()
-        shared = ephemeral.ecdh(recipient_pub.format())
-        key = _derive_aes_key(shared)
-        nonce = os.urandom(12)
-        ct = AESGCM(key).encrypt(nonce, brief_bytes, None)
-        items.append(
-            {
-                "ephemeral_pub": ephemeral_pub.hex(),
-                "nonce": nonce.hex(),
-                "ciphertext": ct.hex(),
-            }
-        )
-    return {"version": 1, "items": items}
-
-
-def _bip340_secret_hex(private_hex: str) -> str:
-    """Return the BIP-340 secret scalar that corresponds to an x-only pubkey.
-
-    Coincurve private keys map to public points that can have odd or even y.
-    BIP-340 public keys are the x-coordinate with even-y lift, so the secret
-    for an odd-y private key is ``n - d``.
-    """
-    from coincurve import PrivateKey
-    from coincurve.utils import GROUP_ORDER_INT
-
-    sk = PrivateKey.from_hex(private_hex.strip().lower())
-    if sk.public_key.format()[0] == 0x02:
-        return private_hex.strip().lower()
-    d = sk.to_int()
-    d_prime = (GROUP_ORDER_INT - d) % GROUP_ORDER_INT
-    return PrivateKey.from_int(d_prime).to_hex()
-
-
-def _decrypt_brief(encrypted: dict[str, Any], private_hex: str) -> str | None:
-    """Try to decrypt any item of an encrypted brief with the given private key."""
-    if not HAS_CRYPTOGRAPHY:
-        return None
-    from coincurve import PrivateKey
-
-    sk = PrivateKey.from_hex(_bip340_secret_hex(private_hex))
-    for item in encrypted.get("items", []):
+        r_clean = r.strip().lower()
+        if len(r_clean) != 64:
+            continue
         try:
-            ephemeral_pub = bytes.fromhex(item["ephemeral_pub"])
-            shared = sk.ecdh(ephemeral_pub)
-            key = _derive_aes_key(shared)
-            nonce = bytes.fromhex(item["nonce"])
-            ct = bytes.fromhex(item["ciphertext"])
-            plain = AESGCM(key).decrypt(nonce, ct, None)
-            return plain.decode("utf-8")
+            payload = _nip44_encrypt(
+                sender_nsec=sender_priv_hex,
+                recipient_npub=r_clean,
+                plaintext=brief,
+            )
+            items.append({"recipient": r_clean, "payload": payload})
+        except Exception:
+            continue
+    if not items:
+        raise CrowdError("no valid recipients for private brief")
+    return {"version": 2, "sender": sender_pub_hex, "items": items}
+
+
+def _decrypt_brief(
+    encrypted: dict[str, Any],
+    private_hex: str,
+    sender_pub_hex: str | None = None,
+) -> str | None:
+    """Try to decrypt an NIP-44 v2 brief with the given private key."""
+    if not HAS_NIP44 or _nip44_decrypt is None:
+        return None
+    private_hex = private_hex.strip().lower()
+    version = encrypted.get("version")
+    if version != 2:
+        return None
+    sender = (sender_pub_hex or encrypted.get("sender") or "").strip().lower()
+    if len(sender) != 64:
+        return None
+    for item in encrypted.get("items", []):
+        payload = item.get("payload") if isinstance(item, dict) else item
+        if not isinstance(payload, str):
+            continue
+        try:
+            return _nip44_decrypt(
+                recipient_nsec=private_hex,
+                sender_npub=sender,
+                ciphertext_b64=payload,
+            )
         except Exception:
             continue
     return None
@@ -1605,7 +1580,12 @@ class CrowdClient:
             },
             ensure_ascii=True,
         )
-        encrypted = _encrypt_brief(original_brief, self.private_identity.private_hex, allowed)
+        encrypted = _encrypt_brief(
+            original_brief,
+            self.private_identity.private_hex,
+            allowed,
+            sender_pub_hex=self.private_identity.public_hex,
+        )
         task.encrypted_brief = json.dumps(encrypted, ensure_ascii=True)
 
         # Lock the brief hash to the original fields before replacing them with
