@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from .builder import _fetch_models_for_provider, build_engine, infer_provider_for_model
 from .config import AgentConfig
+from .crowd import CrowdClient, CrowdIdentity, ensure_crowd_identities
 from .credentials import (
     CredentialBundle,
     CredentialStore,
@@ -141,6 +142,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--demo",
         action="store_true",
         help="Censor entity names and workspace path segments in output (UI-only).",
+    )
+    parser.add_argument(
+        "--crowd",
+        action="store_true",
+        help="Enable the local crowd market (exposes /crowd, /claim, /trust slash commands).",
+    )
+    parser.add_argument(
+        "--crowd-relay-port",
+        type=int,
+        default=None,
+        help="Local ws:// relay port for crowd events (defaults to env/7777).",
+    )
+    parser.add_argument(
+        "--crowd-strfry",
+        action="store_true",
+        help="Attempt to spawn a local strfry relay/router binary.",
     )
     return parser
 
@@ -327,6 +344,12 @@ def _apply_runtime_overrides(cfg: AgentConfig, args: argparse.Namespace, creds: 
         cfg.acceptance_criteria = True
     if args.demo:
         cfg.demo = True
+    if args.crowd:
+        cfg.crowd_enabled = True
+    if args.crowd_relay_port is not None:
+        cfg.crowd_relay_port = args.crowd_relay_port
+    if args.crowd_strfry:
+        cfg.crowd_auto_spawn_strfry = True
 
 
 def run_plain_repl(ctx: ChatContext) -> None:
@@ -563,55 +586,85 @@ def main() -> None:
 
     ctx = ChatContext(runtime=runtime, cfg=cfg, settings_store=settings_store)
 
-    # Build optional censor for headless / plain text paths.
-    censor_fn = None
-    if cfg.demo:
-        from .demo import DemoCensor
-        censor_fn = DemoCensor(cfg.workspace).censor_text
-
-    def _print_startup(info: dict[str, str]) -> None:
-        for key, val in info.items():
-            line = f"{key:>10}  {val}"
-            print(censor_fn(line) if censor_fn else line)
-        print()
-
-    if args.task:
-        # Headless task mode — print config plainly, then run.
-        _print_startup(startup_info)
-        result = runtime.solve(args.task, on_event=lambda ev: print(
-            censor_fn(f"trace> {_clip_event(ev)}") if censor_fn else f"trace> {_clip_event(ev)}"
-        ))
-        print(censor_fn(result) if censor_fn else result)
-        return
-
-    if args.no_tui:
-        if not sys.stdin.isatty():
-            print("No interactive stdin available; use --task for headless execution.")
-            raise SystemExit(2)
-        _print_startup(startup_info)
-        run_plain_repl(ctx)
-        return
-
-    # Default: Textual TUI (with wiki graph panel) if available,
-    # Rich REPL fallback, plain REPL last resort.
-    # --textual flag forces Textual (hard error if not installed).
     try:
-        from .textual_tui import run_textual_app
-    except ImportError:
-        if args.textual:
-            print("Textual TUI requires extra dependencies: pip install openplanter-agent[textual]")
-            raise SystemExit(1)
-        run_textual_app = None  # type: ignore[assignment]
+        if cfg.crowd_enabled:
+            settings = settings_store.load()
+            crowd_identity, private_identity, changed = ensure_crowd_identities(
+                settings, settings_store
+            )
+            if changed:
+                settings_store.save(settings)
+            crowd = CrowdClient(
+                store=runtime.store.crowd,
+                identity=crowd_identity,
+                upstream_relays=settings.crowd_relays,
+                auto_spawn_strfry=cfg.crowd_auto_spawn_strfry,
+                epsilon=settings.crowd_epsilon,
+                private_identity=private_identity,
+                private_relays=settings.crowd_private_relays,
+            )
+            ctx.crowd = crowd
+            uri = crowd.start_local_relay(port=cfg.crowd_relay_port)
+            if uri:
+                startup_info["Crowd"] = uri
+            if crowd._strfry and crowd._strfry.router_proc:
+                startup_info["Crowd router"] = "federating to " + ", ".join(settings.crowd_relays)
+            elif cfg.crowd_auto_spawn_strfry and settings.crowd_relays:
+                startup_info["Crowd router"] = "strfry not found"
 
-    if run_textual_app is not None:
-        run_textual_app(ctx, startup_info=startup_info)
-        return
+        # Build optional censor for headless / plain text paths.
+        censor_fn = None
+        if cfg.demo:
+            from .demo import DemoCensor
+            censor_fn = DemoCensor(cfg.workspace).censor_text
 
-    try:
-        run_rich_repl(ctx, startup_info=startup_info)
-    except ImportError:
-        _print_startup(startup_info)
-        run_plain_repl(ctx)
+        def _print_startup(info: dict[str, str]) -> None:
+            for key, val in info.items():
+                line = f"{key:>10}  {val}"
+                print(censor_fn(line) if censor_fn else line)
+            print()
+
+        if args.task:
+            # Headless task mode — print config plainly, then run.
+            _print_startup(startup_info)
+            result = runtime.solve(args.task, on_event=lambda ev: print(
+                censor_fn(f"trace> {_clip_event(ev)}") if censor_fn else f"trace> {_clip_event(ev)}"
+            ))
+            print(censor_fn(result) if censor_fn else result)
+            return
+
+        if args.no_tui:
+            if not sys.stdin.isatty():
+                print("No interactive stdin available; use --task for headless execution.")
+                raise SystemExit(2)
+            _print_startup(startup_info)
+            run_plain_repl(ctx)
+            return
+
+        # Default: Textual TUI (with wiki graph panel) if available,
+        # Rich REPL fallback, plain REPL last resort.
+        # --textual flag forces Textual (hard error if not installed).
+        try:
+            from .textual_tui import run_textual_app
+        except ImportError:
+            if args.textual:
+                print("Textual TUI requires extra dependencies: pip install openplanter-agent[textual]")
+                raise SystemExit(1)
+            run_textual_app = None  # type: ignore[assignment]
+
+        if run_textual_app is not None:
+            run_textual_app(ctx, startup_info=startup_info)
+            return
+
+        try:
+            run_rich_repl(ctx, startup_info=startup_info)
+        except ImportError:
+            _print_startup(startup_info)
+            run_plain_repl(ctx)
+
+    finally:
+        if ctx.crowd is not None:
+            ctx.crowd.stop()
 
 
 if __name__ == "__main__":

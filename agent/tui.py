@@ -9,13 +9,17 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import AgentConfig
+from .crowd import CrowdClient, CrowdIdentity, CrowdStore, CrowdTask, ensure_crowd_identities
 from .engine import RLMEngine, _MODEL_CONTEXT_WINDOWS, _DEFAULT_CONTEXT_WINDOW
 from .model import EchoFallbackModel, ModelError
 from .runtime import SessionRuntime
 from .settings import SettingsStore
 
 
-SLASH_COMMANDS: list[str] = ["/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning"]
+SLASH_COMMANDS: list[str] = [
+    "/quit", "/exit", "/help", "/status", "/clear", "/model", "/reasoning",
+    "/crowd", "/claim", "/cancel", "/result", "/accept", "/reject", "/expire", "/reopen", "/trust",
+]
 
 
 def _queue_prompt_style():
@@ -106,6 +110,15 @@ HELP_LINES: list[str] = [
     "  /model <name> --save  Switch and persist as default",
     "  /model list [all]   List available models",
     "  /reasoning [low|medium|high|off]  Change reasoning effort",
+    "  /crowd [list|#tag ...] <objective>  Publish a crowd task",
+    "  /claim <task-hash>  Claim an open crowd task",
+    "  /cancel <task-hash> Cancel a crowd task",
+    "  /result <hash> <content>  Submit a result for a claimed task",
+    "  /accept <hash>      Accept a result",
+    "  /reject <hash>      Reject a result",
+    "  /expire <hash>      Expire an unclaimed task",
+    "  /reopen <hash>      Reopen a canceled / rejected / expired task",
+    "  /trust <npub>       Trust a worker public key",
     "  /status  /clear  /quit  /exit  /help",
 ]
 
@@ -139,6 +152,255 @@ class ChatContext:
     runtime: SessionRuntime
     cfg: AgentConfig
     settings_store: SettingsStore
+    crowd: CrowdClient | None = None
+
+
+def _crowd_client(ctx: ChatContext) -> CrowdClient:
+    """Return the shared CrowdClient, or build and persist one from settings."""
+    if ctx.crowd is not None:
+        return ctx.crowd
+    settings = ctx.settings_store.load()
+    identity, private_identity, changed = ensure_crowd_identities(
+        settings, ctx.settings_store
+    )
+    if changed:
+        ctx.settings_store.save(settings)
+    ctx.crowd = CrowdClient(
+        store=ctx.runtime.store.crowd,
+        identity=identity,
+        upstream_relays=settings.crowd_relays,
+        epsilon=settings.crowd_epsilon,
+        private_identity=private_identity,
+        private_relays=settings.crowd_private_relays,
+    )
+    return ctx.crowd
+
+
+def handle_crowd_command(args: str, ctx: ChatContext) -> list[str]:
+    """Handle /crowd sub-commands. Returns display lines."""
+    cmd = args.strip()
+    if cmd == "list":
+        client = _crowd_client(ctx)
+        tasks = client.store.list_tasks(status="open")
+        if not tasks:
+            return ["No open crowd tasks."]
+        lines = [f"Open crowd tasks ({len(tasks)}):"]
+        for task in sorted(tasks, key=lambda t: t.created_at):
+            tags = ", ".join(task.tags) or "(none)"
+            lines.append(f"  {task.task_hash[:12]} | [{tags}] {task.objective[:80]}")
+        return lines
+
+    tokens = cmd.split()
+    is_private = False
+    if tokens and tokens[0].lower() == "private":
+        is_private = True
+        tokens = tokens[1:]
+
+    allowed: list[str] = []
+    filtered: list[str] = []
+    for i, t in enumerate(tokens):
+        if t.lower() == "--allowed" and i + 1 < len(tokens):
+            allowed = [a.strip() for a in tokens[i + 1].split(",") if a.strip()]
+            continue
+        if t.lower() == "--allowed":
+            continue
+        if i > 0 and tokens[i - 1].lower() == "--allowed":
+            continue
+        filtered.append(t)
+
+    tags = [t[1:].lower() for t in filtered if t.startswith("#") and len(t) > 1]
+    objective = " ".join(t for t in filtered if not t.startswith("#")).strip()
+    if not objective:
+        return [
+            "Usage: /crowd [#tag ...] <objective>",
+            "       /crowd private [--allowed npub1,npub2] [#tag ...] <objective>",
+            "       /crowd list",
+        ]
+    client = _crowd_client(ctx)
+    if is_private:
+        own_private = client.private_identity.public_hex
+        if own_private not in allowed:
+            allowed.insert(0, own_private)
+        task = CrowdTask.build(
+            objective=objective,
+            acceptance_criteria="",
+            tags=tags,
+            stake="low",
+            private=True,
+            private_allowed=allowed,
+        )
+        event = client.publish_private_task(task, context={}, allowed=allowed)
+        return [
+            f"Published private crowd task {task.task_hash[:12]}",
+            f"  event id: {event.id[:16]}...",
+            f"  allowed: {', '.join(a[:12] for a in allowed)}",
+        ]
+    task = CrowdTask.build(
+        objective=objective,
+        acceptance_criteria="",
+        tags=tags,
+        stake="low",
+    )
+    event = client.publish_task(task)
+    return [
+        f"Published crowd task {task.task_hash[:12]}",
+        f"  event id: {event.id[:16]}...",
+        f"  npub: {client.identity.npub_hex[:16]}...",
+    ]
+
+
+def handle_claim_command(args: str, ctx: ChatContext) -> list[str]:
+    """Handle /claim. Accepts a full hash or a 12-character prefix."""
+    prefix = args.strip().split()[0] if args.strip() else ""
+    if not prefix:
+        return ["Usage: /claim <task-hash>"]
+    client = _crowd_client(ctx)
+    task = client.store.get_task(prefix)
+    if task is None:
+        candidates = [t for t in client.store.list_tasks(status="open") if t.task_hash.startswith(prefix)]
+        if len(candidates) == 1:
+            task = candidates[0]
+        elif len(candidates) > 1:
+            return [f"Ambiguous prefix {prefix[:12]}: {len(candidates)} open tasks match."]
+    if task is None:
+        return [f"Could not claim task {prefix[:12]} (not found or already claimed)."]
+    event = client.claim_task(task.task_hash)
+    if event is None:
+        return [f"Could not claim task {task.task_hash[:12]} (not found or already claimed)."]
+    return [
+        f"Claimed task {task.task_hash[:12]}",
+        f"  claim event id: {event.id[:16]}...",
+    ]
+
+
+def handle_cancel_command(args: str, ctx: ChatContext) -> list[str]:
+    """Handle /cancel. Accepts a full hash or a 12-character prefix."""
+    prefix = args.strip().split()[0] if args.strip() else ""
+    if not prefix:
+        return ["Usage: /cancel <task-hash>"]
+    client = _crowd_client(ctx)
+    task = client.store.get_task(prefix)
+    if task is None:
+        candidates = [t for t in client.store.list_tasks() if t.task_hash.startswith(prefix)]
+        if len(candidates) == 1:
+            task = candidates[0]
+        elif len(candidates) > 1:
+            return [f"Ambiguous prefix {prefix[:12]}: {len(candidates)} tasks match."]
+    if task is None:
+        return [f"Could not cancel task {prefix[:12]} (not found or already finished)."]
+    event = client.cancel_task(task.task_hash)
+    if event is None:
+        return [f"Could not cancel task {task.task_hash[:12]} (already finished or canceled)."]
+    return [
+        f"Canceled task {task.task_hash[:12]}",
+        f"  cancel event id: {event.id[:16]}...",
+    ]
+
+
+def handle_decrypt_private_command(args: str, ctx: ChatContext) -> list[str]:
+    """Handle /decrypt-private. Decrypt a private task brief if allowed."""
+    prefix = args.strip().split()[0] if args.strip() else ""
+    if not prefix:
+        return ["Usage: /decrypt-private <task-hash>"]
+    client = _crowd_client(ctx)
+    task = client.store.get_task(prefix)
+    if task is None:
+        candidates = [t for t in client.store.list_tasks() if t.task_hash.startswith(prefix)]
+        if len(candidates) == 1:
+            task = candidates[0]
+        elif len(candidates) > 1:
+            return [f"Ambiguous prefix {prefix[:12]}: {len(candidates)} tasks match."]
+    if task is None:
+        return [f"Could not find task {prefix[:12]}."]
+    updated = client.decrypt_private_task(task.task_hash)
+    if updated is None:
+        return [f"Could not decrypt task {task.task_hash[:12]} (not encrypted or not allowed)."]
+    return [
+        f"Decrypted private task {task.task_hash[:12]}",
+        f"  objective: {updated.objective[:80]}",
+    ]
+
+
+def handle_result_command(args: str, ctx: ChatContext) -> list[str]:
+    """Handle /result. Submit result for a task claimed by this identity."""
+    parts = args.strip().split(None, 1)
+    if len(parts) < 2:
+        return ["Usage: /result <task-hash> <content>"]
+    prefix, content = parts
+    client = _crowd_client(ctx)
+    task = client.store.get_task(prefix)
+    if task is None:
+        candidates = [
+            t for t in client.store.list_tasks()
+            if t.task_hash.startswith(prefix)
+        ]
+        if len(candidates) == 1:
+            task = candidates[0]
+        elif len(candidates) > 1:
+            return [f"Ambiguous prefix {prefix[:12]}: {len(candidates)} tasks match."]
+    if task is None:
+        return [f"Task not found: {prefix}"]
+    event = client.return_result(task.task_hash, content)
+    if event is None:
+        return [f"Could not submit result for {task.task_hash[:12]} (must be claimed by this identity)."]
+    return [
+        f"Result submitted for {task.task_hash[:12]}",
+        f"Event: {event.id[:16]}...",
+    ]
+
+
+def _handle_lifecycle(args: str, ctx: ChatContext, action: str) -> list[str]:
+    """Shared helper for accept/reject/expire/reopen."""
+    prefix = args.strip().split()[0] if args.strip() else ""
+    if not prefix:
+        return [f"Usage: /{action} <task-hash>"]
+    client = _crowd_client(ctx)
+    task = client.store.get_task(prefix)
+    if task is None:
+        candidates = [
+            t for t in client.store.list_tasks()
+            if t.task_hash.startswith(prefix)
+        ]
+        if len(candidates) == 1:
+            task = candidates[0]
+        else:
+            return [f"Task not found: {prefix}"]
+    method = getattr(client, f"{action}_result" if action in ("accept", "reject") else f"{action}_task")
+    event = method(task.task_hash)
+    if event is None:
+        return [f"Could not {action} task {task.task_hash[:12]} (wrong status or not publisher)."]
+    past_tense = {
+        "accept": "accepted",
+        "reject": "rejected",
+        "expire": "expired",
+        "reopen": "reopened",
+    }.get(action, f"{action}ed")
+    return [f"Task {task.task_hash[:12]} {past_tense}", f"Event: {event.id[:16]}..."]
+
+
+def handle_accept_command(args: str, ctx: ChatContext) -> list[str]:
+    return _handle_lifecycle(args, ctx, "accept")
+
+
+def handle_reject_command(args: str, ctx: ChatContext) -> list[str]:
+    return _handle_lifecycle(args, ctx, "reject")
+
+
+def handle_expire_command(args: str, ctx: ChatContext) -> list[str]:
+    return _handle_lifecycle(args, ctx, "expire")
+
+
+def handle_reopen_command(args: str, ctx: ChatContext) -> list[str]:
+    return _handle_lifecycle(args, ctx, "reopen")
+
+
+def handle_trust_command(args: str, ctx: ChatContext) -> list[str]:
+    """Handle /trust. Returns display lines."""
+    npub = args.strip().split()[0] if args.strip() else ""
+    if not npub:
+        return ["Usage: /trust <npub>"]
+    ctx.runtime.store.crowd.add_trusted(npub)
+    return [f"Added {npub[:16]}... to trusted workers."]
 
 
 def _format_token_count(n: int) -> str:
@@ -389,6 +651,66 @@ def dispatch_slash_command(
     if command.startswith("/reasoning"):
         cmd_args = command[len("/reasoning"):].strip()
         lines = handle_reasoning_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/crowd"):
+        cmd_args = command[len("/crowd"):].strip()
+        lines = handle_crowd_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/cancel"):
+        cmd_args = command[len("/cancel"):].strip()
+        lines = handle_cancel_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/claim"):
+        cmd_args = command[len("/claim"):].strip()
+        lines = handle_claim_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/decrypt-private"):
+        cmd_args = command[len("/decrypt-private"):].strip()
+        lines = handle_decrypt_private_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/result"):
+        cmd_args = command[len("/result"):].strip()
+        lines = handle_result_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/accept"):
+        cmd_args = command[len("/accept"):].strip()
+        lines = handle_accept_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/reject"):
+        cmd_args = command[len("/reject"):].strip()
+        lines = handle_reject_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/expire"):
+        cmd_args = command[len("/expire"):].strip()
+        lines = handle_expire_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/reopen"):
+        cmd_args = command[len("/reopen"):].strip()
+        lines = handle_reopen_command(cmd_args, ctx)
+        for line in lines:
+            emit(line)
+        return "handled"
+    if command.startswith("/trust"):
+        cmd_args = command[len("/trust"):].strip()
+        lines = handle_trust_command(cmd_args, ctx)
         for line in lines:
             emit(line)
         return "handled"

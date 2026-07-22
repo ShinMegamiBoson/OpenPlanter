@@ -2,4 +2,5 @@
 /frontend/node_modules
 /frontend/dist
 /frontend/e2e/screenshots
+/crates/op-tauri/gen/schemas
 *.DS_Store

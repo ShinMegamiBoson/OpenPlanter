@@ -3,6 +3,18 @@ import { appState } from "../state/store";
 import { openSession } from "../api/invoke";
 import { handleModelCommand, type CommandResult } from "./model";
 import { handleReasoningCommand } from "./reasoning";
+import {
+  crowdPublish,
+  crowdList,
+  crowdClaim,
+  crowdCancel,
+  crowdResult,
+  crowdAccept,
+  crowdReject,
+  crowdExpire,
+  crowdReopen,
+  crowdTrust,
+} from "../api/invoke";
 
 /** Dispatch a slash command. Returns null if not a slash command. */
 export async function dispatchSlashCommand(input: string): Promise<CommandResult | null> {
@@ -30,6 +42,11 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
           "  /model list [provider]  List available models",
           "  /reasoning          Show/set reasoning effort",
           "  /reasoning <level>  Set level (low, medium, high, off)",
+          "  /crowd [list|#tag ...] <objective>  Publish or list crowd tasks",
+          "  /claim <task-hash>  Claim an open crowd task",
+          "  /cancel <task-hash> Cancel a crowd task",
+          "  /result <hash> <content>  Submit result for a claimed task",
+          "  /trust <npub>       Trust a worker public key",
         ],
       };
 
@@ -93,6 +110,105 @@ export async function dispatchSlashCommand(input: string): Promise<CommandResult
 
     case "/reasoning":
       return handleReasoningCommand(args);
+
+    case "/crowd": {
+      const rest = args.trim();
+      if (!rest || rest === "list") {
+        try {
+          const result = await crowdList();
+          if (result.tasks.length === 0) {
+            return { action: "handled", lines: ["No open crowd tasks."] };
+          }
+          const lines = result.tasks.map(
+            (t) => `  ${t.task_hash.slice(0, 12)}  [${t.status}]  ${t.objective}  #${t.tags.join(" #")}`
+          );
+          return { action: "handled", lines: ["Open crowd tasks:", ...lines] };
+        } catch (e) {
+          return { action: "handled", lines: [`Crowd list failed: ${e}`] };
+        }
+      }
+      try {
+        const result = await crowdPublish(rest);
+        return {
+          action: "handled",
+          lines: [`Crowd publish ${result.success ? "ok" : "failed"}:`, result.output],
+        };
+      } catch (e) {
+        return { action: "handled", lines: [`Crowd publish failed: ${e}`] };
+      }
+    }
+
+    case "/claim": {
+      const hash = args.trim().split(/\s+/)[0] || "";
+      if (!hash) {
+        return { action: "handled", lines: ["Usage: /claim <task-hash>"] };
+      }
+      try {
+        const result = await crowdClaim(hash);
+        return { action: "handled", lines: [result.output] };
+      } catch (e) {
+        return { action: "handled", lines: [`Crowd claim failed: ${e}`] };
+      }
+    }
+
+    case "/cancel": {
+      const hash = args.trim().split(/\s+/)[0] || "";
+      if (!hash) {
+        return { action: "handled", lines: ["Usage: /cancel <task-hash>"] };
+      }
+      try {
+        const result = await crowdCancel(hash);
+        return { action: "handled", lines: [result.output] };
+      } catch (e) {
+        return { action: "handled", lines: [`Crowd cancel failed: ${e}`] };
+      }
+    }
+
+    case "/result": {
+      const trimmed = args.trim();
+      const firstSpace = trimmed.search(/\s/);
+      const hash = firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace);
+      const content = firstSpace === -1 ? "" : trimmed.slice(firstSpace + 1).trimStart();
+      if (!hash || !content) {
+        return { action: "handled", lines: ["Usage: /result <task-hash> <content>"] };
+      }
+      try {
+        const result = await crowdResult(hash, content);
+        return { action: "handled", lines: [result.output] };
+      } catch (e) {
+        return { action: "handled", lines: [`Crowd result failed: ${e}`] };
+      }
+    }
+
+    case "/accept":
+    case "/reject":
+    case "/expire":
+    case "/reopen": {
+      const hash = args.trim().split(/\s+/)[0] || "";
+      if (!hash) {
+        return { action: "handled", lines: [`Usage: ${cmd} <task-hash>`] };
+      }
+      const fn = { "/accept": crowdAccept, "/reject": crowdReject, "/expire": crowdExpire, "/reopen": crowdReopen }[cmd];
+      try {
+        const result = await fn!(hash);
+        return { action: "handled", lines: [result.output] };
+      } catch (e) {
+        return { action: "handled", lines: [`Crowd ${cmd.slice(1)} failed: ${e}`] };
+      }
+    }
+
+    case "/trust": {
+      const npub = args.trim().split(/\s+/)[0] || "";
+      if (!npub) {
+        return { action: "handled", lines: ["Usage: /trust <npub>"] };
+      }
+      try {
+        const result = await crowdTrust(npub);
+        return { action: "handled", lines: [result.output] };
+      } catch (e) {
+        return { action: "handled", lines: [`Crowd trust failed: ${e}`] };
+      }
+    }
 
     default:
       return {

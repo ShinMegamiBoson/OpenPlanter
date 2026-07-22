@@ -14,7 +14,7 @@ Pre-built binaries are available on the [Releases page](https://github.com/ShinM
 
 ## Desktop App
 
-The desktop app (`openplanter-desktop/`) is a Tauri 2 application with a three-pane layout:
+The desktop app (`openplanter-desktop/`) is a Tauri 2 application with a three-pane layout and the same `/crowd`, `/claim`, `/cancel`, and `/trust` slash commands as the Python REPL:
 
 - **Sidebar** — Session management, provider/model settings, and API credential status
 - **Chat pane** — Conversational interface showing the agent's objectives, reasoning steps, tool calls, and findings with syntax-highlighted code blocks
@@ -117,6 +117,10 @@ The agent has access to 19 tools, organized around its investigation workflow:
 
 In **recursive mode** (the default), the agent spawns sub-agents via `subtask` and `execute` to parallelize entity resolution, cross-dataset linking, and evidence-chain construction across large investigations.
 
+## Crowd Market
+
+OpenPlanter Crowd is a local, Nostr-compatible task market for publishing leaf subtasks, claiming work, and returning results. It is available in the Python REPL, the Textual TUI, and the Tauri desktop chat. See [`CROWD.md`](CROWD.md) for the full design, CLI flags, and programmatic API.
+
 ## CLI Reference
 
 ```
@@ -160,6 +164,15 @@ openplanter-agent [options]
 | `--headless` | Non-interactive mode (for CI) |
 | `--demo` | Censor entity names and workspace paths in output |
 
+### Crowd
+
+| Flag | Description |
+|------|-------------|
+| `--crowd` | Enable the crowd market (`/crowd`, `/claim`, `/cancel`, `/trust`) |
+| `--crowd-publish-leaf` | Publish leaf subtasks to the crowd |
+| `--crowd-relay-port N` | Local relay port (default: 7777) |
+| `--crowd-strfry` | Try to spawn a local `strfry` relay/router |
+
 ### Persistent Defaults
 
 Use `--default-model`, `--default-reasoning-effort`, or per-provider variants like `--default-model-openai` to save workspace defaults to `.openplanter/settings.json`. View them with `--show-settings`.
@@ -176,13 +189,15 @@ Keys are resolved in this priority order (highest wins):
 
 All runtime settings can also be set via `OPENPLANTER_*` environment variables (e.g. `OPENPLANTER_MAX_DEPTH=8`).
 
+Crowd-specific env vars include `OPENPLANTER_CROWD`, `OPENPLANTER_CROWD_RELAY_PORT`, and `OPENPLANTER_CROWD_STRFRY`.
+
 ## Project Structure
 
 ```
 openplanter-desktop/         Tauri 2 desktop application
   crates/
     op-tauri/                 Tauri backend (Rust)
-      src/commands/           IPC command handlers (agent, wiki, config)
+      src/commands/           IPC command handlers (agent, crowd, wiki, config)
     op-core/                  Shared core library
   frontend/                   TypeScript/Vite frontend
     src/components/           UI components (ChatPane, GraphPane, InputBar, Sidebar)
@@ -201,7 +216,8 @@ agent/                        Python CLI agent
   prompts.py                  System prompt construction
   config.py                   Configuration dataclass
   credentials.py              Credential management
-  tui.py                      Rich terminal UI
+  tui.py                      Rich terminal UI and slash commands
+  crowd.py                    OpenPlanter Crowd task market
   demo.py                     Demo mode (output censoring)
   patching.py                 File patching utilities
   settings.py                 Persistent settings
@@ -242,7 +258,7 @@ python -m pytest tests/
 python -m pytest tests/ --ignore=tests/test_live_models.py --ignore=tests/test_integration_live.py
 ```
 
-Requires Python 3.10+. Dependencies: `rich`, `prompt_toolkit`, `pyfiglet`.
+Requires Python 3.10+. Dependencies: `rich`, `prompt_toolkit`, `pyfiglet`, `coincurve`, `filelock`.
 
 ## License
 

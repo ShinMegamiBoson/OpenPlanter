@@ -12,6 +12,9 @@ dependencies = [
     "rich>=13.0",
     "prompt_toolkit>=3.0",
     "pyfiglet>=1.0",
+    "coincurve>=21.0.0",
+    "filelock>=3.13,<4",
+    "nostrkey>=0.3.5",
 ]
 
 [project.optional-dependencies]
