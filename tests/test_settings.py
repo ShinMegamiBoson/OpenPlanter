@@ -66,6 +66,7 @@ class SettingsTests(unittest.TestCase):
         self.assertIsNone(settings.default_model_for_provider("anthropic"))
         self.assertIsNone(settings.default_model_for_provider("openrouter"))
         self.assertIsNone(settings.default_model_for_provider("cerebras"))
+        self.assertIsNone(settings.default_model_for_provider("upstage"))
 
     def test_per_provider_model_ollama(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -175,6 +176,11 @@ class InferProviderTests(unittest.TestCase):
         self.assertEqual(infer_provider_for_model("qwen-3-235b-a22b-instruct-2507"), "cerebras")
         self.assertEqual(infer_provider_for_model("gpt-oss-120b"), "cerebras")
         self.assertEqual(infer_provider_for_model("llama-4-scout-cerebras"), "cerebras")
+
+    def test_upstage_models(self) -> None:
+        self.assertEqual(infer_provider_for_model("solar-pro3"), "upstage")
+        self.assertEqual(infer_provider_for_model("solar-pro2"), "upstage")
+        self.assertEqual(infer_provider_for_model("solar-mini"), "upstage")
 
     def test_ollama_models(self) -> None:
         self.assertEqual(infer_provider_for_model("llama3.2"), "ollama")
