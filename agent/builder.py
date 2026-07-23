@@ -151,6 +151,7 @@ def build_model_factory(cfg: AgentConfig) -> ModelFactory | None:
                 api_key=cfg.upstage_api_key,
                 base_url=cfg.upstage_base_url,
                 reasoning_effort=effort,
+                strict_tools=False,
             )
         if provider == "ollama":
             return OpenAICompatibleModel(
@@ -220,6 +221,7 @@ def build_engine(cfg: AgentConfig) -> RLMEngine:
             api_key=cfg.upstage_api_key,
             base_url=cfg.upstage_base_url,
             reasoning_effort=cfg.reasoning_effort,
+            strict_tools=False,
         )
     elif cfg.provider == "ollama":
         model = OpenAICompatibleModel(
