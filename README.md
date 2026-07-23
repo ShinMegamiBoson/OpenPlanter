@@ -26,7 +26,7 @@ The desktop app (`openplanter-desktop/`) is a Tauri 2 application with a three-p
 - **Wiki source drawer** — Click any source node to read the full markdown document in a slide-out panel. Internal wiki links navigate between documents and focus the corresponding graph node.
 - **Session persistence** — Investigations are saved automatically. Resume previous sessions or start new ones from the sidebar.
 - **Background wiki curator** — A lightweight agent runs in the background to keep wiki documents consistent and cross-linked.
-- **Multi-provider support** — Switch between OpenAI, Anthropic, OpenRouter, Cerebras, and Ollama (local) from the sidebar.
+- **Multi-provider support** — Switch between OpenAI, Anthropic, OpenRouter, Cerebras, Upstage, and Ollama (local) from the sidebar.
 
 ### Building from Source
 
@@ -85,6 +85,7 @@ The container mounts `./workspace` as the agent's working directory.
 | Anthropic | `claude-opus-4-6` | `ANTHROPIC_API_KEY` |
 | OpenRouter | `anthropic/claude-sonnet-4-5` | `OPENROUTER_API_KEY` |
 | Cerebras | `qwen-3-235b-a22b-instruct-2507` | `CEREBRAS_API_KEY` |
+| Upstage | `solar-pro3` | `UPSTAGE_API_KEY` |
 | Ollama | `llama3.2` | (none — local) |
 
 ### Local Models (Ollama)
@@ -136,7 +137,7 @@ openplanter-agent [options]
 
 | Flag | Description |
 |------|-------------|
-| `--provider NAME` | `auto`, `openai`, `anthropic`, `openrouter`, `cerebras`, `ollama` |
+| `--provider NAME` | `auto`, `openai`, `anthropic`, `openrouter`, `cerebras`, `upstage`, `ollama` |
 | `--model NAME` | Model name or `newest` to auto-select |
 | `--reasoning-effort LEVEL` | `low`, `medium`, `high`, or `none` |
 | `--list-models` | Fetch available models from the provider API |

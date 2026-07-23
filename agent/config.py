@@ -9,6 +9,7 @@ PROVIDER_DEFAULT_MODELS: dict[str, str] = {
     "anthropic": "claude-opus-4-6",
     "openrouter": "anthropic/claude-sonnet-4-5",
     "cerebras": "qwen-3-235b-a22b-instruct-2507",
+    "upstage": "solar-pro3",
     "ollama": "llama3.2",
 }
 
@@ -25,12 +26,14 @@ class AgentConfig:
     anthropic_base_url: str = "https://api.anthropic.com/v1"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     cerebras_base_url: str = "https://api.cerebras.ai/v1"
+    upstage_base_url: str = "https://api.upstage.ai/v1"
     ollama_base_url: str = "http://localhost:11434/v1"
     exa_base_url: str = "https://api.exa.ai"
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     openrouter_api_key: str | None = None
     cerebras_api_key: str | None = None
+    upstage_api_key: str | None = None
     exa_api_key: str | None = None
     voyage_api_key: str | None = None
     max_depth: int = 4
@@ -62,6 +65,7 @@ class AgentConfig:
         anthropic_api_key = os.getenv("OPENPLANTER_ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")
         openrouter_api_key = os.getenv("OPENPLANTER_OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
         cerebras_api_key = os.getenv("OPENPLANTER_CEREBRAS_API_KEY") or os.getenv("CEREBRAS_API_KEY")
+        upstage_api_key = os.getenv("OPENPLANTER_UPSTAGE_API_KEY") or os.getenv("UPSTAGE_API_KEY")
         exa_api_key = os.getenv("OPENPLANTER_EXA_API_KEY") or os.getenv("EXA_API_KEY")
         voyage_api_key = os.getenv("OPENPLANTER_VOYAGE_API_KEY") or os.getenv("VOYAGE_API_KEY")
         openai_base_url = os.getenv("OPENPLANTER_OPENAI_BASE_URL") or os.getenv(
@@ -79,12 +83,14 @@ class AgentConfig:
             anthropic_base_url=os.getenv("OPENPLANTER_ANTHROPIC_BASE_URL", "https://api.anthropic.com/v1"),
             openrouter_base_url=os.getenv("OPENPLANTER_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
             cerebras_base_url=os.getenv("OPENPLANTER_CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1"),
+            upstage_base_url=os.getenv("OPENPLANTER_UPSTAGE_BASE_URL", "https://api.upstage.ai/v1"),
             ollama_base_url=os.getenv("OPENPLANTER_OLLAMA_BASE_URL", "http://localhost:11434/v1"),
             exa_base_url=os.getenv("OPENPLANTER_EXA_BASE_URL", "https://api.exa.ai"),
             openai_api_key=openai_api_key,
             anthropic_api_key=anthropic_api_key,
             openrouter_api_key=openrouter_api_key,
             cerebras_api_key=cerebras_api_key,
+            upstage_api_key=upstage_api_key,
             exa_api_key=exa_api_key,
             voyage_api_key=voyage_api_key,
             max_depth=int(os.getenv("OPENPLANTER_MAX_DEPTH", "4")),

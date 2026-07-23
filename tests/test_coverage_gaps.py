@@ -94,6 +94,7 @@ class MergeMissingTests(unittest.TestCase):
             anthropic_api_key="an",
             openrouter_api_key="or",
             cerebras_api_key="cb",
+            upstage_api_key="up",
             exa_api_key="exa",
         )
         a.merge_missing(b)
@@ -101,6 +102,7 @@ class MergeMissingTests(unittest.TestCase):
         self.assertEqual(a.anthropic_api_key, "an")
         self.assertEqual(a.openrouter_api_key, "or")
         self.assertEqual(a.cerebras_api_key, "cb")
+        self.assertEqual(a.upstage_api_key, "up")
         self.assertEqual(a.exa_api_key, "exa")
 
 
@@ -115,6 +117,7 @@ class CredentialsFromEnvTests(unittest.TestCase):
             "OPENAI_API_KEY": "oa-key",
             "ANTHROPIC_API_KEY": "an-key",
             "OPENROUTER_API_KEY": "or-key",
+            "UPSTAGE_API_KEY": "up-key",
             "EXA_API_KEY": "exa-key",
         }
         with patch.dict(os.environ, env, clear=True):
@@ -122,6 +125,7 @@ class CredentialsFromEnvTests(unittest.TestCase):
         self.assertEqual(creds.openai_api_key, "oa-key")
         self.assertEqual(creds.anthropic_api_key, "an-key")
         self.assertEqual(creds.openrouter_api_key, "or-key")
+        self.assertEqual(creds.upstage_api_key, "up-key")
         self.assertEqual(creds.exa_api_key, "exa-key")
 
     def test_rlm_prefix_takes_priority(self) -> None:
@@ -191,6 +195,7 @@ class AgentConfigFromEnvTests(unittest.TestCase):
             "OPENAI_API_KEY": "oa",
             "ANTHROPIC_API_KEY": "an",
             "OPENROUTER_API_KEY": "or",
+            "UPSTAGE_API_KEY": "up",
             "EXA_API_KEY": "exa",
         }
         with patch.dict(os.environ, env, clear=True):
@@ -198,6 +203,7 @@ class AgentConfigFromEnvTests(unittest.TestCase):
         self.assertEqual(cfg.openai_api_key, "oa")
         self.assertEqual(cfg.anthropic_api_key, "an")
         self.assertEqual(cfg.openrouter_api_key, "or")
+        self.assertEqual(cfg.upstage_api_key, "up")
         self.assertEqual(cfg.exa_api_key, "exa")
 
     def test_workspace_resolved(self) -> None:
@@ -443,6 +449,10 @@ class CredentialBundleEdgeCasesTests(unittest.TestCase):
         bundle = CredentialBundle(cerebras_api_key="csk-test")
         self.assertTrue(bundle.has_any())
 
+    def test_has_any_with_upstage_key(self) -> None:
+        bundle = CredentialBundle(upstage_api_key="up-test")
+        self.assertTrue(bundle.has_any())
+
     def test_to_json_skips_none(self) -> None:
         bundle = CredentialBundle(openai_api_key="oa")
         j = bundle.to_json()
@@ -455,6 +465,16 @@ class CredentialBundleEdgeCasesTests(unittest.TestCase):
         j = bundle.to_json()
         self.assertIn("cerebras_api_key", j)
         self.assertEqual(j["cerebras_api_key"], "csk-test")
+
+    def test_to_json_includes_upstage(self) -> None:
+        bundle = CredentialBundle(upstage_api_key="up-test")
+        j = bundle.to_json()
+        self.assertIn("upstage_api_key", j)
+        self.assertEqual(j["upstage_api_key"], "up-test")
+
+    def test_from_json_upstage(self) -> None:
+        bundle = CredentialBundle.from_json({"upstage_api_key": "up-test"})
+        self.assertEqual(bundle.upstage_api_key, "up-test")
 
     def test_from_json_cerebras(self) -> None:
         bundle = CredentialBundle.from_json({"cerebras_api_key": "csk-test"})
