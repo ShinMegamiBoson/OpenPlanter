@@ -35,9 +35,21 @@ pub struct AppState {
     pub cancel_token: Arc<Mutex<CancellationToken>>,
 }
 
+/// Default workspace for the desktop app.
+///
+/// GUI apps launch with cwd = `/`, so `from_env(".")` would resolve the
+/// workspace to the (read-only) filesystem root. Default to a writable
+/// per-user directory instead; OPENPLANTER_WORKSPACE overrides it.
+fn default_workspace() -> String {
+    std::env::var("OPENPLANTER_WORKSPACE")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "~/OpenPlanter".to_string())
+}
+
 impl AppState {
     pub fn new() -> Self {
-        let mut cfg = AgentConfig::from_env(".");
+        let mut cfg = AgentConfig::from_env(default_workspace());
 
         // Load .env files and merge credentials into config
         let env_creds = credentials_from_env();
