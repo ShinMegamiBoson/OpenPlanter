@@ -1,6 +1,6 @@
 // OpenAI-compatible model implementation.
 //
-// Handles openai, openrouter, cerebras, and ollama — all use /chat/completions.
+// Handles openai, openrouter, cerebras, upstage, and ollama — all use /chat/completions.
 
 use std::collections::HashMap;
 

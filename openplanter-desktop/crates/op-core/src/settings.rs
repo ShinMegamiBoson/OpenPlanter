@@ -38,6 +38,7 @@ pub struct PersistentSettings {
     pub default_model_anthropic: Option<String>,
     pub default_model_openrouter: Option<String>,
     pub default_model_cerebras: Option<String>,
+    pub default_model_upstage: Option<String>,
     pub default_model_ollama: Option<String>,
 }
 
@@ -49,6 +50,7 @@ impl PersistentSettings {
             "anthropic" => self.default_model_anthropic.as_deref(),
             "openrouter" => self.default_model_openrouter.as_deref(),
             "cerebras" => self.default_model_cerebras.as_deref(),
+            "upstage" => self.default_model_upstage.as_deref(),
             "ollama" => self.default_model_ollama.as_deref(),
             _ => None,
         };
@@ -84,6 +86,7 @@ impl PersistentSettings {
             default_model_anthropic: trim_opt(&self.default_model_anthropic),
             default_model_openrouter: trim_opt(&self.default_model_openrouter),
             default_model_cerebras: trim_opt(&self.default_model_cerebras),
+            default_model_upstage: trim_opt(&self.default_model_upstage),
             default_model_ollama: trim_opt(&self.default_model_ollama),
         })
     }
@@ -104,6 +107,7 @@ impl PersistentSettings {
         add!(default_model_anthropic, "default_model_anthropic");
         add!(default_model_openrouter, "default_model_openrouter");
         add!(default_model_cerebras, "default_model_cerebras");
+        add!(default_model_upstage, "default_model_upstage");
         add!(default_model_ollama, "default_model_ollama");
         payload
     }
@@ -129,6 +133,7 @@ impl PersistentSettings {
             default_model_anthropic: get_str(obj, "default_model_anthropic"),
             default_model_openrouter: get_str(obj, "default_model_openrouter"),
             default_model_cerebras: get_str(obj, "default_model_cerebras"),
+            default_model_upstage: get_str(obj, "default_model_upstage"),
             default_model_ollama: get_str(obj, "default_model_ollama"),
         };
         settings.normalized()

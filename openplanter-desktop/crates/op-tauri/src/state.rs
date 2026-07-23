@@ -23,6 +23,7 @@ pub fn merge_credentials_into_config(
     merge!(anthropic_api_key);
     merge!(openrouter_api_key);
     merge!(cerebras_api_key);
+    merge!(upstage_api_key);
     merge!(exa_api_key);
     merge!(voyage_api_key);
 }
@@ -70,6 +71,7 @@ mod tests {
         cfg.anthropic_api_key = None;
         cfg.openrouter_api_key = None;
         cfg.cerebras_api_key = None;
+        cfg.upstage_api_key = None;
         cfg.exa_api_key = None;
         cfg.voyage_api_key = None;
         cfg

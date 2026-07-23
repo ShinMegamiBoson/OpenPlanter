@@ -84,6 +84,11 @@ fn known_models_for_provider(provider: &str) -> Vec<ModelInfo> {
             ("qwen-3-235b-a22b-instruct-2507", "Qwen-3 235B"),
             ("llama-4-scout-17b-16e-instruct", "Llama-4 Scout"),
         ],
+        "upstage" => vec![
+            ("solar-pro3", "Solar Pro 3"),
+            ("solar-pro2", "Solar Pro 2"),
+            ("solar-mini", "Solar Mini"),
+        ],
         "ollama" => vec![
             ("llama3.2", "Llama 3.2"),
             ("mistral", "Mistral"),
@@ -113,7 +118,7 @@ pub async fn list_models(
 ) -> Result<Vec<ModelInfo>, String> {
     if provider == "all" {
         let mut all = Vec::new();
-        for p in &["openai", "anthropic", "openrouter", "cerebras", "ollama"] {
+        for p in &["openai", "anthropic", "openrouter", "cerebras", "upstage", "ollama"] {
             all.extend(known_models_for_provider(p));
         }
         Ok(all)
@@ -140,6 +145,7 @@ pub fn build_credential_status(cfg: &op_core::config::AgentConfig) -> HashMap<St
     status.insert("anthropic".to_string(), cfg.anthropic_api_key.is_some());
     status.insert("openrouter".to_string(), cfg.openrouter_api_key.is_some());
     status.insert("cerebras".to_string(), cfg.cerebras_api_key.is_some());
+    status.insert("upstage".to_string(), cfg.upstage_api_key.is_some());
     status.insert("ollama".to_string(), true); // Ollama never needs a key
     status.insert("exa".to_string(), cfg.exa_api_key.is_some());
     status
@@ -169,6 +175,10 @@ pub async fn get_credentials_status(
     status.insert(
         "cerebras".to_string(),
         cfg.cerebras_api_key.is_some() || env_creds.cerebras_api_key.is_some(),
+    );
+    status.insert(
+        "upstage".to_string(),
+        cfg.upstage_api_key.is_some() || env_creds.upstage_api_key.is_some(),
     );
     status.insert("ollama".to_string(), true); // Ollama never needs a key
     status.insert(
@@ -210,6 +220,12 @@ mod tests {
     }
 
     #[test]
+    fn test_upstage_models_nonempty() {
+        let models = known_models_for_provider("upstage");
+        assert!(!models.is_empty(), "upstage should have known models");
+    }
+
+    #[test]
     fn test_ollama_models_nonempty() {
         let models = known_models_for_provider("ollama");
         assert!(!models.is_empty(), "ollama should have known models");
@@ -224,7 +240,7 @@ mod tests {
     #[test]
     fn test_all_providers_model_ids_unique() {
         let mut all_ids = HashSet::new();
-        for p in &["openai", "anthropic", "openrouter", "cerebras", "ollama"] {
+        for p in &["openai", "anthropic", "openrouter", "cerebras", "upstage", "ollama"] {
             for m in known_models_for_provider(p) {
                 assert!(
                     all_ids.insert(m.id.clone()),
@@ -237,7 +253,7 @@ mod tests {
 
     #[test]
     fn test_model_info_fields() {
-        for provider in &["openai", "anthropic", "openrouter", "cerebras", "ollama"] {
+        for provider in &["openai", "anthropic", "openrouter", "cerebras", "upstage", "ollama"] {
             for m in known_models_for_provider(provider) {
                 assert!(!m.id.is_empty(), "model id should not be empty");
                 assert!(m.name.is_some(), "model name should be Some for {}", m.id);
@@ -257,11 +273,13 @@ mod tests {
         cfg.anthropic_api_key = None;
         cfg.openrouter_api_key = None;
         cfg.cerebras_api_key = None;
+        cfg.upstage_api_key = None;
         let status = build_credential_status(&cfg);
         assert_eq!(status["openai"], false);
         assert_eq!(status["anthropic"], false);
         assert_eq!(status["openrouter"], false);
         assert_eq!(status["cerebras"], false);
+        assert_eq!(status["upstage"], false);
         assert_eq!(status["ollama"], true, "ollama always true");
     }
 
@@ -272,6 +290,7 @@ mod tests {
         cfg.anthropic_api_key = None;
         cfg.openrouter_api_key = None;
         cfg.cerebras_api_key = None;
+        cfg.upstage_api_key = None;
         let status = build_credential_status(&cfg);
         assert_eq!(status["openai"], true);
         assert_eq!(status["anthropic"], false);
@@ -284,6 +303,7 @@ mod tests {
         cfg.anthropic_api_key = Some("sk-ant-test".to_string());
         cfg.openrouter_api_key = None;
         cfg.cerebras_api_key = None;
+        cfg.upstage_api_key = None;
         let status = build_credential_status(&cfg);
         assert_eq!(status["anthropic"], true);
         assert_eq!(status["openai"], false);
@@ -296,6 +316,7 @@ mod tests {
         cfg.anthropic_api_key = None;
         cfg.openrouter_api_key = None;
         cfg.cerebras_api_key = None;
+        cfg.upstage_api_key = None;
         let status = build_credential_status(&cfg);
         assert_eq!(status["ollama"], true);
     }
@@ -307,6 +328,7 @@ mod tests {
         cfg.anthropic_api_key = Some("k2".to_string());
         cfg.openrouter_api_key = Some("k3".to_string());
         cfg.cerebras_api_key = Some("k4".to_string());
+        cfg.upstage_api_key = Some("k6".to_string());
         cfg.exa_api_key = Some("k5".to_string());
         let status = build_credential_status(&cfg);
         for (provider, has_key) in &status {
@@ -315,9 +337,9 @@ mod tests {
     }
 
     #[test]
-    fn test_cred_status_has_six_entries() {
+    fn test_cred_status_has_seven_entries() {
         let cfg = op_core::config::AgentConfig::from_env("/nonexistent");
         let status = build_credential_status(&cfg);
-        assert_eq!(status.len(), 6, "should have 6 entries (5 providers + exa)");
+        assert_eq!(status.len(), 7, "should have 7 entries (6 providers + exa)");
     }
 }

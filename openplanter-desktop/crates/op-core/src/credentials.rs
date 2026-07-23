@@ -16,6 +16,7 @@ pub struct CredentialBundle {
     pub anthropic_api_key: Option<String>,
     pub openrouter_api_key: Option<String>,
     pub cerebras_api_key: Option<String>,
+    pub upstage_api_key: Option<String>,
     pub exa_api_key: Option<String>,
     pub voyage_api_key: Option<String>,
 }
@@ -23,11 +24,12 @@ pub struct CredentialBundle {
 impl CredentialBundle {
     /// Returns `true` if any key has a non-empty value.
     pub fn has_any(&self) -> bool {
-        let keys: [&Option<String>; 6] = [
+        let keys: [&Option<String>; 7] = [
             &self.openai_api_key,
             &self.anthropic_api_key,
             &self.openrouter_api_key,
             &self.cerebras_api_key,
+            &self.upstage_api_key,
             &self.exa_api_key,
             &self.voyage_api_key,
         ];
@@ -51,6 +53,7 @@ impl CredentialBundle {
         fill!(anthropic_api_key);
         fill!(openrouter_api_key);
         fill!(cerebras_api_key);
+        fill!(upstage_api_key);
         fill!(exa_api_key);
         fill!(voyage_api_key);
     }
@@ -69,6 +72,7 @@ impl CredentialBundle {
         add!(anthropic_api_key, "anthropic_api_key");
         add!(openrouter_api_key, "openrouter_api_key");
         add!(cerebras_api_key, "cerebras_api_key");
+        add!(upstage_api_key, "upstage_api_key");
         add!(exa_api_key, "exa_api_key");
         add!(voyage_api_key, "voyage_api_key");
         out
@@ -87,6 +91,7 @@ impl CredentialBundle {
             anthropic_api_key: get_str(payload, "anthropic_api_key"),
             openrouter_api_key: get_str(payload, "openrouter_api_key"),
             cerebras_api_key: get_str(payload, "cerebras_api_key"),
+            upstage_api_key: get_str(payload, "upstage_api_key"),
             exa_api_key: get_str(payload, "exa_api_key"),
             voyage_api_key: get_str(payload, "voyage_api_key"),
         }
@@ -151,6 +156,11 @@ pub fn parse_env_file(path: &Path) -> CredentialBundle {
             "CEREBRAS_API_KEY",
             "OPENPLANTER_CEREBRAS_API_KEY",
         ),
+        upstage_api_key: get_key(
+            &env_map,
+            "UPSTAGE_API_KEY",
+            "OPENPLANTER_UPSTAGE_API_KEY",
+        ),
         exa_api_key: get_key(&env_map, "EXA_API_KEY", "OPENPLANTER_EXA_API_KEY"),
         voyage_api_key: get_key(&env_map, "VOYAGE_API_KEY", "OPENPLANTER_VOYAGE_API_KEY"),
     }
@@ -171,6 +181,7 @@ pub fn credentials_from_env() -> CredentialBundle {
         anthropic_api_key: env_key("OPENPLANTER_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
         openrouter_api_key: env_key("OPENPLANTER_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"),
         cerebras_api_key: env_key("OPENPLANTER_CEREBRAS_API_KEY", "CEREBRAS_API_KEY"),
+        upstage_api_key: env_key("OPENPLANTER_UPSTAGE_API_KEY", "UPSTAGE_API_KEY"),
         exa_api_key: env_key("OPENPLANTER_EXA_API_KEY", "EXA_API_KEY"),
         voyage_api_key: env_key("OPENPLANTER_VOYAGE_API_KEY", "VOYAGE_API_KEY"),
     }

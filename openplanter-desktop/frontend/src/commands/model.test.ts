@@ -34,6 +34,12 @@ describe("inferProvider", () => {
     expect(inferProvider("qwen-3-235b-a22b-instruct-2507")).toBe("cerebras");
   });
 
+  it("solar returns upstage", () => {
+    expect(inferProvider("solar-pro3")).toBe("upstage");
+    expect(inferProvider("solar-pro2")).toBe("upstage");
+    expect(inferProvider("solar-mini")).toBe("upstage");
+  });
+
   it("qwen without 3 returns ollama", () => {
     expect(inferProvider("qwen2")).toBe("ollama");
   });
