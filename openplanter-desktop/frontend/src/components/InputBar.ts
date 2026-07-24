@@ -117,7 +117,20 @@ export function createInputBar(): HTMLElement {
         appState.update((s) => ({ ...s, sessionId: session.id }));
         window.dispatchEvent(new CustomEvent("session-changed", { detail: { isNew: true } }));
       } catch (e) {
-        console.error("Failed to create session:", e);
+        appState.update((s) => ({
+          ...s,
+          isRunning: false,
+          messages: [
+            ...s.messages,
+            {
+              id: crypto.randomUUID(),
+              role: "system" as const,
+              content: `Failed to create session: ${e}`,
+              timestamp: Date.now(),
+            },
+          ],
+        }));
+        return;
       }
     }
 

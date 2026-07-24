@@ -72,6 +72,7 @@ export const MOCK_CREDENTIALS = {
   anthropic: true,
   openrouter: false,
   cerebras: false,
+  upstage: false,
   ollama: true,
   exa: false,
 };

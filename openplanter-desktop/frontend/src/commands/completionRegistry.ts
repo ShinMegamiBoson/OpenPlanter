@@ -13,6 +13,7 @@ const PROVIDER_FILTERS: CompletionItem[] = [
   { value: "anthropic", description: "Anthropic models" },
   { value: "ollama", description: "Local Ollama models" },
   { value: "cerebras", description: "Cerebras models" },
+  { value: "upstage", description: "Upstage models" },
   { value: "openrouter", description: "OpenRouter models" },
 ];
 

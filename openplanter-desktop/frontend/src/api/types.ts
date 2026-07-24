@@ -99,6 +99,7 @@ export interface PersistentSettings {
   default_model_anthropic?: string | null;
   default_model_openrouter?: string | null;
   default_model_cerebras?: string | null;
+  default_model_upstage?: string | null;
   default_model_ollama?: string | null;
 }
 

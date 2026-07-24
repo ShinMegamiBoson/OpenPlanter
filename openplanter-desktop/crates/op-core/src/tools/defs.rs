@@ -365,24 +365,30 @@ fn strict_fixup(schema: &mut Value) {
     }
 }
 
-/// Convert to OpenAI tools format: `[{ type: "function", function: { name, description, parameters, strict } }]`
-pub fn to_openai_tools() -> Vec<Value> {
-    mvp_tool_defs()
-        .into_iter()
+fn openai_tools_from(defs: Vec<ToolDef>, strict: bool) -> Vec<Value> {
+    defs.into_iter()
         .map(|def| {
             let mut params = def.parameters;
-            strict_fixup(&mut params);
+            let mut function = json!({
+                "name": def.name,
+                "description": def.description,
+            });
+            if strict {
+                strict_fixup(&mut params);
+                function["strict"] = json!(true);
+            }
+            function["parameters"] = params;
             json!({
                 "type": "function",
-                "function": {
-                    "name": def.name,
-                    "description": def.description,
-                    "parameters": params,
-                    "strict": true
-                }
+                "function": function
             })
         })
         .collect()
+}
+
+/// Convert to OpenAI tools format: `[{ type: "function", function: { name, description, parameters, strict } }]`
+pub fn to_openai_tools() -> Vec<Value> {
+    openai_tools_from(mvp_tool_defs(), true)
 }
 
 /// Convert to Anthropic tools format: `[{ name, description, input_schema }]`
@@ -403,6 +409,7 @@ pub fn to_anthropic_tools() -> Vec<Value> {
 pub fn build_tool_defs(provider: &str) -> Vec<Value> {
     match provider {
         "anthropic" => to_anthropic_tools(),
+        "upstage" => openai_tools_from(mvp_tool_defs(), false),
         _ => to_openai_tools(),
     }
 }
@@ -434,22 +441,7 @@ pub fn build_curator_tool_defs(provider: &str) -> Vec<Value> {
                 })
             })
             .collect(),
-        _ => filtered
-            .into_iter()
-            .map(|def| {
-                let mut params = def.parameters;
-                strict_fixup(&mut params);
-                json!({
-                    "type": "function",
-                    "function": {
-                        "name": def.name,
-                        "description": def.description,
-                        "parameters": params,
-                        "strict": true
-                    }
-                })
-            })
-            .collect(),
+        _ => openai_tools_from(filtered, provider != "upstage"),
     }
 }
 
@@ -518,6 +510,16 @@ mod tests {
     fn test_build_tool_defs_openai() {
         let tools = build_tool_defs("openai");
         assert_eq!(tools[0]["type"], "function");
+    }
+
+    #[test]
+    fn test_build_tool_defs_upstage_no_strict() {
+        // Upstage rejects function.strict=true with HTTP 400
+        let tools = build_tool_defs("upstage");
+        assert_eq!(tools[0]["type"], "function");
+        assert!(tools[0]["function"].get("strict").is_none());
+        let curator = build_curator_tool_defs("upstage");
+        assert!(curator[0]["function"].get("strict").is_none());
     }
 
     #[test]

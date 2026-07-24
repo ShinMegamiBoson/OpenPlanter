@@ -29,6 +29,9 @@ static OPENAI_RE: LazyLock<Regex> =
 static CEREBRAS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^(llama.*cerebras|qwen-3|gpt-oss|zai-glm)").unwrap());
 
+static UPSTAGE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^solar").unwrap());
+
 // Ollama regex: `qwen` without lookahead — Cerebras check runs first, so
 // `qwen-3*` is already caught before we reach this regex.
 static OLLAMA_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -48,6 +51,9 @@ pub fn infer_provider_for_model(model: &str) -> Option<&'static str> {
     }
     if CEREBRAS_RE.is_match(model) {
         return Some("cerebras");
+    }
+    if UPSTAGE_RE.is_match(model) {
+        return Some("upstage");
     }
     if OPENAI_RE.is_match(model) {
         return Some("openai");
@@ -117,6 +123,7 @@ pub fn resolve_provider(cfg: &AgentConfig) -> Result<String, ModelError> {
         ("openai", &cfg.openai_api_key),
         ("openrouter", &cfg.openrouter_api_key),
         ("cerebras", &cfg.cerebras_api_key),
+        ("upstage", &cfg.upstage_api_key),
         ("ollama", &None), // ollama is always last — no key needed
     ];
 
@@ -190,6 +197,19 @@ pub fn resolve_endpoint(
                 })?;
             Ok((cfg.cerebras_base_url.clone(), key.to_string()))
         }
+        "upstage" => {
+            let key = cfg
+                .upstage_api_key
+                .as_deref()
+                .or(cfg.api_key.as_deref())
+                .filter(|k| !k.is_empty())
+                .ok_or_else(|| {
+                    ModelError::Message(
+                        "No Upstage API key. Set UPSTAGE_API_KEY or OPENPLANTER_UPSTAGE_API_KEY.".into(),
+                    )
+                })?;
+            Ok((cfg.upstage_base_url.clone(), key.to_string()))
+        }
         "ollama" => {
             // Ollama doesn't need a real key — use a dummy
             Ok((cfg.ollama_base_url.clone(), "ollama".to_string()))
@@ -213,7 +233,7 @@ pub fn build_model(cfg: &AgentConfig) -> Result<Box<dyn BaseModel>, ModelError> 
             cfg.reasoning_effort.clone(),
         ))),
         _ => {
-            // OpenAI-compatible: openai, openrouter, cerebras, ollama
+            // OpenAI-compatible: openai, openrouter, cerebras, upstage, ollama
             let mut extra_headers = HashMap::new();
             if provider == "openrouter" {
                 extra_headers.insert(
@@ -280,6 +300,13 @@ mod tests {
             infer_provider_for_model("qwen-3-235b-a22b-instruct-2507"),
             Some("cerebras")
         );
+    }
+
+    #[test]
+    fn test_infer_upstage() {
+        assert_eq!(infer_provider_for_model("solar-pro3"), Some("upstage"));
+        assert_eq!(infer_provider_for_model("solar-pro2"), Some("upstage"));
+        assert_eq!(infer_provider_for_model("solar-mini"), Some("upstage"));
     }
 
     #[test]

@@ -13,6 +13,7 @@ pub static PROVIDER_DEFAULT_MODELS: LazyLock<HashMap<&'static str, &'static str>
             ("anthropic", "claude-opus-4-6"),
             ("openrouter", "anthropic/claude-sonnet-4-5"),
             ("cerebras", "qwen-3-235b-a22b-instruct-2507"),
+            ("upstage", "solar-pro3"),
             ("ollama", "llama3.2"),
         ])
     });
@@ -55,6 +56,7 @@ pub struct AgentConfig {
     pub anthropic_base_url: String,
     pub openrouter_base_url: String,
     pub cerebras_base_url: String,
+    pub upstage_base_url: String,
     pub ollama_base_url: String,
     pub exa_base_url: String,
 
@@ -64,6 +66,7 @@ pub struct AgentConfig {
     pub anthropic_api_key: Option<String>,
     pub openrouter_api_key: Option<String>,
     pub cerebras_api_key: Option<String>,
+    pub upstage_api_key: Option<String>,
     pub exa_api_key: Option<String>,
     pub voyage_api_key: Option<String>,
 
@@ -100,6 +103,7 @@ impl Default for AgentConfig {
             anthropic_base_url: "https://api.anthropic.com/v1".into(),
             openrouter_base_url: "https://openrouter.ai/api/v1".into(),
             cerebras_base_url: "https://api.cerebras.ai/v1".into(),
+            upstage_base_url: "https://api.upstage.ai/v1".into(),
             ollama_base_url: "http://localhost:11434/v1".into(),
             exa_base_url: "https://api.exa.ai".into(),
             api_key: None,
@@ -107,6 +111,7 @@ impl Default for AgentConfig {
             anthropic_api_key: None,
             openrouter_api_key: None,
             cerebras_api_key: None,
+            upstage_api_key: None,
             exa_api_key: None,
             voyage_api_key: None,
             max_depth: 4,
@@ -147,6 +152,9 @@ impl AgentConfig {
 
         let cerebras_api_key = env_opt("OPENPLANTER_CEREBRAS_API_KEY")
             .or_else(|| env_opt("CEREBRAS_API_KEY"));
+
+        let upstage_api_key = env_opt("OPENPLANTER_UPSTAGE_API_KEY")
+            .or_else(|| env_opt("UPSTAGE_API_KEY"));
 
         let exa_api_key = env_opt("OPENPLANTER_EXA_API_KEY")
             .or_else(|| env_opt("EXA_API_KEY"));
@@ -196,6 +204,10 @@ impl AgentConfig {
                 "OPENPLANTER_CEREBRAS_BASE_URL",
                 "https://api.cerebras.ai/v1",
             ),
+            upstage_base_url: env_or(
+                "OPENPLANTER_UPSTAGE_BASE_URL",
+                "https://api.upstage.ai/v1",
+            ),
             ollama_base_url: env_or(
                 "OPENPLANTER_OLLAMA_BASE_URL",
                 "http://localhost:11434/v1",
@@ -205,6 +217,7 @@ impl AgentConfig {
             anthropic_api_key,
             openrouter_api_key,
             cerebras_api_key,
+            upstage_api_key,
             exa_api_key,
             voyage_api_key,
             max_depth: env_int("OPENPLANTER_MAX_DEPTH", 4),
@@ -283,6 +296,7 @@ mod tests {
             PROVIDER_DEFAULT_MODELS.get("cerebras"),
             Some(&"qwen-3-235b-a22b-instruct-2507")
         );
+        assert_eq!(PROVIDER_DEFAULT_MODELS.get("upstage"), Some(&"solar-pro3"));
         assert_eq!(PROVIDER_DEFAULT_MODELS.get("ollama"), Some(&"llama3.2"));
     }
 
